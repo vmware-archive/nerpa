@@ -7,3 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+differential_datalog = {path = "../nerpa_controlplane/nerpa_ddlog/differential_datalog"}
+nerpa = {path = "../nerpa_controlplane/nerpa_ddlog"}
+types = {path = "../nerpa_controlplane/nerpa_ddlog/types"}
+

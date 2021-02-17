@@ -18,4 +18,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// TODO: Implement toy example in DDlog.
+import vec
+
+typedef port_config_t = Access{tag: u16} | Trunks{vlans : Vec<u16>}
+
+input relation Port(number: bit<16>, config: port_config_t)
+output relation Vlans(number: bit<16>, vlans: Vec<u16>)
+
+// Rule
+Vlans(number, config_to_vlans(config)) :- Port(number, config).
+                   
+function config_to_vlans(config: port_config_t) : Vec<u16> {
+    var vlans: Vec<u16> =
+        match (config) {
+            Trunks{.vlans = x} -> x,
+            Access{.tag = tag} -> [tag]
+        };
+    vlans
+}

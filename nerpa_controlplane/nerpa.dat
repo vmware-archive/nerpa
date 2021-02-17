@@ -17,3 +17,8 @@
 # SOFTWARE.
 
 # TODO: Add toy example data in DDlog.
+start;
+insert Port(11, Access{1});
+insert Port(22, Trunks{[2, 3, 4]});
+
+commit dump_changes;

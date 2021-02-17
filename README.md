@@ -12,3 +12,17 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 ### Initial Setup
 1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation).
 2. Generate the DDlog crate using the [setup script](nerpa_controlplane/generate.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle.
+```
+cd nerpa_controlplane
+./generate.sh
+```
+3. Generate and run the intermediate controller program's crate. Note that the input relations are currently hardcoded, as the interface for user interaction with the intermediate controller is unimplemented.
+```
+cd ../nerpa_controller
+cargo build --release && cargo run
+```
+The result of running the above program should be:
+```
+Changes to relation Vlans
+Vlans{.number = 11, .vlans = [1]} +1
+```
