@@ -18,11 +18,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+extern crate grpcio;
+extern crate proto;
+extern crate protobuf;
+
+pub mod p4ext;
+
 // The auto-generated crate `nerpa_ddlog` declares the `HDDlog` type.
 // This serves as a reference to a running DDlog program.
 // It implements `trait differential_datalog::DDlog`.
 use nerpa_ddlog::api::HDDlog;
-use nerpa_ddlog::Relations::Port;
+use nerpa_ddlog::Relations;
 
 // `differential_datalog` contains the DDlog runtime copied to each generated workspace.
 use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
@@ -31,6 +37,13 @@ use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog val
 use differential_datalog::ddval::DDValConvert; // Trait to convert Rust types to/from DDValue.
 use differential_datalog::program::RelId;
 use differential_datalog::program::Update;
+
+use proto::p4runtime_grpc::P4RuntimeClient;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use grpcio::{ChannelBuilder, EnvBuilder};
 
 // DDlogNerpa contains a handle to the DDlog program.
 pub struct DDlogNerpa {
@@ -52,12 +65,10 @@ impl DDlogNerpa {
     pub fn add_input(&mut self, ports: Vec<types::Port>) -> Result<DeltaMap<DDValue>, String> {
         self.hddlog.transaction_start()?;
 
-        // TODO: Clean up type conversion.
-        // We shouldn't need an iterator, since _num is unused.
         let updates = ports.into_iter().map(|port|
             Update::Insert {
-                relid: Port as RelId,
-                v: types::Port{number: port.number, config: port.config}.into_ddvalue(),
+                relid: Relations::Port as RelId,
+                v: types::Port{port_id: port.port_id, config: port.config}.into_ddvalue(),
             }
         ).collect::<Vec<_>>();
 
@@ -66,7 +77,6 @@ impl DDlogNerpa {
         return Ok(delta);
     }
 
-    // dump_delta prints the delta in output relations
     pub fn dump_delta(delta: &DeltaMap<DDValue>) {
         for (rel, changes) in delta.iter() {
             println!("Changes to relation {}", nerpa_ddlog::relid2name(*rel).unwrap());
@@ -76,7 +86,69 @@ impl DDlogNerpa {
         }
     }
 
-    // TODO: Implement function to convert output relation delta into P4. 
+    fn extract_vlan_match_fields_param_values(v: DDValue) -> (Vec<HashMap<String, u16>>, Vec<HashMap<String, u16>>) {
+        let vlan_ports = unsafe { types::VlanPorts::from_ddval( v.into_ddval() )};
+
+        let mut match_vec = Vec::new();
+        let mut param_vec = Vec::new();
+        for p in vlan_ports.ports {
+            let match_fields : HashMap<String, u16> = [
+                (String::from("hdr.vlan.vid"), vlan_ports.vlan),
+                (String::from("standard_metadata.ingress_port"), p),
+            ].iter().cloned().collect();
+            match_vec.push(match_fields);
+
+            let param_values : HashMap<String, u16> = [
+                (String::from("port"), p)
+            ].iter().cloned().collect();
+            param_vec.push(param_values);
+        }
+
+        (match_vec, param_vec)
+    }
+
+    pub fn push_outputs_to_switch(
+        delta: &DeltaMap<DDValue>,
+        device_id: u64,
+        role_id: u64,
+        target: &str,
+        table_name : &str,
+        action_name: &str,
+        client: &P4RuntimeClient,
+    ) {
+        let mut updates = Vec::new();
+
+        for (_rel_id, (_map_size, delta_map)) in (*delta).clone().into_iter().enumerate() {
+            for (k, _v) in delta_map {
+                let (match_vec, param_vec) = Self::extract_vlan_match_fields_param_values(k.clone());
+
+                for (i, match_fields_map) in match_vec.iter().enumerate() {
+                    // Both vectors have the same length, so the below access is safe.
+                    let params_values = &param_vec[i]; 
+
+                    let table_entry = p4ext::build_table_entry(
+                        table_name,
+                        action_name,
+                        params_values,
+                        &match_fields_map,
+                        device_id,
+                        target,
+                        client
+                    ).unwrap_or_else(|err| panic!("could not build table entry: {}", err));
+    
+                    let mut entity = proto::p4runtime::Entity::new();
+                    entity.set_table_entry(table_entry);
+    
+                    let mut update = proto::p4runtime::Update::new();
+                    update.set_field_type(proto::p4runtime::Update_Type::INSERT);
+                    update.set_entity(entity);
+                    updates.push(update);
+                }
+            }
+        }
+
+        p4ext::write(updates, device_id, role_id, target, client);
+    }
 }
 
 fn main() {
@@ -86,9 +158,53 @@ fn main() {
     // TODO: Better define the API for the management plane (i.e., the user interaction).
     // We should read in the vector of port configs, or whatever the input becomes.
     // Add input to DDlog program.
-    let ports = vec!(types::Port{number: 11, config: types::port_config_t::Access{tag: 1}});
+
+    let ports = vec!(
+        types::Port{port_id: 11, config: types::PortConfig::Access{vlan: 1}},
+    );
 
     // Compute and print output relation.
     let delta = nerpa.add_input(ports).unwrap();
     DDlogNerpa::dump_delta(&delta);
+
+    // TODO: Stop hard-coding arguments.
+    // TODO: Get non-empty election ID working.
+    let device_id : u64 = 0;
+    let role_id: u64 = 0;
+    let target : &str = "localhost:50051";
+    let env = Arc::new(EnvBuilder::new().build());
+    let ch = ChannelBuilder::new(env).connect(target);
+    let client = P4RuntimeClient::new(ch);
+
+    let p4info_str: &str = "examples/vlan/vlan.p4info.bin";
+    let opaque_str: &str = "examples/vlan/vlan.json";
+    let cookie_str: &str = "";
+    let action_str: &str = "verify-and-commit";
+
+    p4ext::set_pipeline(
+        p4info_str,
+        opaque_str,
+        cookie_str,
+        action_str,
+        device_id,
+        role_id,
+        target,
+        &client,
+    );
+
+    p4ext::list_tables(device_id, target, &client);
+
+    let table_name : &str = "MyIngress.vlan_incoming_exact";
+    let action_name: &str = "MyIngress.vlan_incoming_forward";
+    DDlogNerpa::push_outputs_to_switch(
+        &delta,
+        device_id,
+        role_id,
+        target,
+        table_name,
+        action_name,
+        &client,
+    );
+
+    // TODO: Add p4ext function to read table entries.
 }

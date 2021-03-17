@@ -1,0 +1,162 @@
+pkg_info {
+  arch: "v1model"
+}
+tables {
+  preamble {
+    id: 34900912
+    name: "MyIngress.vlan_incoming_exact"
+    alias: "vlan_incoming_exact"
+  }
+  match_fields {
+    id: 1
+    name: "standard_metadata.ingress_port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  match_fields {
+    id: 2
+    name: "hdr.vlan.vid"
+    bitwidth: 12
+    match_type: EXACT
+  }
+  action_refs {
+    id: 26805004
+  }
+  action_refs {
+    id: 25652968
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 43309784
+    name: "MyIngress.port_exact"
+    alias: "port_exact"
+  }
+  match_fields {
+    id: 1
+    name: "standard_metadata.ingress_port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  action_refs {
+    id: 29739113
+  }
+  action_refs {
+    id: 25652968
+  }
+  size: 10
+}
+tables {
+  preamble {
+    id: 50101297
+    name: "MyIngress.arp_exact"
+    alias: "arp_exact"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.arp.dst_ip"
+    bitwidth: 32
+    match_type: EXACT
+  }
+  action_refs {
+    id: 22921650
+  }
+  action_refs {
+    id: 25652968
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 37375156
+    name: "MyIngress.ipv4_lpm"
+    alias: "ipv4_lpm"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.ipv4.dstAddr"
+    bitwidth: 32
+    match_type: LPM
+  }
+  action_refs {
+    id: 28792405
+  }
+  action_refs {
+    id: 25652968
+  }
+  action_refs {
+    id: 21257015
+  }
+  size: 1024
+}
+actions {
+  preamble {
+    id: 21257015
+    name: "NoAction"
+    alias: "NoAction"
+    annotations: "@noWarn(\"unused\")"
+  }
+}
+actions {
+  preamble {
+    id: 25652968
+    name: "MyIngress.drop"
+    alias: "drop"
+  }
+}
+actions {
+  preamble {
+    id: 26805004
+    name: "MyIngress.vlan_incoming_forward"
+    alias: "vlan_incoming_forward"
+  }
+  params {
+    id: 1
+    name: "port"
+    bitwidth: 9
+  }
+}
+actions {
+  preamble {
+    id: 29739113
+    name: "MyIngress.portfwd"
+    alias: "portfwd"
+  }
+  params {
+    id: 1
+    name: "port"
+    bitwidth: 9
+  }
+}
+actions {
+  preamble {
+    id: 22921650
+    name: "MyIngress.arp_reply"
+    alias: "arp_reply"
+  }
+  params {
+    id: 1
+    name: "request_mac"
+    bitwidth: 48
+  }
+}
+actions {
+  preamble {
+    id: 28792405
+    name: "MyIngress.ipv4_forward"
+    alias: "ipv4_forward"
+  }
+  params {
+    id: 1
+    name: "dstAddr"
+    bitwidth: 48
+  }
+  params {
+    id: 2
+    name: "port"
+    bitwidth: 9
+  }
+}
+type_info {
+}

@@ -2,12 +2,25 @@
 name = "nerpa_controller"
 version = "0.1.0"
 authors = ["Debnil Sur <dsur@vmware.com>"]
+build = "build.rs"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "proto"
+path = "src/proto/mod.rs"
+
 [dependencies]
+byteorder = "1.4.2"
 differential_datalog = {path = "../nerpa_controlplane/nerpa_ddlog/differential_datalog"}
+futures = "0.3.12"
+grpcio = "0.8.0"
+itertools = "0.10.0"
 nerpa = {path = "../nerpa_controlplane/nerpa_ddlog"}
+protobuf = "2.22.0"
+protobuf-codegen = "2.22.0"
 types = {path = "../nerpa_controlplane/nerpa_ddlog/types"}
 
+[build-dependencies]
+protoc-grpcio = "3.0.0"

@@ -18,21 +18,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import vec
+typedef PortId = bit<16>        // Port number.
+typedef VID = bit<12>           // VLAN Identifier (0-4095).
+typedef PortConfig = Access{vlan: VID} | Trunks{vlans : Set<VID>}
 
-typedef port_config_t = Access{tag: u16} | Trunks{vlans : Vec<u16>}
+// Configuration for an individual port
+input relation Port(port_id: PortId, config: PortConfig)
+    primary key (x) (x.port_id)
 
-input relation Port(number: bit<16>, config: port_config_t)
-output relation Vlans(number: bit<16>, vlans: Vec<u16>)
+// Each row indicates that 'port_id' handles VLAN 'vlan'.
+// A port can be associated with multiple VLANs (if it's a trunk port).
+relation VlanMapping(port_id: PortId, vlan: VID)
+VlanMapping(port_id, vlan) :- Port(port_id, Access{vlan}).
+VlanMapping(port_id, vlan) :-
+    Port(port_id, Trunks{vlans}),
+    var vlan = FlatMap(vlans).
 
-// Rule
-Vlans(number, config_to_vlans(config)) :- Port(number, config).
-                   
-function config_to_vlans(config: port_config_t) : Vec<u16> {
-    var vlans: Vec<u16> =
-        match (config) {
-            Trunks{.vlans = x} -> x,
-            Access{.tag = tag} -> [tag]
-        };
-    vlans
-}
+// Each row indicates that VLAN 'vlan' spans the given 'ports'.
+output relation VlanPorts(vlan: VID, ports: Set<PortId>)
+VlanPorts(vlan, ports) :-
+    VlanMapping(port_id, vlan),
+    var ports = port_id.group_by(vlan).to_set().

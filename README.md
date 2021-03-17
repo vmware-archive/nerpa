@@ -9,19 +9,41 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 3. nerpa_dataplane: We plan to implement the data plane in [P4](https://p4.org/p4-spec/docs/P4-16-working-spec.html) using the [table format](https://p4.org/p4-spec/docs/P4-16-working-spec.html#sec-tables). Note that this may require cross-language work, as it is unclear if this involves any Rust.
 
 ## Installation
-### Initial Setup
-1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation).
-2. Generate the DDlog crate using the [setup script](nerpa_controlplane/generate.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle.
+### Build
+0. Clone this repository. We will call its top-level directory  `$NERPA_DIR`. I would recommend using a fresh Ubuntu 18.04 VM for painless P4 installation.
+1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation). This codebase used version [v0.36.0](https://github.com/vmware/differential-datalog/releases/tag/v0.36.0).
+2. Install P4 using these [installation instructions](https://github.com/jafingerhut/p4-guide/blob/master/bin/README-install-troubleshooting.md#quick-instructions-for-successful-install-script-run). We used the install script `install-p4dev-v2.sh`. It is much more usable than the P4 README installation, and clones all necessary repositories and installs dependencies.
+For better organization, run it in a dedicated directory for dependencies, called `$NERPA_DEPS`. This directory should be outside your clone of this repository. 
+
+3. Generate the DDlog crate using the [setup script](nerpa_controlplane/generate.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle.
 ```
-cd nerpa_controlplane
+cd $NERPA_DIR/nerpa_controlplane
 ./generate.sh
+``` 
+
+4. Build the intermediate controller program's crate.
+First install necessary dependencies (the protobuf and gRPC compilers). Then build the program crate.
+
 ```
-3. Generate and run the intermediate controller program's crate. Note that the input relations are currently hardcoded, as the interface for user interaction with the intermediate controller is unimplemented.
+cd $NERPA_DIR/nerpa_controller
+git submodule update --init
+cargo install protobuf-codegen
+cargo install grpcio-compiler
+cargo build --release
 ```
-cd ../nerpa_controller
-cargo build --release && cargo run
+
+### Run
+1. Start `simple_switch_grpc` from its build directory (`$NERPA_DEPS/targets/simple_switch_grpc`).
 ```
-The result of running the above program should be:
+./simple_switch_grpc --log-console --no-p4 -- --grpc-server-addr 0.0.0.0:50051 --cpu-port 1010
+```
+2. Run the intermediate controller program.
+```
+cd $NERPA_DIR/nerpa_controller
+cargo run
+```
+Note that the input relations are currently hardcoded, because the  user interaction with the intermediate controller is unimplemented.  
+Running this program should print:
 ```
 Changes to relation Vlans
 Vlans{.number = 11, .vlans = [1]} +1

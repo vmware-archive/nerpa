@@ -1,0 +1,6 @@
+[submodule "nerpa_controller/googleapis"]
+	path = nerpa_controller/googleapis
+	url = https://github.com/googleapis/googleapis.git
+[submodule "nerpa_controller/p4runtime"]
+	path = nerpa_controller/p4runtime
+	url = https://github.com/p4lang/p4runtime.git
