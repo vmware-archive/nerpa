@@ -15,7 +15,7 @@ fn main() {
     protoc_grpcio::compile_grpc_protos(
         &protos.iter().map(|x| x.1).collect::<Vec<&str>>(),
         &protos.iter().map(|x| x.0).collect::<Vec<&str>>(),
-        "src/proto",
+        "src/",
         None,
     )
     .expect("Failed to compile gRPC definitions!");

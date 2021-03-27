@@ -27,6 +27,7 @@ use proto::p4info;
 use proto::p4runtime::ForwardingPipelineConfig;
 use proto::p4runtime::ForwardingPipelineConfig_Cookie;
 use proto::p4runtime::GetForwardingPipelineConfigRequest;
+use proto::p4runtime::ReadRequest;
 use proto::p4runtime::SetForwardingPipelineConfigRequest;
 use proto::p4runtime::SetForwardingPipelineConfigRequest_Action;
 use proto::p4runtime::Uint128;
@@ -492,9 +493,9 @@ impl Action {
         runtime_action.set_action_id(self.preamble.id);
 
         let params_vec = self.params
-                         .iter()
-                         .map(|x| x.to_proto_runtime(params_values[&x.preamble.name]))
-                         .collect();
+                        .iter()
+                        .map(|x| x.to_proto_runtime(params_values[&x.preamble.name]))
+                        .collect();
         let params = protobuf::RepeatedField::from_vec(params_vec);
         runtime_action.set_params(params);
         
@@ -768,9 +769,9 @@ pub fn build_table_entry(
     let switch : Switch = pipeline.get_p4info().into();
 
     let tables : Vec<Table> = switch.tables
-                                  .into_iter()
-                                  .filter(|t| t.preamble.name == table_name)
-                                  .collect();
+                                .into_iter()
+                                .filter(|t| t.preamble.name == table_name)
+                                .collect();
     if tables.len() != 1 {
         return Err(P4Error{
             message: format!("found {} matching tables, expected 1", tables.len())
@@ -798,14 +799,8 @@ pub fn build_table_entry(
     for field in &table.match_fields {
         let name : &str = &field.preamble.name;
         match match_fields_map.get(name) {
-            Some(v) => {
-                field_matches.push(field.to_proto_runtime((*v).into()));
-            },
-            None => {
-                return Err(P4Error {
-                    message: format!("no field matching name {}", name)
-                });
-            }
+            Some(v) => field_matches.push(field.to_proto_runtime((*v).into())),
+            None => return Err(P4Error { message: format!("no field matching name {}", name)})
         }
     }
 
@@ -817,19 +812,76 @@ pub fn build_table_entry(
     Ok(table_entry)
 }
 
+pub fn build_table_entry_update(
+    update_type: proto::p4runtime::Update_Type,
+    table_name: &str,
+    action_name: &str,
+    params_values: &HashMap<String, u16>,
+    match_fields_map: &HashMap<String, u16>,
+    device_id: u64,
+    target: &str,
+    client: &P4RuntimeClient,
+) -> Result<proto::p4runtime::Update, P4Error> {
+    let result = build_table_entry(
+        table_name,
+        action_name,
+        params_values,
+        match_fields_map,
+        device_id,
+        target,
+        client,
+    );
+    match result {
+        Ok(t) => {
+            let mut entity = proto::p4runtime::Entity::new();
+            entity.set_table_entry(t);
+
+            let mut update = proto::p4runtime::Update::new();
+            update.set_field_type(update_type);
+            update.set_entity(entity);
+
+            Ok(update)
+        },
+        Err(e) => Err(P4Error{message: format!("could not build table entry ({})", e)})
+    }
+}
+
 pub fn write(
     updates: Vec<proto::p4runtime::Update>,
     device_id: u64,
     role_id: u64,
     target: &str,
     client: &P4RuntimeClient,
-) {
+) -> Result<(), P4Error> {
     let mut write_request = WriteRequest::new();
     write_request.set_device_id(device_id);
     write_request.set_role_id(role_id);
     write_request.set_updates(RepeatedField::from_vec(updates));
-    
-    client
-        .write(&write_request)
-        .unwrap_or_else(|err| panic!("{}, {}, {}: failed to write request ({})", target, device_id, role_id, err));
+
+    match client.write(&write_request) {
+        Ok(_w) => Ok(()),
+        Err(e) => Err(P4Error{message: format!("{}, {}, {}: failed to write request ({})", target, device_id, role_id, e)}), 
+    }
+}
+
+pub async fn read(
+    entities: Vec<proto::p4runtime::Entity>,
+    device_id: u64,
+    client: &P4RuntimeClient,
+) -> Result<Vec<proto::p4runtime::Entity>, P4Error> {
+    let mut read_request = ReadRequest::new();
+    read_request.set_device_id(device_id);
+    read_request.set_entities(RepeatedField::from_vec(entities));
+
+    use futures::StreamExt;
+    let mut stream = match client.read(&read_request) {
+        Ok(r) => r.enumerate(),
+        Err(e) => return Err(P4Error {message: format!("{}: failed to read request({})", device_id, e)}),
+    };
+
+    let (_, response) = stream.next().await.unwrap();
+    match response {
+        Ok(r) => Ok(r.get_entities().to_vec()),
+        Err(e) => Err(P4Error{ message: format!("{}: received invalid response({})", device_id, e)}),
+    }
 }

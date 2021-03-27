@@ -21,15 +21,31 @@ cd $NERPA_DIR/nerpa_controlplane
 ./generate.sh
 ``` 
 
-4. Build the intermediate controller program's crate.
-First install necessary dependencies (the protobuf and gRPC compilers). Then build the program crate.
+4. Build the `proto` crate containing P4 Runtime structures. Install necessary dependencies (the protobuf and gRPC compilers).
 
 ```
-cd $NERPA_DIR/nerpa_controller
+cd $NERPA_DIR/proto
 git submodule update --init
 cargo install protobuf-codegen
 cargo install grpcio-compiler
-cargo build --release
+```
+
+5. Build the intermediate controller program's crate.
+```
+cd $NERPA_DIR/nerpa_controller
+cargo build
+```
+
+### Test
+1. Start `simple_switch_grpc` from its build directory (`$NERPA_DEPS/targets/simple_switch_grpc`).
+```
+./simple_switch_grpc --log-console --no-p4 -- --grpc-server-addr 0.0.0.0:50051 --cpu-port 1010
+```
+
+2. Run the P4 Runtime library tests.
+```
+cd $NERPA_DIR/p4ext
+cargo test
 ```
 
 ### Run

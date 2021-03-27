@@ -1,5 +1,5 @@
 [package]
-name = "nerpa_controller"
+name = "p4ext"
 version = "0.1.0"
 authors = ["Debnil Sur <dsur@vmware.com>"]
 edition = "2018"
@@ -8,17 +8,11 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1.4.2"
-differential_datalog = {path = "../nerpa_controlplane/nerpa_ddlog/differential_datalog"}
 futures = "0.3.12"
 grpcio = "0.8.0"
 itertools = "0.10.0"
-nerpa = {path = "../nerpa_controlplane/nerpa_ddlog"}
-p4ext = {path = "../p4ext"}
 proto = {path = "../proto"}
 protobuf = "2.22.0"
 protobuf-codegen = "2.22.0"
 tokio = { version = "1.2.0", features = ["full"] }
-types = {path = "../nerpa_controlplane/nerpa_ddlog/types"}
 
-[build-dependencies]
-protoc-grpcio = "3.0.0"

@@ -22,8 +22,6 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-pub mod p4ext;
-
 // The auto-generated crate `nerpa_ddlog` declares the `HDDlog` type.
 // This serves as a reference to a running DDlog program.
 // It implements `trait differential_datalog::DDlog`.
@@ -124,24 +122,17 @@ impl DDlogNerpa {
 
                 for (i, match_fields_map) in match_vec.iter().enumerate() {
                     // Both vectors have the same length, so the below access is safe.
-                    let params_values = &param_vec[i]; 
-
-                    let table_entry = p4ext::build_table_entry(
+                    let params_values = &param_vec[i];
+                    let update = p4ext::build_table_entry_update(
+                        proto::p4runtime::Update_Type::INSERT,
                         table_name,
                         action_name,
                         params_values,
                         &match_fields_map,
                         device_id,
                         target,
-                        client
-                    ).unwrap_or_else(|err| panic!("could not build table entry: {}", err));
-    
-                    let mut entity = proto::p4runtime::Entity::new();
-                    entity.set_table_entry(table_entry);
-    
-                    let mut update = proto::p4runtime::Update::new();
-                    update.set_field_type(proto::p4runtime::Update_Type::INSERT);
-                    update.set_entity(entity);
+                        client,
+                    ).unwrap_or_else(|err| panic!("could not build table entry update: {}", err));
                     updates.push(update);
                 }
             }
@@ -151,7 +142,8 @@ impl DDlogNerpa {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Instantiate DDlog program.
     let mut nerpa = DDlogNerpa::new().unwrap();
 
@@ -205,6 +197,4 @@ fn main() {
         action_name,
         &client,
     );
-
-    // TODO: Add p4ext function to read table entries.
 }
