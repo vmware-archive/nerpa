@@ -20,86 +20,91 @@ SOFTWARE.
 
 extern crate p4ext;
 
+use rusty_fork::rusty_fork_test;
 use std::collections::HashMap;
 
-#[test]
-fn set_get_pipeline() {
-    let setup = p4ext::TestSetup::new();
+rusty_fork_test! {
+    #[test]
+    fn set_get_pipeline() {
+        let setup = p4ext::TestSetup::new();
 
-    p4ext::set_pipeline(
-        &setup.p4info,
-        &setup.opaque,
-        &setup.cookie,
-        &setup.action,
-        setup.device_id,
-        setup.role_id,
-        &setup.target,
-        &setup.client,
-    );
+        p4ext::set_pipeline(
+            &setup.p4info,
+            &setup.opaque,
+            &setup.cookie,
+            &setup.action,
+            setup.device_id,
+            setup.role_id,
+            &setup.target,
+            &setup.client,
+        );
 
-    let cfg = p4ext::get_pipeline_config(setup.device_id, &setup.target, &setup.client);
-    let switch : p4ext::Switch = cfg.get_p4info().into();
-    assert_eq!(switch.tables.len(), 4);
+        let cfg = p4ext::get_pipeline_config(setup.device_id, &setup.target, &setup.client);
+        let switch : p4ext::Switch = cfg.get_p4info().into();
+        assert_eq!(switch.tables.len(), 4);
+    }
 }
 
-#[test]
-fn build_table_entry() {
-    let setup = p4ext::TestSetup::new();
+rusty_fork_test! {
+    #[test]
+    fn build_table_entry() {
+        let setup = p4ext::TestSetup::new();
+    
+        p4ext::set_pipeline(
+            &setup.p4info,
+            &setup.opaque,
+            &setup.cookie,
+            &setup.action,
+            setup.device_id,
+            setup.role_id,
+            &setup.target,
+            &setup.client,
+        );
+    
+        // all valid arguments
+        assert!(p4ext::build_table_entry(
+            &setup.table_name,
+            &setup.action_name,
+            &setup.params_values,
+            &setup.match_fields_map,
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_ok());
+    
+        // invalid table name
+        assert!(p4ext::build_table_entry(
+            "",
+            &setup.action_name,
+            &setup.params_values,
+            &setup.match_fields_map,
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_err());
+    
+        // invalid action name
+        assert!(p4ext::build_table_entry(
+            &setup.table_name,
+            "",
+            &setup.params_values,
+            &setup.match_fields_map,
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_err());
 
-    p4ext::set_pipeline(
-        &setup.p4info,
-        &setup.opaque,
-        &setup.cookie,
-        &setup.action,
-        setup.device_id,
-        setup.role_id,
-        &setup.target,
-        &setup.client,
-    );
-
-    // all valid arguments
-    assert!(p4ext::build_table_entry(
-        &setup.table_name,
-        &setup.action_name,
-        &setup.params_values,
-        &setup.match_fields_map,
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_ok());
-
-    // invalid table name
-    assert!(p4ext::build_table_entry(
-        "",
-        &setup.action_name,
-        &setup.params_values,
-        &setup.match_fields_map,
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_err());
-
-    // invalid action name
-    assert!(p4ext::build_table_entry(
-        &setup.table_name,
-        "",
-        &setup.params_values,
-        &setup.match_fields_map,
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_err());
-
-    // no field matches
-    assert!(p4ext::build_table_entry(
-        &setup.table_name,
-        &setup.action_name,
-        &setup.params_values,
-        &HashMap::new(),
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_err());
+        // no field matches
+        assert!(p4ext::build_table_entry(
+            &setup.table_name,
+            &setup.action_name,
+            &setup.params_values,
+            &HashMap::new(),
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_err());
+    }
 }
 
 #[tokio::test]

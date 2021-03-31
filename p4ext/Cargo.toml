@@ -14,5 +14,8 @@ itertools = "0.10.0"
 proto = {path = "../proto"}
 protobuf = "2.22.0"
 protobuf-codegen = "2.22.0"
+rusty-fork = "0.3.0"
 tokio = { version = "1.2.0", features = ["full"] }
 
+[dev-dependencies]
+rusty-fork = "0.3.0"
