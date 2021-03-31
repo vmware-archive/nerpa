@@ -23,7 +23,11 @@ extern crate p4ext;
 use grpcio::{ChannelBuilder, EnvBuilder};
 use proto::p4runtime::StreamMessageRequest;
 use proto::p4runtime_grpc::P4RuntimeClient;
+use rusty_fork::fork;
+use rusty_fork::rusty_fork_test;
+use rusty_fork::rusty_fork_id;
 use std::collections::HashMap;
+use std::process::Command;
 use std::string::String;
 use std::sync::Arc;
 
@@ -44,6 +48,23 @@ struct Setup {
 
 impl Setup {
     fn new() -> Self {
+        // TODO: Remove hardcoded absolute directory, maybe using symlink?
+        let filepath = "/home/dsur/nerpa-deps/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
+        let mut command = Command::new(filepath);
+        command.args(&[
+            "--no-p4",
+            "--",
+            "--grpc-server-addr",
+            "0.0.0.0:50051",
+            "--cpu-port",
+            "1010"
+        ]);
+        
+        match command.spawn() {
+            Ok(child) => println!("Server process id: {}", child.id()),
+            Err(e) => panic!("server didn't start: {}", e),
+        }
+
         let target = "localhost:50051";
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(target);
@@ -73,88 +94,94 @@ impl Setup {
     }
 }
 
-#[test]
-fn set_get_pipeline() {
-    let setup = Setup::new();
 
-    p4ext::set_pipeline(
-        &setup.p4info,
-        &setup.opaque,
-        &setup.cookie,
-        &setup.action,
-        setup.device_id,
-        setup.role_id,
-        &setup.target,
-        &setup.client,
-    );
+rusty_fork_test! {
+    #[test]
+    fn set_get_pipeline() {
+        let setup = Setup::new();
 
-    let cfg = p4ext::get_pipeline_config(setup.device_id, &setup.target, &setup.client);
-    let switch : p4ext::Switch = cfg.get_p4info().into();
-    assert_eq!(switch.tables.len(), 4);
+        p4ext::set_pipeline(
+            &setup.p4info,
+            &setup.opaque,
+            &setup.cookie,
+            &setup.action,
+            setup.device_id,
+            setup.role_id,
+            &setup.target,
+            &setup.client,
+        );
+
+        let cfg = p4ext::get_pipeline_config(setup.device_id, &setup.target, &setup.client);
+        let switch : p4ext::Switch = cfg.get_p4info().into();
+        assert_eq!(switch.tables.len(), 4);
+    }
 }
 
-#[test]
-fn build_table_entry() {
-    let setup = Setup::new();
+rusty_fork_test! {
+    #[test]
+    fn build_table_entry() {
+        let setup = Setup::new();
+    
+        p4ext::set_pipeline(
+            &setup.p4info,
+            &setup.opaque,
+            &setup.cookie,
+            &setup.action,
+            setup.device_id,
+            setup.role_id,
+            &setup.target,
+            &setup.client,
+        );
+    
+        // all valid arguments
+        assert!(p4ext::build_table_entry(
+            &setup.table_name,
+            &setup.action_name,
+            &setup.params_values,
+            &setup.match_fields_map,
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_ok());
+    
+        // invalid table name
+        assert!(p4ext::build_table_entry(
+            "",
+            &setup.action_name,
+            &setup.params_values,
+            &setup.match_fields_map,
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_err());
+    
+        // invalid action name
+        assert!(p4ext::build_table_entry(
+            &setup.table_name,
+            "",
+            &setup.params_values,
+            &setup.match_fields_map,
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_err());
 
-    p4ext::set_pipeline(
-        &setup.p4info,
-        &setup.opaque,
-        &setup.cookie,
-        &setup.action,
-        setup.device_id,
-        setup.role_id,
-        &setup.target,
-        &setup.client,
-    );
-
-    // all valid arguments
-    assert!(p4ext::build_table_entry(
-        &setup.table_name,
-        &setup.action_name,
-        &setup.params_values,
-        &setup.match_fields_map,
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_ok());
-
-    // invalid table name
-    assert!(p4ext::build_table_entry(
-        "",
-        &setup.action_name,
-        &setup.params_values,
-        &setup.match_fields_map,
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_err());
-
-    // invalid action name
-    assert!(p4ext::build_table_entry(
-        &setup.table_name,
-        "",
-        &setup.params_values,
-        &setup.match_fields_map,
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_err());
-
-    // no field matches
-    assert!(p4ext::build_table_entry(
-        &setup.table_name,
-        &setup.action_name,
-        &setup.params_values,
-        &HashMap::new(),
-        setup.device_id,
-        &setup.target,
-        &setup.client,
-    ).is_err());
+        // no field matches
+        assert!(p4ext::build_table_entry(
+            &setup.table_name,
+            &setup.action_name,
+            &setup.params_values,
+            &HashMap::new(),
+            setup.device_id,
+            &setup.target,
+            &setup.client,
+        ).is_err());
+    }
 }
 
 #[tokio::test]
 async fn write_read() {
+    // TODO: Run in child process.
     let setup = Setup::new();
     p4ext::set_pipeline(
         &setup.p4info,
