@@ -20,6 +20,8 @@ SOFTWARE.
 
 use byteorder::{BigEndian, WriteBytesExt};
 
+use grpcio::WriteFlags;
+
 use itertools::Itertools;
 
 use proto::p4info;
@@ -30,6 +32,8 @@ use proto::p4runtime::GetForwardingPipelineConfigRequest;
 use proto::p4runtime::ReadRequest;
 use proto::p4runtime::SetForwardingPipelineConfigRequest;
 use proto::p4runtime::SetForwardingPipelineConfigRequest_Action;
+use proto::p4runtime::StreamMessageRequest;
+use proto::p4runtime::StreamMessageResponse;
 use proto::p4runtime::Uint128;
 use proto::p4runtime::WriteRequest;
 use proto::p4runtime_grpc::P4RuntimeClient;
@@ -883,5 +887,58 @@ pub async fn read(
     match response {
         Ok(r) => Ok(r.get_entities().to_vec()),
         Err(e) => Err(P4Error{ message: format!("{}: received invalid response({})", device_id, e)}),
+    }
+}
+
+pub async fn stream_channel(
+    request: StreamMessageRequest,
+    client: &P4RuntimeClient,
+) -> Result<StreamMessageResponse, P4Error> {
+    let (mut sink, receiver) = client.stream_channel().unwrap();
+
+    use futures::SinkExt;
+    let send_result = sink.send((request, WriteFlags::default())).await;
+    match send_result {
+        Err(e) => return Err(P4Error{
+            message: format!("could not send stream message to sink: ({})", e)
+        }),
+        Ok(r) => {},
+    }
+    sink.close();
+
+    use futures::StreamExt;
+    let (_, receive_result) = receiver.enumerate().next().await.unwrap();
+    match receive_result {
+        Err(e) => Err(P4Error{
+            message: format!("received invalid response ({})", e)
+        }),
+        Ok(r) => Ok(r)
+    }
+}
+
+pub async fn master_arbitration_update(
+    device_id: u64,
+    client: &P4RuntimeClient,
+) -> Result<(), P4Error> {
+    let mut update = proto::p4runtime::MasterArbitrationUpdate::new();
+    update.set_device_id(device_id);
+
+    let mut request = proto::p4runtime::StreamMessageRequest::new();
+    request.set_arbitration(update);
+
+    match stream_channel(request, client).await {
+        Err(e) => Err(P4Error{
+            message: format!("could not stream master arbitration update ({})", e)
+        }),
+        Ok(r) => {
+            let status = r.get_arbitration().get_status();
+            let code = status.get_code();
+            match code {
+                0 => Ok(()),
+                _ => Err(P4Error{
+                    message: format!("{}: received error from stream channel rpc: message {}, code {}", device_id, status.get_message(), code)
+                }),
+            }
+        }
     }
 }

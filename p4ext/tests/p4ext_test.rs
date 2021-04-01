@@ -21,6 +21,7 @@ SOFTWARE.
 extern crate p4ext;
 
 use grpcio::{ChannelBuilder, EnvBuilder};
+use proto::p4runtime::StreamMessageRequest;
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::collections::HashMap;
 use std::string::String;
@@ -201,4 +202,25 @@ async fn write_read() {
     ).await;
     assert!(read_result.is_ok());
     assert_eq!(read_result.unwrap().to_vec(), write_entities);
+}
+
+#[tokio::test]
+async fn stream_channel() {
+    let setup = Setup::new();
+    p4ext::set_pipeline(
+        &setup.p4info,
+        &setup.opaque,
+        &setup.cookie,
+        &setup.action,
+        setup.device_id,
+        setup.role_id,
+        &setup.target,
+        &setup.client,
+    );
+
+    let master_result = p4ext::master_arbitration_update(
+        setup.device_id,
+        &setup.client,
+    );
+    assert!(master_result.await.is_ok());
 }
