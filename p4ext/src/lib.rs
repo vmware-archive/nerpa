@@ -899,12 +899,19 @@ pub async fn stream_channel(
     use futures::SinkExt;
     let send_result = sink.send((request, WriteFlags::default())).await;
     match send_result {
-        Err(e) => return Err(P4Error{
-            message: format!("could not send stream message to sink: ({})", e)
+        Err(err) => return Err(P4Error{
+            message: format!("could not send stream message to sink: ({})", err)
         }),
-        Ok(r) => {},
-    }
-    sink.close();
+        Ok(_) => {},
+    };
+
+    let close_result = sink.close().await;
+    match close_result {
+        Err(err) => return Err(P4Error{
+            message: format!("could not close sink: ({})", err)
+        }),
+        Ok(_) => {},
+    };
 
     use futures::StreamExt;
     let (_, receive_result) = receiver.enumerate().next().await.unwrap();

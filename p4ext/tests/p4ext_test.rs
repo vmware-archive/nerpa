@@ -21,11 +21,8 @@ SOFTWARE.
 extern crate p4ext;
 
 use grpcio::{ChannelBuilder, EnvBuilder};
-use proto::p4runtime::StreamMessageRequest;
 use proto::p4runtime_grpc::P4RuntimeClient;
-use rusty_fork::fork;
 use rusty_fork::rusty_fork_test;
-use rusty_fork::rusty_fork_id;
 use std::collections::HashMap;
 use std::env;
 use std::process::Command;
@@ -49,8 +46,8 @@ struct Setup {
 
 impl Setup {
     fn new() -> Self {
-        let DEPS_VAR = "NERPA_DEPS";
-        let SWITCH_PATH = "behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
+        const DEPS_VAR: &str = "NERPA_DEPS";
+        const SWITCH_PATH: &str = "behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
 
         let nerpa_deps = match env::var(DEPS_VAR) {
             Ok(val) => val,
