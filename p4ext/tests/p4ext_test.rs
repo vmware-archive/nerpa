@@ -27,6 +27,7 @@ use rusty_fork::fork;
 use rusty_fork::rusty_fork_test;
 use rusty_fork::rusty_fork_id;
 use std::collections::HashMap;
+use std::env;
 use std::process::Command;
 use std::string::String;
 use std::sync::Arc;
@@ -48,8 +49,15 @@ struct Setup {
 
 impl Setup {
     fn new() -> Self {
-        // TODO: Remove hardcoded absolute directory, maybe using symlink?
-        let filepath = "/home/dsur/nerpa-deps/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
+        let DEPS_VAR = "NERPA_DEPS";
+        let SWITCH_PATH = "behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
+
+        let nerpa_deps = match env::var(DEPS_VAR) {
+            Ok(val) => val,
+            Err(err) => panic!("Set env var ${} before running tests (error: {})!", DEPS_VAR, err),
+        };
+
+        let filepath = format!("{}/{}", nerpa_deps, SWITCH_PATH);
         let mut command = Command::new(filepath);
         command.args(&[
             "--no-p4",
@@ -61,7 +69,7 @@ impl Setup {
         ]);
         
         match command.spawn() {
-            Ok(child) => println!("Server process id: {}", child.id()),
+            Ok(child) => println!("server process id: {}", child.id()),
             Err(e) => panic!("server didn't start: {}", e),
         }
 
