@@ -20,7 +20,7 @@ SOFTWARE.
 
 use byteorder::{BigEndian, WriteBytesExt};
 
-use grpcio::WriteFlags;
+use grpcio::{ChannelBuilder, EnvBuilder, WriteFlags};
 
 use itertools::Itertools;
 
@@ -48,6 +48,7 @@ use std::fmt::{self, Display};
 use std::fs;
 use std::str::FromStr;
 use std::string::String;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct SourceLocation {
@@ -658,6 +659,51 @@ impl fmt::Display for P4Error {
     }
 }
 
+pub struct TestSetup {
+    pub p4info: String,
+    pub opaque: String,
+    pub cookie: String,
+    pub action: String,
+    pub device_id: u64,
+    pub role_id: u64,
+    pub target: String,
+    pub client: P4RuntimeClient,
+    pub table_name: String,
+    pub action_name: String,
+    pub params_values: HashMap<String, u16>,
+    pub match_fields_map: HashMap<String, u16>,
+}
+
+impl TestSetup {
+    pub fn new() -> Self {
+        let target = "localhost:50051";
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env).connect(target);
+        let client = P4RuntimeClient::new(ch);
+
+        let mut params_values : HashMap<String, u16> = HashMap::new();
+        params_values.insert("port".to_string(), 11);
+        let mut match_fields_map : HashMap<String, u16> = HashMap::new();
+        match_fields_map.insert("standard_metadata.ingress_port".to_string(), 11);
+        match_fields_map.insert("hdr.vlan.vid".to_string(), 1);
+
+
+        Self {
+            p4info: "examples/vlan/vlan.p4info.bin".to_string(),
+            opaque: "examples/vlan/vlan.json".to_string(),
+            cookie: "".to_string(),
+            action: "verify-and-commit".to_string(),
+            device_id: 0,
+            role_id: 0,
+            target: target.to_string(),
+            client: client,
+            table_name: "MyIngress.vlan_incoming_exact".to_string(),
+            action_name: "MyIngress.vlan_incoming_forward".to_string(),
+            params_values: params_values,
+            match_fields_map: match_fields_map,
+        }
+    }
+}
 
 pub fn set_pipeline(
     p4info_str: &str,
@@ -902,7 +948,7 @@ pub async fn stream_channel(
         Err(e) => return Err(P4Error{
             message: format!("could not send stream message to sink: ({})", e)
         }),
-        Ok(r) => {},
+        Ok(_) => {},
     }
     sink.close();
 
