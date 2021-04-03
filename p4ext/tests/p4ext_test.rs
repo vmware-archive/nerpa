@@ -20,62 +20,11 @@ SOFTWARE.
 
 extern crate p4ext;
 
-use grpcio::{ChannelBuilder, EnvBuilder};
-use proto::p4runtime::StreamMessageRequest;
-use proto::p4runtime_grpc::P4RuntimeClient;
 use std::collections::HashMap;
-use std::string::String;
-use std::sync::Arc;
-
-struct Setup {
-    p4info: String,
-    opaque: String,
-    cookie: String,
-    action: String,
-    device_id: u64,
-    role_id: u64,
-    target: String,
-    client: P4RuntimeClient,
-    table_name: String,
-    action_name: String,
-    params_values: HashMap<String, u16>,
-    match_fields_map: HashMap<String, u16>,
-}
-
-impl Setup {
-    fn new() -> Self {
-        let target = "localhost:50051";
-        let env = Arc::new(EnvBuilder::new().build());
-        let ch = ChannelBuilder::new(env).connect(target);
-        let client = P4RuntimeClient::new(ch);
-
-        let mut params_values : HashMap<String, u16> = HashMap::new();
-        params_values.insert("port".to_string(), 11);
-        let mut match_fields_map : HashMap<String, u16> = HashMap::new();
-        match_fields_map.insert("standard_metadata.ingress_port".to_string(), 11);
-        match_fields_map.insert("hdr.vlan.vid".to_string(), 1);
-
-
-        Self {
-            p4info: "examples/vlan/vlan.p4info.bin".to_string(),
-            opaque: "examples/vlan/vlan.json".to_string(),
-            cookie: "".to_string(),
-            action: "verify-and-commit".to_string(),
-            device_id: 0,
-            role_id: 0,
-            target: target.to_string(),
-            client: client,
-            table_name: "MyIngress.vlan_incoming_exact".to_string(),
-            action_name: "MyIngress.vlan_incoming_forward".to_string(),
-            params_values: params_values,
-            match_fields_map: match_fields_map,
-        }
-    }
-}
 
 #[test]
 fn set_get_pipeline() {
-    let setup = Setup::new();
+    let setup = p4ext::TestSetup::new();
 
     p4ext::set_pipeline(
         &setup.p4info,
@@ -95,7 +44,7 @@ fn set_get_pipeline() {
 
 #[test]
 fn build_table_entry() {
-    let setup = Setup::new();
+    let setup = p4ext::TestSetup::new();
 
     p4ext::set_pipeline(
         &setup.p4info,
@@ -155,7 +104,7 @@ fn build_table_entry() {
 
 #[tokio::test]
 async fn write_read() {
-    let setup = Setup::new();
+    let setup = p4ext::TestSetup::new();
     p4ext::set_pipeline(
         &setup.p4info,
         &setup.opaque,
@@ -206,7 +155,7 @@ async fn write_read() {
 
 #[tokio::test]
 async fn stream_channel() {
-    let setup = Setup::new();
+    let setup = p4ext::TestSetup::new();
     p4ext::set_pipeline(
         &setup.p4info,
         &setup.opaque,
