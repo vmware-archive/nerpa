@@ -43,9 +43,11 @@ use proto::p4types;
 use protobuf::{Message, RepeatedField};
 
 use std::collections::HashMap;
+use std::env;
 use std::ffi::OsStr;
 use std::fmt::{self, Display};
 use std::fs;
+use std::process::Command;
 use std::str::FromStr;
 use std::string::String;
 use std::sync::Arc;
@@ -676,6 +678,30 @@ pub struct TestSetup {
 
 impl TestSetup {
     pub fn new() -> Self {
+        let deps_var = "NERPA_DEPS";
+        let switch_path = "behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
+
+        let nerpa_deps = match env::var(deps_var) {
+            Ok(val) => val,
+            Err(err) => panic!("Set env var ${} before running tests (error: {})!", deps_var, err),
+        };
+
+        let filepath = format!("{}/{}", nerpa_deps, switch_path);
+        let mut command = Command::new(filepath);
+        command.args(&[
+            "--no-p4",
+            "--",
+            "--grpc-server-addr",
+            "0.0.0.0:50051",
+            "--cpu-port",
+            "1010"
+        ]);
+
+        match command.spawn() {
+            Ok(child) => println!("server process id: {}", child.id()),
+            Err(e) => panic!("server didn't start: {}", e),
+        }
+
         let target = "localhost:50051";
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(target);
@@ -945,12 +971,19 @@ pub async fn stream_channel(
     use futures::SinkExt;
     let send_result = sink.send((request, WriteFlags::default())).await;
     match send_result {
-        Err(e) => return Err(P4Error{
-            message: format!("could not send stream message to sink: ({})", e)
+        Err(err) => return Err(P4Error{
+            message: format!("could not send stream message to sink: ({})", err)
         }),
         Ok(_) => {},
-    }
-    sink.close();
+    };
+
+    let close_result = sink.close().await;
+    match close_result {
+        Err(err) => return Err(P4Error{
+            message: format!("could not close sink: ({})", err)
+        }),
+        Ok(_) => {},
+    };
 
     use futures::StreamExt;
     let (_, receive_result) = receiver.enumerate().next().await.unwrap();
