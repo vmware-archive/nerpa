@@ -109,7 +109,12 @@ rusty_fork_test! {
 
 #[tokio::test]
 async fn write_read() {
+<<<<<<< HEAD
     let setup = p4ext::TestSetup::new();
+=======
+    // TODO: Run in child process.
+    let setup = Setup::new();
+>>>>>>> 84818145ae8b042965ab0dde358f83d03116c911
     p4ext::set_pipeline(
         &setup.p4info,
         &setup.opaque,
