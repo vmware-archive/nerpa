@@ -39,21 +39,18 @@ use differential_datalog::program::Update;
 use proto::p4runtime_grpc::P4RuntimeClient;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use grpcio::{ChannelBuilder, EnvBuilder};
-
-// DDlogNerpa contains a handle to the DDlog program.
-pub struct DDlogNerpa {
+// Controller
+// It contains a handle to the DDlog program, so we can use it to determine the form of packets.
+pub struct Controller {
     hddlog: HDDlog,
 }
 
-impl DDlogNerpa {
-    pub fn new() -> Result<DDlogNerpa, String> {
-        // Instantiate a DDlog program.
-        // Returns a handle to the DDlog program and initial contents of output relations.
+impl Controller {
+    pub fn new() -> Result<Controller, String> {
         let (hddlog, _init_state) = HDDlog::run(1, false)?;
-        return Ok(Self{hddlog});
+        
+        Ok(Self{hddlog})
     }
 
     pub fn stop(&mut self) {
@@ -66,13 +63,15 @@ impl DDlogNerpa {
         let updates = ports.into_iter().map(|port|
             Update::Insert {
                 relid: Relations::Port as RelId,
-                v: types::Port{port_id: port.port_id, config: port.config}.into_ddvalue(),
+                v: types::Port{
+                    port_id: port.port_id,
+                    config: port.config
+                }.into_ddvalue(),
             }
         ).collect::<Vec<_>>();
 
         self.hddlog.apply_valupdates(updates.into_iter())?;
-        let delta = self.hddlog.transaction_commit_dump_changes()?;
-        return Ok(delta);
+        self.hddlog.transaction_commit_dump_changes()
     }
 
     pub fn dump_delta(delta: &DeltaMap<DDValue>) {
@@ -140,61 +139,4 @@ impl DDlogNerpa {
 
         p4ext::write(updates, device_id, role_id, target, client);
     }
-}
-
-#[tokio::main]
-async fn main() {
-    // Instantiate DDlog program.
-    let mut nerpa = DDlogNerpa::new().unwrap();
-
-    // TODO: Better define the API for the management plane (i.e., the user interaction).
-    // We should read in the vector of port configs, or whatever the input becomes.
-    // Add input to DDlog program.
-
-    let ports = vec!(
-        types::Port{port_id: 11, config: types::PortConfig::Access{vlan: 1}},
-    );
-
-    // Compute and print output relation.
-    let delta = nerpa.add_input(ports).unwrap();
-    DDlogNerpa::dump_delta(&delta);
-
-    // TODO: Stop hard-coding arguments.
-    // TODO: Get non-empty election ID working.
-    let device_id : u64 = 0;
-    let role_id: u64 = 0;
-    let target : &str = "localhost:50051";
-    let env = Arc::new(EnvBuilder::new().build());
-    let ch = ChannelBuilder::new(env).connect(target);
-    let client = P4RuntimeClient::new(ch);
-
-    let p4info_str: &str = "examples/vlan/vlan.p4info.bin";
-    let opaque_str: &str = "examples/vlan/vlan.json";
-    let cookie_str: &str = "";
-    let action_str: &str = "verify-and-commit";
-
-    p4ext::set_pipeline(
-        p4info_str,
-        opaque_str,
-        cookie_str,
-        action_str,
-        device_id,
-        role_id,
-        target,
-        &client,
-    );
-
-    p4ext::list_tables(device_id, target, &client);
-
-    let table_name : &str = "MyIngress.vlan_incoming_exact";
-    let action_name: &str = "MyIngress.vlan_incoming_forward";
-    DDlogNerpa::push_outputs_to_switch(
-        &delta,
-        device_id,
-        role_id,
-        target,
-        table_name,
-        action_name,
-        &client,
-    );
 }
