@@ -102,7 +102,7 @@ fn get_pipelines(
     Ok(pipelines)
 }
 
-pub fn p4_to_ddlog(
+pub fn p4info_to_ddlog(
     p4info_arg: Option<&str>,
     output_arg: Option<&str>,
     pipeline_arg: Option<&str>,

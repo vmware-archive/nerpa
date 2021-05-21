@@ -1,5 +1,5 @@
 [package]
-name = "p42ddlog"
+name = "p4info2ddlog"
 version = "0.1.0"
 authors = ["Ben Pfaff <bpfaff@vmware.com>"]
 edition = "2018"
@@ -10,8 +10,8 @@ edition = "2018"
 path = "src/lib.rs"
 
 [[bin]]
-name = "p42ddlog"
-path = "src/p42ddlog/main.rs"
+name = "p4info2ddlog"
+path = "src/p4info2ddlog/main.rs"
 
 [dependencies]
 anyhow = "1.0.40"

@@ -22,7 +22,7 @@ use anyhow::Result;
 
 use clap::{App, Arg};
 
-use p42ddlog::p4_to_ddlog;
+use p4info2ddlog::p4info_to_ddlog;
 
 use std::env;
 
@@ -30,7 +30,7 @@ fn main() -> Result<()> {
     const P4INFO_ARG: &str = "INPUT.P4INFO.BIN";
     const OUTPUT_ARG: &str = "OUTPUT.DL";
     const PIPELINE_ARG: &str = "pipeline";
-    let matches = App::new("p42ddlog")
+    let matches = App::new("p4info2ddlog")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Outputs DDlog relations corresponding to P4 tables")
         .arg(
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
         )
         .get_matches();
     
-    p4_to_ddlog(
+    p4info_to_ddlog(
         matches.value_of(P4INFO_ARG),
         matches.value_of(OUTPUT_ARG),
         matches.value_of(PIPELINE_ARG),
