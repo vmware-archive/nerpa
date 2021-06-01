@@ -1,0 +1,40 @@
+import ovsdb
+
+
+/* Input relations */
+
+input relation FloodVlan (
+    _uuid: uuid,
+    id: integer
+)
+primary key (x) x._uuid
+input relation Port (
+    _uuid: uuid,
+    id: integer,
+    vlan_mode: Option<string>,
+    tag: Option<integer>,
+    trunks: Set<integer>,
+    priority_tagging: string
+)
+primary key (x) x._uuid
+input relation MirrorSelect (
+    _uuid: uuid,
+    ports: Set<uuid>,
+    vlans: Set<integer>
+)
+primary key (x) x._uuid
+input relation MirrorDst (
+    _uuid: uuid,
+    port: uuid
+)
+primary key (x) x._uuid
+input relation ForwardBPDUs (
+    _uuid: uuid,
+    id: bool
+)
+primary key (x) x._uuid
+
+/* Output relations */
+
+
+/* Delta tables definitions */

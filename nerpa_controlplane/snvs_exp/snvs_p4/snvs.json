@@ -1,0 +1,3565 @@
+{
+  "header_types" : [
+    {
+      "name" : "scalars_0",
+      "id" : 0,
+      "fields" : [
+        ["bucket_0", 1, false],
+        ["output_0", 9, false],
+        ["tmp", 1, false],
+        ["tmp_2", 1, false],
+        ["i0_2", 32, false],
+        ["i1_2", 32, false],
+        ["me_raw_0", 69, false],
+        ["me_raw_4", 69, false],
+        ["i0_3", 32, false],
+        ["i1_3", 32, false],
+        ["me_raw_5", 69, false],
+        ["me_raw_6", 69, false],
+        ["tag_vlan_0", 1, false],
+        ["tmp_4", 12, false],
+        ["tmp_5", 1, false],
+        ["tmp_6", 1, false],
+        ["key_0", 1, false],
+        ["userMetadata.vlan", 12, false],
+        ["userMetadata.flood", 1, false],
+        ["_padding_0", 3, false]
+      ]
+    },
+    {
+      "name" : "standard_metadata",
+      "id" : 1,
+      "fields" : [
+        ["ingress_port", 9, false],
+        ["egress_spec", 9, false],
+        ["egress_port", 9, false],
+        ["instance_type", 32, false],
+        ["packet_length", 32, false],
+        ["enq_timestamp", 32, false],
+        ["enq_qdepth", 19, false],
+        ["deq_timedelta", 32, false],
+        ["deq_qdepth", 19, false],
+        ["ingress_global_timestamp", 48, false],
+        ["egress_global_timestamp", 48, false],
+        ["mcast_grp", 16, false],
+        ["egress_rid", 16, false],
+        ["checksum_error", 1, false],
+        ["parser_error", 32, false],
+        ["priority", 3, false],
+        ["_padding", 3, false]
+      ]
+    },
+    {
+      "name" : "Ethernet_h",
+      "id" : 2,
+      "fields" : [
+        ["dst", 48, false],
+        ["src", 48, false],
+        ["type", 16, false]
+      ]
+    },
+    {
+      "name" : "Vlan_h",
+      "id" : 3,
+      "fields" : [
+        ["pcp", 3, false],
+        ["dei", 1, false],
+        ["vid", 12, false],
+        ["type", 16, false]
+      ]
+    }
+  ],
+  "headers" : [
+    {
+      "name" : "scalars",
+      "id" : 0,
+      "header_type" : "scalars_0",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "standard_metadata",
+      "id" : 1,
+      "header_type" : "standard_metadata",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "eth",
+      "id" : 2,
+      "header_type" : "Ethernet_h",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "vlan",
+      "id" : 3,
+      "header_type" : "Vlan_h",
+      "metadata" : false,
+      "pi_omit" : true
+    }
+  ],
+  "header_stacks" : [],
+  "header_union_types" : [],
+  "header_unions" : [],
+  "header_union_stacks" : [],
+  "field_lists" : [
+    {
+      "id" : 1,
+      "name" : "fl",
+      "elements" : []
+    }
+  ],
+  "errors" : [
+    ["NoError", 1],
+    ["PacketTooShort", 2],
+    ["NoMatch", 3],
+    ["StackOutOfBounds", 4],
+    ["HeaderTooShort", 5],
+    ["ParserTimeout", 6],
+    ["ParserInvalidArgument", 7]
+  ],
+  "enums" : [],
+  "parsers" : [
+    {
+      "name" : "parser",
+      "id" : 0,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 0,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "eth"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "hexstr",
+              "value" : "0x8100",
+              "mask" : null,
+              "next_state" : "parse_vlan"
+            }
+          ],
+          "transition_key" : [
+            {
+              "type" : "field",
+              "value" : ["eth", "type"]
+            }
+          ]
+        },
+        {
+          "name" : "parse_vlan",
+          "id" : 1,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "vlan"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    }
+  ],
+  "parse_vsets" : [],
+  "deparsers" : [
+    {
+      "name" : "deparser",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "snvs.p4",
+        "line" : 341,
+        "column" : 8,
+        "source_fragment" : "SnvsDeparser"
+      },
+      "order" : ["eth", "vlan"],
+      "primitives" : []
+    }
+  ],
+  "meter_arrays" : [],
+  "counter_arrays" : [],
+  "register_arrays" : [
+    {
+      "name" : "SnvsIngress.mac_table",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "snvs.p4",
+        "line" : 206,
+        "column" : 48,
+        "source_fragment" : "mac_table"
+      },
+      "size" : 4096,
+      "bitwidth" : 69
+    }
+  ],
+  "calculations" : [
+    {
+      "name" : "calc",
+      "id" : 0,
+      "algo" : "crc32",
+      "input" : [
+        {
+          "type" : "field",
+          "value" : ["eth", "src"]
+        },
+        {
+          "type" : "field",
+          "value" : ["scalars", "userMetadata.vlan"]
+        },
+        {
+          "type" : "hexstr",
+          "value" : "0x00",
+          "bitwidth" : 1
+        }
+      ]
+    },
+    {
+      "name" : "calc_0",
+      "id" : 1,
+      "algo" : "crc32",
+      "input" : [
+        {
+          "type" : "field",
+          "value" : ["eth", "src"]
+        },
+        {
+          "type" : "field",
+          "value" : ["scalars", "userMetadata.vlan"]
+        },
+        {
+          "type" : "hexstr",
+          "value" : "0x01",
+          "bitwidth" : 1
+        }
+      ]
+    },
+    {
+      "name" : "calc_1",
+      "id" : 2,
+      "algo" : "crc32",
+      "input" : [
+        {
+          "type" : "field",
+          "value" : ["eth", "dst"]
+        },
+        {
+          "type" : "field",
+          "value" : ["scalars", "userMetadata.vlan"]
+        },
+        {
+          "type" : "hexstr",
+          "value" : "0x00",
+          "bitwidth" : 1
+        }
+      ]
+    },
+    {
+      "name" : "calc_2",
+      "id" : 3,
+      "algo" : "crc32",
+      "input" : [
+        {
+          "type" : "field",
+          "value" : ["eth", "dst"]
+        },
+        {
+          "type" : "field",
+          "value" : ["scalars", "userMetadata.vlan"]
+        },
+        {
+          "type" : "hexstr",
+          "value" : "0x01",
+          "bitwidth" : 1
+        }
+      ]
+    }
+  ],
+  "learn_lists" : [],
+  "actions" : [
+    {
+      "name" : "NoAction",
+      "id" : 0,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "NoAction",
+      "id" : 1,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "NoAction",
+      "id" : 2,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "NoAction",
+      "id" : 3,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "SnvsIngress.Drop",
+      "id" : 4,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "mark_to_drop",
+          "parameters" : [
+            {
+              "type" : "header",
+              "value" : "standard_metadata"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 154,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop(standard_metadata)"
+          }
+        },
+        {
+          "op" : "exit",
+          "parameters" : [],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 155,
+            "column" : 8,
+            "source_fragment" : "exit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "SnvsIngress.Drop",
+      "id" : 5,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "mark_to_drop",
+          "parameters" : [
+            {
+              "type" : "header",
+              "value" : "standard_metadata"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 154,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop(standard_metadata)"
+          }
+        },
+        {
+          "op" : "exit",
+          "parameters" : [],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 155,
+            "column" : 8,
+            "source_fragment" : "exit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "SnvsIngress.Drop",
+      "id" : 6,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "mark_to_drop",
+          "parameters" : [
+            {
+              "type" : "header",
+              "value" : "standard_metadata"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 154,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop(standard_metadata)"
+          }
+        },
+        {
+          "op" : "exit",
+          "parameters" : [],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 155,
+            "column" : 8,
+            "source_fragment" : "exit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "SnvsIngress.SetVlan",
+      "id" : 7,
+      "runtime_data" : [
+        {
+          "name" : "vid",
+          "bitwidth" : 12
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "userMetadata.vlan"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 173,
+            "column" : 8,
+            "source_fragment" : "meta.vlan = vid"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "SnvsIngress.UseTaggedVlan",
+      "id" : 8,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "userMetadata.vlan"]
+            },
+            {
+              "type" : "field",
+              "value" : ["vlan", "vid"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 176,
+            "column" : 8,
+            "source_fragment" : "meta.vlan = hdr.vlan.vid"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "SnvsIngress.set_flood",
+      "id" : 9,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "userMetadata.flood"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 199,
+            "column" : 8,
+            "source_fragment" : "meta.flood = true"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs220",
+      "id" : 10,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "clone_ingress_pkt_to_egress",
+          "parameters" : [
+            {
+              "type" : "hexstr",
+              "value" : "0x00000001"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x1"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 220,
+            "column" : 12,
+            "source_fragment" : "clone(CloneType.I2E, 1)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs224",
+      "id" : 11,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "userMetadata.flood"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 224,
+            "column" : 8,
+            "source_fragment" : "meta.flood = false"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs228",
+      "id" : 12,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 228,
+            "column" : 12,
+            "source_fragment" : "!meta.flood && !eth_addr_is_multicast(hdr.eth.src)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs228_0",
+      "id" : 13,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "==",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "field",
+                            "value" : ["eth", "src"]
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x010000000000"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 44,
+            "column" : 12,
+            "source_fragment" : "a & (1 << 40)) != 0; ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs243",
+      "id" : 14,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "modify_field_rng_uniform",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "bucket_0"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 243,
+            "column" : 16,
+            "source_fragment" : "random(bucket, 0, 1)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs126",
+      "id" : 15,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "modify_field_with_hash_based_offset",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "i0_2"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            },
+            {
+              "type" : "calculation",
+              "value" : "calc"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00001000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 126,
+            "column" : 4,
+            "source_fragment" : "hash(i0, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w0 }, N_MAC_ENTRIES)"
+          }
+        },
+        {
+          "op" : "modify_field_with_hash_based_offset",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "i1_2"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            },
+            {
+              "type" : "calculation",
+              "value" : "calc_0"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00001000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 127,
+            "column" : 4,
+            "source_fragment" : "hash(i1, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w1 }, N_MAC_ENTRIES)"
+          }
+        },
+        {
+          "op" : "register_read",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "me_raw_0"]
+            },
+            {
+              "type" : "register_array",
+              "value" : "SnvsIngress.mac_table"
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "i0_2"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 134,
+            "column" : 4,
+            "source_fragment" : "reg.read(me_raw, index)"
+          }
+        },
+        {
+          "op" : "register_read",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "me_raw_4"]
+            },
+            {
+              "type" : "register_array",
+              "value" : "SnvsIngress.mac_table"
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "i1_2"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 134,
+            "column" : 4,
+            "source_fragment" : "reg.read(me_raw, index)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs253",
+      "id" : 16,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_2"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 253,
+            "column" : 12,
+            "source_fragment" : "!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs253_0",
+      "id" : 17,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_2"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "==",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "field",
+                            "value" : ["eth", "dst"]
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x010000000000"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 44,
+            "column" : 12,
+            "source_fragment" : "a & (1 << 40)) != 0; ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs252",
+      "id" : 18,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "output_0"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01fe"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 48,
+            "column" : 26,
+            "source_fragment" : "510; // Just an internal constant. ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs265",
+      "id" : 19,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "output_0"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["scalars", "me_raw_5"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x01ff"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 137,
+            "column" : 14,
+            "source_fragment" : "(PortID) me_raw; ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs267",
+      "id" : 20,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "output_0"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["scalars", "me_raw_6"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x01ff"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 137,
+            "column" : 14,
+            "source_fragment" : "(PortID) me_raw; ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs126_0",
+      "id" : 21,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "modify_field_with_hash_based_offset",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "i0_3"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            },
+            {
+              "type" : "calculation",
+              "value" : "calc_1"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00001000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 126,
+            "column" : 4,
+            "source_fragment" : "hash(i0, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w0 }, N_MAC_ENTRIES)"
+          }
+        },
+        {
+          "op" : "modify_field_with_hash_based_offset",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "i1_3"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            },
+            {
+              "type" : "calculation",
+              "value" : "calc_2"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00001000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 127,
+            "column" : 4,
+            "source_fragment" : "hash(i1, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w1 }, N_MAC_ENTRIES)"
+          }
+        },
+        {
+          "op" : "register_read",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "me_raw_5"]
+            },
+            {
+              "type" : "register_array",
+              "value" : "SnvsIngress.mac_table"
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "i0_3"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 134,
+            "column" : 4,
+            "source_fragment" : "reg.read(me_raw, index)"
+          }
+        },
+        {
+          "op" : "register_read",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "me_raw_6"]
+            },
+            {
+              "type" : "register_array",
+              "value" : "SnvsIngress.mac_table"
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "i1_3"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 134,
+            "column" : 4,
+            "source_fragment" : "reg.read(me_raw, index)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs282",
+      "id" : 22,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "mcast_grp"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["scalars", "userMetadata.vlan"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0xffff"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 282,
+            "column" : 12,
+            "source_fragment" : "standard_metadata.mcast_grp = (bit<16>) meta.vlan"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs284",
+      "id" : 23,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "output_0"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 284,
+            "column" : 12,
+            "source_fragment" : "standard_metadata.egress_spec = output"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "NoAction",
+      "id" : 24,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "NoAction",
+      "id" : 25,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "snvs314",
+      "id" : 26,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "exit",
+          "parameters" : [],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 314,
+            "column" : 10,
+            "source_fragment" : "exit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs319",
+      "id" : 27,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "mark_to_drop",
+          "parameters" : [
+            {
+              "type" : "header",
+              "value" : "standard_metadata"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 319,
+            "column" : 10,
+            "source_fragment" : "mark_to_drop(standard_metadata)"
+          }
+        },
+        {
+          "op" : "exit",
+          "parameters" : [],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 320,
+            "column" : 10,
+            "source_fragment" : "exit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "act",
+      "id" : 28,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tag_vlan_0"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "act_0",
+      "id" : 29,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tag_vlan_0"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "snvs325",
+      "id" : 30,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_4"]
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "userMetadata.vlan"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 325,
+            "column" : 19,
+            "source_fragment" : "tag_vlan ? meta.vlan : 0"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs325_0",
+      "id" : 31,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_4"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 325,
+            "column" : 19,
+            "source_fragment" : "tag_vlan ? meta.vlan : 0"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs326",
+      "id" : 32,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_5"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 326,
+            "column" : 33,
+            "source_fragment" : "tag_vlan || PriorityTagging.apply().hit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "act_1",
+      "id" : 33,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_6"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "act_2",
+      "id" : 34,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_6"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "snvs305",
+      "id" : 35,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "key_0"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "and",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "d2b",
+                          "left" : null,
+                          "right" : {
+                            "type" : "field",
+                            "value" : ["vlan", "$valid$"]
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "!=",
+                          "left" : {
+                            "type" : "field",
+                            "value" : ["vlan", "pcp"]
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x00"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 305,
+            "column" : 12,
+            "source_fragment" : "            hdr.vlan.isValid() && hdr.vlan.pcp != 0: exact @name(\\\"nonzero_pcp\\\") @nerpa_bool;"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs326_0",
+      "id" : 36,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_5"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "d2b",
+                      "left" : null,
+                      "right" : {
+                        "type" : "field",
+                        "value" : ["scalars", "tmp_6"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 326,
+            "column" : 33,
+            "source_fragment" : "tag_vlan || PriorityTagging.apply().hit"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs328",
+      "id" : 37,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "add_header",
+          "parameters" : [
+            {
+              "type" : "header",
+              "value" : "vlan"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 328,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["vlan", "pcp"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 328,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan = { 0"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["vlan", "dei"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 328,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan = { 0, 0"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["vlan", "vid"]
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_4"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 328,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan ="
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["vlan", "type"]
+            },
+            {
+              "type" : "field",
+              "value" : ["eth", "type"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 328,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan = { 0, 0, vid, hdr.eth.type"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["eth", "type"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x8100"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 25,
+            "column" : 25,
+            "source_fragment" : "0x8100; ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "snvs331",
+      "id" : 38,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["eth", "type"]
+            },
+            {
+              "type" : "field",
+              "value" : ["vlan", "type"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 331,
+            "column" : 10,
+            "source_fragment" : "hdr.eth.type = hdr.vlan.type"
+          }
+        },
+        {
+          "op" : "remove_header",
+          "parameters" : [
+            {
+              "type" : "header",
+              "value" : "vlan"
+            }
+          ],
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 332,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan.setInvalid()"
+          }
+        }
+      ]
+    }
+  ],
+  "pipelines" : [
+    {
+      "name" : "ingress",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "snvs.p4",
+        "line" : 150,
+        "column" : 8,
+        "source_fragment" : "SnvsIngress"
+      },
+      "init_table" : "SnvsIngress.MirrorDstDrop",
+      "tables" : [
+        {
+          "name" : "SnvsIngress.MirrorDstDrop",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 159,
+            "column" : 10,
+            "source_fragment" : "MirrorDstDrop"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "port",
+              "target" : ["standard_metadata", "ingress_port"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [4, 0],
+          "actions" : ["SnvsIngress.Drop", "NoAction"],
+          "base_default_next" : "SnvsIngress.ReservedMcastDstDrop",
+          "next_tables" : {
+            "SnvsIngress.Drop" : "SnvsIngress.ReservedMcastDstDrop",
+            "NoAction" : "SnvsIngress.ReservedMcastDstDrop"
+          },
+          "default_entry" : {
+            "action_id" : 0,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "SnvsIngress.ReservedMcastDstDrop",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 166,
+            "column" : 10,
+            "source_fragment" : "ReservedMcastDstDrop"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "dst",
+              "target" : ["eth", "dst"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [5, 1],
+          "actions" : ["SnvsIngress.Drop", "NoAction"],
+          "base_default_next" : "SnvsIngress.InputVlan",
+          "next_tables" : {
+            "SnvsIngress.Drop" : "SnvsIngress.InputVlan",
+            "NoAction" : "SnvsIngress.InputVlan"
+          },
+          "default_entry" : {
+            "action_id" : 1,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "SnvsIngress.InputVlan",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 178,
+            "column" : 10,
+            "source_fragment" : "InputVlan"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "port",
+              "target" : ["standard_metadata", "ingress_port"],
+              "mask" : null
+            },
+            {
+              "match_type" : "exact",
+              "name" : "has_vlan",
+              "target" : ["vlan", "$valid$"],
+              "mask" : null
+            },
+            {
+              "match_type" : "ternary",
+              "name" : "vid",
+              "target" : ["vlan", "vid"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "ternary",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [6, 7, 8],
+          "actions" : ["SnvsIngress.Drop", "SnvsIngress.SetVlan", "SnvsIngress.UseTaggedVlan"],
+          "base_default_next" : "SnvsIngress.MirrorSelectProduct",
+          "next_tables" : {
+            "SnvsIngress.Drop" : "SnvsIngress.MirrorSelectProduct",
+            "SnvsIngress.SetVlan" : "SnvsIngress.MirrorSelectProduct",
+            "SnvsIngress.UseTaggedVlan" : "SnvsIngress.MirrorSelectProduct"
+          },
+          "default_entry" : {
+            "action_id" : 6,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "SnvsIngress.MirrorSelectProduct",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 189,
+            "column" : 10,
+            "source_fragment" : "MirrorSelectProduct"
+          },
+          "key" : [
+            {
+              "match_type" : "ternary",
+              "name" : "port",
+              "target" : ["standard_metadata", "ingress_port"],
+              "mask" : null
+            },
+            {
+              "match_type" : "ternary",
+              "name" : "vlan",
+              "target" : ["scalars", "userMetadata.vlan"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "ternary",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [2],
+          "actions" : ["NoAction"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "__HIT__" : "tbl_snvs220",
+            "__MISS__" : "tbl_snvs224"
+          },
+          "default_entry" : {
+            "action_id" : 2,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "tbl_snvs220",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 220,
+            "column" : 12,
+            "source_fragment" : "clone(CloneType.I2E, 1)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [10],
+          "actions" : ["snvs220"],
+          "base_default_next" : "tbl_snvs224",
+          "next_tables" : {
+            "snvs220" : "tbl_snvs224"
+          },
+          "default_entry" : {
+            "action_id" : 10,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs224",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 224,
+            "column" : 19,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [11],
+          "actions" : ["snvs224"],
+          "base_default_next" : "SnvsIngress.FloodVlan",
+          "next_tables" : {
+            "snvs224" : "SnvsIngress.FloodVlan"
+          },
+          "default_entry" : {
+            "action_id" : 11,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "SnvsIngress.FloodVlan",
+          "id" : 6,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 201,
+            "column" : 10,
+            "source_fragment" : "FloodVlan"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "vlan",
+              "target" : ["scalars", "userMetadata.vlan"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [9, 3],
+          "actions" : ["SnvsIngress.set_flood", "NoAction"],
+          "base_default_next" : "node_9",
+          "next_tables" : {
+            "SnvsIngress.set_flood" : "node_9",
+            "NoAction" : "node_9"
+          },
+          "default_entry" : {
+            "action_id" : 3,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "tbl_snvs228",
+          "id" : 7,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 228,
+            "column" : 12,
+            "source_fragment" : "!meta.flood && !eth_addr_is_multicast(hdr.eth.src)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [12],
+          "actions" : ["snvs228"],
+          "base_default_next" : "node_12",
+          "next_tables" : {
+            "snvs228" : "node_12"
+          },
+          "default_entry" : {
+            "action_id" : 12,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs228_0",
+          "id" : 8,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 228,
+            "column" : 12,
+            "source_fragment" : "!meta.flood && !eth_addr_is_multicast(hdr.eth.src)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [13],
+          "actions" : ["snvs228_0"],
+          "base_default_next" : "node_12",
+          "next_tables" : {
+            "snvs228_0" : "node_12"
+          },
+          "default_entry" : {
+            "action_id" : 13,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs126",
+          "id" : 9,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 126,
+            "column" : 4,
+            "source_fragment" : "hash(i0, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w0 }, N_MAC_ENTRIES); ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [15],
+          "actions" : ["snvs126"],
+          "base_default_next" : "node_14",
+          "next_tables" : {
+            "snvs126" : "node_14"
+          },
+          "default_entry" : {
+            "action_id" : 15,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs243",
+          "id" : 10,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 243,
+            "column" : 16,
+            "source_fragment" : "random(bucket, 0, 1)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [14],
+          "actions" : ["snvs243"],
+          "base_default_next" : "tbl_snvs252",
+          "next_tables" : {
+            "snvs243" : "tbl_snvs252"
+          },
+          "default_entry" : {
+            "action_id" : 14,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs252",
+          "id" : 11,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 252,
+            "column" : 8,
+            "source_fragment" : "PortID output = FLOOD_PORT;"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [18],
+          "actions" : ["snvs252"],
+          "base_default_next" : "node_17",
+          "next_tables" : {
+            "snvs252" : "node_17"
+          },
+          "default_entry" : {
+            "action_id" : 18,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs253",
+          "id" : 12,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 253,
+            "column" : 12,
+            "source_fragment" : "!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [16],
+          "actions" : ["snvs253"],
+          "base_default_next" : "node_20",
+          "next_tables" : {
+            "snvs253" : "node_20"
+          },
+          "default_entry" : {
+            "action_id" : 16,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs253_0",
+          "id" : 13,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 253,
+            "column" : 12,
+            "source_fragment" : "!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [17],
+          "actions" : ["snvs253_0"],
+          "base_default_next" : "node_20",
+          "next_tables" : {
+            "snvs253_0" : "node_20"
+          },
+          "default_entry" : {
+            "action_id" : 17,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs126_0",
+          "id" : 14,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 126,
+            "column" : 4,
+            "source_fragment" : "hash(i0, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w0 }, N_MAC_ENTRIES); ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [21],
+          "actions" : ["snvs126_0"],
+          "base_default_next" : "node_22",
+          "next_tables" : {
+            "snvs126_0" : "node_22"
+          },
+          "default_entry" : {
+            "action_id" : 21,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs265",
+          "id" : 15,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 265,
+            "column" : 23,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [19],
+          "actions" : ["snvs265"],
+          "base_default_next" : "node_26",
+          "next_tables" : {
+            "snvs265" : "node_26"
+          },
+          "default_entry" : {
+            "action_id" : 19,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs267",
+          "id" : 16,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 267,
+            "column" : 23,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [20],
+          "actions" : ["snvs267"],
+          "base_default_next" : "node_26",
+          "next_tables" : {
+            "snvs267" : "node_26"
+          },
+          "default_entry" : {
+            "action_id" : 20,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs282",
+          "id" : 17,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 282,
+            "column" : 40,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [22],
+          "actions" : ["snvs282"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "snvs282" : null
+          },
+          "default_entry" : {
+            "action_id" : 22,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs284",
+          "id" : 18,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 284,
+            "column" : 42,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [23],
+          "actions" : ["snvs284"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "snvs284" : null
+          },
+          "default_entry" : {
+            "action_id" : 23,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : [
+        {
+          "name" : "node_9",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 228,
+            "column" : 13,
+            "source_fragment" : "meta.flood"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["scalars", "userMetadata.flood"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs228",
+          "false_next" : "tbl_snvs228_0"
+        },
+        {
+          "name" : "node_12",
+          "id" : 1,
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["scalars", "tmp"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs126",
+          "false_next" : "tbl_snvs252"
+        },
+        {
+          "name" : "node_14",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 239,
+            "column" : 16,
+            "source_fragment" : "!(b0.addr != hdr.eth.src || b0.vlan != meta.vlan) && ..."
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "not",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "or",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "!=",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : "&",
+                              "left" : {
+                                "type" : "expression",
+                                "value" : {
+                                  "op" : "&",
+                                  "left" : {
+                                    "type" : "expression",
+                                    "value" : {
+                                      "op" : ">>",
+                                      "left" : {
+                                        "type" : "field",
+                                        "value" : ["scalars", "me_raw_0"]
+                                      },
+                                      "right" : {
+                                        "type" : "hexstr",
+                                        "value" : "0x15"
+                                      }
+                                    }
+                                  },
+                                  "right" : {
+                                    "type" : "hexstr",
+                                    "value" : "0x1fffffffffffffffff"
+                                  }
+                                }
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0xffffffffffff"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "field",
+                            "value" : ["eth", "src"]
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "!=",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : "&",
+                              "left" : {
+                                "type" : "expression",
+                                "value" : {
+                                  "op" : "&",
+                                  "left" : {
+                                    "type" : "expression",
+                                    "value" : {
+                                      "op" : ">>",
+                                      "left" : {
+                                        "type" : "field",
+                                        "value" : ["scalars", "me_raw_0"]
+                                      },
+                                      "right" : {
+                                        "type" : "hexstr",
+                                        "value" : "0x9"
+                                      }
+                                    }
+                                  },
+                                  "right" : {
+                                    "type" : "hexstr",
+                                    "value" : "0x1fffffffffffffffff"
+                                  }
+                                }
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x0fff"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "field",
+                            "value" : ["scalars", "userMetadata.vlan"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "not",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "or",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "!=",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : "&",
+                              "left" : {
+                                "type" : "expression",
+                                "value" : {
+                                  "op" : "&",
+                                  "left" : {
+                                    "type" : "expression",
+                                    "value" : {
+                                      "op" : ">>",
+                                      "left" : {
+                                        "type" : "field",
+                                        "value" : ["scalars", "me_raw_4"]
+                                      },
+                                      "right" : {
+                                        "type" : "hexstr",
+                                        "value" : "0x15"
+                                      }
+                                    }
+                                  },
+                                  "right" : {
+                                    "type" : "hexstr",
+                                    "value" : "0x1fffffffffffffffff"
+                                  }
+                                }
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0xffffffffffff"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "field",
+                            "value" : ["eth", "src"]
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "!=",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : "&",
+                              "left" : {
+                                "type" : "expression",
+                                "value" : {
+                                  "op" : "&",
+                                  "left" : {
+                                    "type" : "expression",
+                                    "value" : {
+                                      "op" : ">>",
+                                      "left" : {
+                                        "type" : "field",
+                                        "value" : ["scalars", "me_raw_4"]
+                                      },
+                                      "right" : {
+                                        "type" : "hexstr",
+                                        "value" : "0x9"
+                                      }
+                                    }
+                                  },
+                                  "right" : {
+                                    "type" : "hexstr",
+                                    "value" : "0x1fffffffffffffffff"
+                                  }
+                                }
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x0fff"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "field",
+                            "value" : ["scalars", "userMetadata.vlan"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_snvs243",
+          "false_next" : "tbl_snvs252"
+        },
+        {
+          "name" : "node_17",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 253,
+            "column" : 13,
+            "source_fragment" : "meta.flood"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["scalars", "userMetadata.flood"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs253",
+          "false_next" : "tbl_snvs253_0"
+        },
+        {
+          "name" : "node_20",
+          "id" : 4,
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["scalars", "tmp_2"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs126_0",
+          "false_next" : "node_26"
+        },
+        {
+          "name" : "node_22",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 264,
+            "column" : 16,
+            "source_fragment" : "b0.addr == hdr.eth.dst && b0.vlan == meta.vlan"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : ">>",
+                              "left" : {
+                                "type" : "field",
+                                "value" : ["scalars", "me_raw_5"]
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x15"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x1fffffffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffffffff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["eth", "dst"]
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : ">>",
+                              "left" : {
+                                "type" : "field",
+                                "value" : ["scalars", "me_raw_5"]
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x9"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x1fffffffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0fff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["scalars", "userMetadata.vlan"]
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_snvs265",
+          "false_next" : "node_24"
+        },
+        {
+          "name" : "node_24",
+          "id" : 6,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 266,
+            "column" : 23,
+            "source_fragment" : "b1.addr == hdr.eth.dst && b1.vlan == meta.vlan"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : ">>",
+                              "left" : {
+                                "type" : "field",
+                                "value" : ["scalars", "me_raw_6"]
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x15"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x1fffffffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffffffff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["eth", "dst"]
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : ">>",
+                              "left" : {
+                                "type" : "field",
+                                "value" : ["scalars", "me_raw_6"]
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x9"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0x1fffffffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0fff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["scalars", "userMetadata.vlan"]
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_snvs267",
+          "false_next" : "node_26"
+        },
+        {
+          "name" : "node_26",
+          "id" : 7,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 281,
+            "column" : 12,
+            "source_fragment" : "output == FLOOD_PORT"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["scalars", "output_0"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x01fe"
+              }
+            }
+          },
+          "true_next" : "tbl_snvs282",
+          "false_next" : "tbl_snvs284"
+        }
+      ]
+    },
+    {
+      "name" : "egress",
+      "id" : 1,
+      "source_info" : {
+        "filename" : "snvs.p4",
+        "line" : 289,
+        "column" : 8,
+        "source_fragment" : "SnvsEgress"
+      },
+      "init_table" : "node_31",
+      "tables" : [
+        {
+          "name" : "tbl_snvs314",
+          "id" : 19,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 314,
+            "column" : 10,
+            "source_fragment" : "exit"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [26],
+          "actions" : ["snvs314"],
+          "base_default_next" : "node_33",
+          "next_tables" : {
+            "snvs314" : "node_33"
+          },
+          "default_entry" : {
+            "action_id" : 26,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs319",
+          "id" : 20,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 319,
+            "column" : 10,
+            "source_fragment" : "mark_to_drop(standard_metadata); ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [27],
+          "actions" : ["snvs319"],
+          "base_default_next" : "SnvsEgress.OutputVlan",
+          "next_tables" : {
+            "snvs319" : "SnvsEgress.OutputVlan"
+          },
+          "default_entry" : {
+            "action_id" : 27,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "SnvsEgress.OutputVlan",
+          "id" : 21,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 293,
+            "column" : 10,
+            "source_fragment" : "OutputVlan"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "port",
+              "target" : ["standard_metadata", "egress_port"],
+              "mask" : null
+            },
+            {
+              "match_type" : "ternary",
+              "name" : "vlan",
+              "target" : ["scalars", "userMetadata.vlan"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "ternary",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [24],
+          "actions" : ["NoAction"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "__HIT__" : "tbl_act",
+            "__MISS__" : "tbl_act_0"
+          },
+          "default_entry" : {
+            "action_id" : 24,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "tbl_act",
+          "id" : 22,
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [28],
+          "actions" : ["act"],
+          "base_default_next" : "node_38",
+          "next_tables" : {
+            "act" : "node_38"
+          },
+          "default_entry" : {
+            "action_id" : 28,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_act_0",
+          "id" : 23,
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [29],
+          "actions" : ["act_0"],
+          "base_default_next" : "node_38",
+          "next_tables" : {
+            "act_0" : "node_38"
+          },
+          "default_entry" : {
+            "action_id" : 29,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs325",
+          "id" : 24,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 325,
+            "column" : 19,
+            "source_fragment" : "tag_vlan ? meta.vlan : 0"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [30],
+          "actions" : ["snvs325"],
+          "base_default_next" : "node_41",
+          "next_tables" : {
+            "snvs325" : "node_41"
+          },
+          "default_entry" : {
+            "action_id" : 30,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs325_0",
+          "id" : 25,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 325,
+            "column" : 19,
+            "source_fragment" : "tag_vlan ? meta.vlan : 0"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [31],
+          "actions" : ["snvs325_0"],
+          "base_default_next" : "node_41",
+          "next_tables" : {
+            "snvs325_0" : "node_41"
+          },
+          "default_entry" : {
+            "action_id" : 31,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs326",
+          "id" : 26,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 326,
+            "column" : 33,
+            "source_fragment" : "tag_vlan || PriorityTagging.apply().hit"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [32],
+          "actions" : ["snvs326"],
+          "base_default_next" : "node_48",
+          "next_tables" : {
+            "snvs326" : "node_48"
+          },
+          "default_entry" : {
+            "action_id" : 32,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs305",
+          "id" : 27,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 305,
+            "column" : 12,
+            "source_fragment" : "            hdr.vlan.isValid() && hdr.vlan.pcp != 0: exact @name(\\\"nonzero_pcp\\\") @nerpa_bool;"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [35],
+          "actions" : ["snvs305"],
+          "base_default_next" : "SnvsEgress.PriorityTagging",
+          "next_tables" : {
+            "snvs305" : "SnvsEgress.PriorityTagging"
+          },
+          "default_entry" : {
+            "action_id" : 35,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "SnvsEgress.PriorityTagging",
+          "id" : 28,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 302,
+            "column" : 10,
+            "source_fragment" : "PriorityTagging"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "port",
+              "target" : ["standard_metadata", "egress_port"],
+              "mask" : null
+            },
+            {
+              "match_type" : "exact",
+              "name" : "nonzero_pcp",
+              "target" : ["scalars", "key_0"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [25],
+          "actions" : ["NoAction"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "__HIT__" : "tbl_act_1",
+            "__MISS__" : "tbl_act_2"
+          },
+          "default_entry" : {
+            "action_id" : 25,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "tbl_act_1",
+          "id" : 29,
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [33],
+          "actions" : ["act_1"],
+          "base_default_next" : "tbl_snvs326_0",
+          "next_tables" : {
+            "act_1" : "tbl_snvs326_0"
+          },
+          "default_entry" : {
+            "action_id" : 33,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_act_2",
+          "id" : 30,
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [34],
+          "actions" : ["act_2"],
+          "base_default_next" : "tbl_snvs326_0",
+          "next_tables" : {
+            "act_2" : "tbl_snvs326_0"
+          },
+          "default_entry" : {
+            "action_id" : 34,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs326_0",
+          "id" : 31,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 326,
+            "column" : 33,
+            "source_fragment" : "tag_vlan || PriorityTagging.apply().hit"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [36],
+          "actions" : ["snvs326_0"],
+          "base_default_next" : "node_48",
+          "next_tables" : {
+            "snvs326_0" : "node_48"
+          },
+          "default_entry" : {
+            "action_id" : 36,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs328",
+          "id" : 32,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 328,
+            "column" : 10,
+            "source_fragment" : "hdr.vlan = { 0, 0, vid, hdr.eth.type }; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [37],
+          "actions" : ["snvs328"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "snvs328" : null
+          },
+          "default_entry" : {
+            "action_id" : 37,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_snvs331",
+          "id" : 33,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 331,
+            "column" : 23,
+            "source_fragment" : "= hdr.vlan.type; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [38],
+          "actions" : ["snvs331"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "snvs331" : null
+          },
+          "default_entry" : {
+            "action_id" : 38,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : [
+        {
+          "name" : "node_31",
+          "id" : 8,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 313,
+            "column" : 10,
+            "source_fragment" : "standard_metadata.instance_type == PKT_INSTANCE_TYPE_INGRESS_CLONE"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["standard_metadata", "instance_type"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00000001"
+              }
+            }
+          },
+          "true_next" : "tbl_snvs314",
+          "false_next" : "node_33"
+        },
+        {
+          "name" : "node_33",
+          "id" : 9,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 318,
+            "column" : 10,
+            "source_fragment" : "standard_metadata.egress_port == standard_metadata.ingress_port"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["standard_metadata", "egress_port"]
+              },
+              "right" : {
+                "type" : "field",
+                "value" : ["standard_metadata", "ingress_port"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs319",
+          "false_next" : "SnvsEgress.OutputVlan"
+        },
+        {
+          "name" : "node_38",
+          "id" : 10,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 325,
+            "column" : 19,
+            "source_fragment" : "tag_vlan"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["scalars", "tag_vlan_0"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs325",
+          "false_next" : "tbl_snvs325_0"
+        },
+        {
+          "name" : "node_41",
+          "id" : 11,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 326,
+            "column" : 33,
+            "source_fragment" : "tag_vlan"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["scalars", "tag_vlan_0"]
+              }
+            }
+          },
+          "true_next" : "tbl_snvs326",
+          "false_next" : "tbl_snvs305"
+        },
+        {
+          "name" : "node_48",
+          "id" : 12,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 327,
+            "column" : 10,
+            "source_fragment" : "include_vlan_header && !hdr.vlan.isValid()"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "d2b",
+                  "left" : null,
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["scalars", "tmp_5"]
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "not",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "d2b",
+                      "left" : null,
+                      "right" : {
+                        "type" : "field",
+                        "value" : ["vlan", "$valid$"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_snvs328",
+          "false_next" : "node_50"
+        },
+        {
+          "name" : "node_50",
+          "id" : 13,
+          "source_info" : {
+            "filename" : "snvs.p4",
+            "line" : 330,
+            "column" : 17,
+            "source_fragment" : "!include_vlan_header && hdr.vlan.isValid()"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "not",
+                  "left" : null,
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "d2b",
+                      "left" : null,
+                      "right" : {
+                        "type" : "field",
+                        "value" : ["scalars", "tmp_5"]
+                      }
+                    }
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "d2b",
+                  "left" : null,
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["vlan", "$valid$"]
+                  }
+                }
+              }
+            }
+          },
+          "false_next" : null,
+          "true_next" : "tbl_snvs331"
+        }
+      ]
+    }
+  ],
+  "checksums" : [],
+  "force_arith" : [],
+  "extern_instances" : [],
+  "field_aliases" : [
+    [
+      "queueing_metadata.enq_timestamp",
+      ["standard_metadata", "enq_timestamp"]
+    ],
+    [
+      "queueing_metadata.enq_qdepth",
+      ["standard_metadata", "enq_qdepth"]
+    ],
+    [
+      "queueing_metadata.deq_timedelta",
+      ["standard_metadata", "deq_timedelta"]
+    ],
+    [
+      "queueing_metadata.deq_qdepth",
+      ["standard_metadata", "deq_qdepth"]
+    ],
+    [
+      "intrinsic_metadata.ingress_global_timestamp",
+      ["standard_metadata", "ingress_global_timestamp"]
+    ],
+    [
+      "intrinsic_metadata.egress_global_timestamp",
+      ["standard_metadata", "egress_global_timestamp"]
+    ],
+    [
+      "intrinsic_metadata.mcast_grp",
+      ["standard_metadata", "mcast_grp"]
+    ],
+    [
+      "intrinsic_metadata.egress_rid",
+      ["standard_metadata", "egress_rid"]
+    ],
+    [
+      "intrinsic_metadata.priority",
+      ["standard_metadata", "priority"]
+    ]
+  ],
+  "program" : "./snvs.p4i",
+  "__meta__" : {
+    "version" : [2, 23],
+    "compiler" : "https://github.com/p4lang/p4c"
+  }
+}

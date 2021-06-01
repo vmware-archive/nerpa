@@ -1,0 +1,29 @@
+output relation OutputVlan(
+    port: bit<9>,
+    vlan: Option<bit<12>>,
+    priority: bit<32>
+)
+output relation PriorityTagging(
+    port: bit<9>,
+    nonzero_pcp: bool
+)
+output relation MirrorDstDrop(
+    port: bit<9>
+)
+output relation ReservedMcastDstDrop[bit<48>]
+typedef InputVlanAction = InputVlanActionDrop | InputVlanActionSetVlan{vid: bit<12>} | InputVlanActionUseTaggedVlan
+output relation InputVlan(
+    port: bit<9>,
+    has_vlan: bool,
+    vid: Option<bit<12>>,
+    priority: bit<32>,
+    action: InputVlanAction
+)
+output relation MirrorSelectProduct(
+    port: Option<bit<9>>,
+    vlan: Option<bit<12>>,
+    priority: bit<32>
+)
+output relation FloodVlan(
+    vlan: bit<12>
+)

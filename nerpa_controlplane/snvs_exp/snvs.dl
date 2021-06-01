@@ -1,0 +1,220 @@
+import snvs_dp as snvs_dp
+import snvs_mp as snvs_mp
+import set
+
+// Logging.
+extern function warn(msg: string): ()
+
+typedef port_id_t = bit<9>
+typedef vlan_id_t = bit<12>
+typedef eth_addr_t = bit<48>
+
+typedef vlan_set_t = AllVlans | SomeVlans{vlans: Set<vlan_id_t>}
+
+// A Port is either an access port for a particular VLAN or a trunk
+// port.  When a trunk port receives a packet without an 802.1Q
+// header, that packet belongs to default VLAN ID 'native_vid'
+// (commonly 0).  When the switch forwards a packet to a trunk port
+// with VLAN ID 'native_vid', it includes an 802.1Q header if
+// 'tag_native' is true or (more commonly) excludes it if it is false.
+// In addition to 'native_vid', a trunk port carries the VLANs in
+// 'other_vlans'.
+typedef vlan_config_t = AccessPort{vid: vlan_id_t}
+                      | TrunkPort{native_vid: vlan_id_t,
+                                  tag_native: bool,
+                                  other_vlans: vlan_set_t}
+
+typedef priority_tagging_t = NoPriorityTag
+                            | NonzeroPriorityTag
+                            | AlwaysPriorityTag
+
+relation FloodVlan[vlan_id_t]
+
+FloodVlan[vlan as bit<12>] :- snvs_mp::FloodVlan(.id = vlan).
+
+relation Port(
+    id: port_id_t,
+    vlan: vlan_config_t,
+    priority_tagging: priority_tagging_t
+)
+
+Port(id, vlan, priority_tagging) :-
+    snvs_mp::Port(.id = mp_id, .vlan_mode = mp_vlan_mode, .tag = mp_tag, .trunks = mp_trunks, .priority_tagging = mp_priority_tagging),
+    var id = mp_id as port_id_t,
+    var vlan = {
+        var vid = match (mp_tag) {
+            None -> 0 as vlan_id_t,
+            Some{tag} -> tag as vlan_id_t,
+        };
+        var is_trunk = match (mp_vlan_mode) {
+            // if vlan mode is empty, default to access, unless trunks is set
+            None -> mp_trunks.size() > 0,
+            Some{mode} -> mode == "trunk"
+        };
+        var tag_native = match (mp_vlan_mode) {
+            None -> false,
+            Some{mode} -> mode == "native-tagged",
+        };
+
+        if (is_trunk) {
+            AccessPort{.vid = vid}
+        } else {
+            var trunks = mp_trunks.map(|x| x as vlan_id_t);
+            TrunkPort{
+                .native_vid = vid,
+                .tag_native = tag_native,
+                .other_vlans = SomeVlans{.vlans = trunks}
+            }
+        }
+    },
+    var priority_tagging = match (mp_priority_tagging) {
+        "no" -> NoPriorityTag,
+        "nonzero" -> NonzeroPriorityTag,
+        "always" -> AlwaysPriorityTag,
+        _ -> NoPriorityTag,
+    }.
+
+// Port mirroring.
+//
+// Packets received on any of 'ports' (or any port, if 'ports' is
+// empty) and in one of the VLANs in 'vlans' are mirrored to the port
+// or VLAN in MirrorDst, which may only contain one row.
+relation MirrorSelect(
+    ports: Set<Ref<Port>>,
+    vlans: vlan_set_t
+)
+
+
+MirrorSelect(ports, vlans) :-
+    snvs_mp::MirrorSelect(._uuid = ms_uuid, .ports = port_uuids, .vlans = vlan_ids),
+    // TODO: Set ports correctly.
+    var ports = set_empty(),
+    /* var port_uuid = FlatMap(port_uuids),
+    mp_port in snvs_mp::Port(._uuid = port_uuid),
+    var mp_id = mp_port.id as port_id_t,
+    port in Port(.id = mp_id),
+    var ports = port.group_by(mp_id).to_set(), */
+    var vlans = match (vlan_ids.size()) {
+        0 -> AllVlans,
+        _ -> SomeVlans{vlan_ids.map(|x| x as vlan_id_t)}
+    }.
+
+relation MirrorDst[Ref<Port>]
+
+MirrorDst[ref_port] :-
+    snvs_mp::MirrorDst(.port = port_uuid),
+    mp_port in snvs_mp::Port(._uuid = port_uuid),
+    port in Port(.id = mp_port.id as port_id_t),
+    var ref_port = ref_new(port).
+
+snvs_dp::MirrorDstDrop(port.id) :-
+    MirrorDst[port].
+
+snvs_dp::MirrorSelectProduct(None, None, 0) :-
+    MirrorSelect(set_empty(), AllVlans).
+
+snvs_dp::MirrorSelectProduct(None, Some{vid}, 0) :-
+    MirrorSelect(set_empty(), SomeVlans{vlans}),
+    var vid = FlatMap(vlans).
+
+snvs_dp::MirrorSelectProduct(Some{port.id}, Some{vid}, 0) :-
+    MirrorSelect(ports, SomeVlans{vlans}),
+    var port = FlatMap(ports),
+    var vid = FlatMap(vlans).
+
+// Clone session.
+//
+// This output relation needs to get pushed into the switch clone
+// session table so that when a packet is cloned to 'session', the
+// packet egresses to 'ports'.
+output relation CloneSession(
+    session_id: bit<32>,
+    ports: Set<port_id_t>)
+CloneSession(1, set_singleton(port.id)) :-
+    MirrorDst[port].
+
+// If ForwardBPDUs is false, then the switch will drop packets with reserved
+// multicast destinations, by populating ReservedMcastDstDrop with the Ethernet
+// addresses to drop.  This is normally the desirable behavior.
+//
+// If ForwardBPDUs is true, then the switch will forward these multicast
+// destinations like any others, by leaving ReservedMcastDstDrop empty.
+relation ForwardBPDUs[bool]
+
+ForwardBPDUs[value] :-
+    snvs_mp::ForwardBPDUs(.id = value).
+
+output relation ReservedMcastDstDrop[eth_addr_t]
+ReservedMcastDstDrop[bpdu_mac] :-
+    ForwardBPDUs[false],
+    var bpdu_macs = [
+        48'h0180c2000000, 48'h0180c2000001, 48'h0180c2000002, 48'h0180c2000003,
+        48'h0180c2000004, 48'h0180c2000005, 48'h0180c2000006, 48'h0180c2000007,
+        48'h0180c2000008, 48'h0180c2000009, 48'h0180c200000a, 48'h0180c200000b,
+        48'h0180c200000c, 48'h0180c200000d, 48'h0180c200000e, 48'h0180c200000f,
+        48'h00e02b000000, 48'h00e02b000004, 48'h00e02b000006, 48'h01000c000000,
+        48'h01000ccccccc, 48'h01000ccccccd, 48'h01000ccdcdcd, 48'h01000cccccc0,
+        48'h01000cccccc1, 48'h01000cccccc2, 48'h01000cccccc3, 48'h01000cccccc4,
+        48'h01000cccccc5, 48'h01000cccccc6, 48'h01000cccccc7,
+    ],
+    var bpdu_mac = FlatMap(bpdu_macs).
+
+snvs_dp::InputVlan(port, false, None, 0, snvs_dp::InputVlanActionSetVlan{vid}) :-
+    Port(.id = port, .vlan = AccessPort{vid}).
+snvs_dp::InputVlan(port, false, None, 0, snvs_dp::InputVlanActionSetVlan{native_vid}) :-
+    Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid}).
+snvs_dp::InputVlan(port, true, None, 0, snvs_dp::InputVlanActionUseTaggedVlan) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}).
+snvs_dp::InputVlan(port, true, Some{vid}, 1, snvs_dp::InputVlanActionUseTaggedVlan) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
+    var vid = FlatMap(vlans).
+
+// Output VLAN processing.
+//
+// When a match exists, it means that the VLAN should be tagged.
+snvs_dp::OutputVlan(port, Some{native_vid}, 1) :-
+    Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid,
+                                      .tag_native = true}).
+snvs_dp::OutputVlan(port, None, 0) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}).
+snvs_dp::OutputVlan(port, Some{vid}, 1) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
+    var vid = FlatMap(vlans).
+
+snvs_dp::PriorityTagging(port, nonzero_pcp) :-
+    Port(.id = port, .priority_tagging = priority_tagging),
+    var nonzero_pcps = match (priority_tagging) {
+        NoPriorityTag -> vec_empty(),
+        NonzeroPriorityTag -> [true],
+        AlwaysPriorityTag -> [false, true]
+    },
+    var nonzero_pcp = FlatMap(nonzero_pcps).
+
+// Multicast groups.
+//
+// This output relation needs to get pushed into the switch multicast
+// replication table so that when standard_metadata_t.mcast_grp is
+// 'mcast_id', the packet egresses to 'ports'.  We use the VLAN ID as
+// the multicast group id.
+//
+// This output relation will have 4096 rows, one per possible VLAN ID,
+// if the switch has any ports that trunk all VLANs.
+output relation MulticastGroup(
+    mcast_id: bit<16>,
+    ports: Set<port_id_t>)
+MulticastGroup(vid as bit<16>, ports) :-
+    PortVlan(port, vid),
+    var ports = port.group_by(vid).to_set().
+
+relation PortVlan(
+    port: port_id_t,
+    vlan: vlan_id_t)
+PortVlan(port, vlan) :- Port(.id = port, .vlan = AccessPort{vlan}).
+PortVlan(port, vlan) :- Port(.id = port, .vlan = TrunkPort{.native_vid = vlan}).
+PortVlan(port, vlan) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}),
+    var vlans = range_vec(0, 4096, 1),
+    var vlan = FlatMap(vlans).
+PortVlan(port, vlan) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
+    var vlan = FlatMap(vlans).

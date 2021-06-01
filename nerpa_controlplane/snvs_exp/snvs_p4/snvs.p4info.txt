@@ -1,0 +1,234 @@
+pkg_info {
+  arch: "v1model"
+}
+tables {
+  preamble {
+    id: 47525856
+    name: "SnvsIngress.MirrorDstDrop"
+    alias: "MirrorDstDrop"
+  }
+  match_fields {
+    id: 1
+    name: "port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  action_refs {
+    id: 23249285
+  }
+  action_refs {
+    id: 21257015
+    annotations: "@defaultonly"
+    scope: DEFAULT_ONLY
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 48235663
+    name: "SnvsIngress.ReservedMcastDstDrop"
+    alias: "ReservedMcastDstDrop"
+    annotations: "@nerpa_singleton"
+  }
+  match_fields {
+    id: 1
+    name: "dst"
+    bitwidth: 48
+    match_type: EXACT
+  }
+  action_refs {
+    id: 23249285
+  }
+  action_refs {
+    id: 21257015
+    annotations: "@defaultonly"
+    scope: DEFAULT_ONLY
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 39244352
+    name: "SnvsIngress.InputVlan"
+    alias: "InputVlan"
+  }
+  match_fields {
+    id: 1
+    name: "port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  match_fields {
+    id: 2
+    name: "has_vlan"
+    annotations: "@nerpa_bool"
+    bitwidth: 1
+    match_type: EXACT
+  }
+  match_fields {
+    id: 3
+    name: "vid"
+    bitwidth: 12
+    match_type: OPTIONAL
+  }
+  action_refs {
+    id: 23249285
+  }
+  action_refs {
+    id: 20521082
+  }
+  action_refs {
+    id: 31126376
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 49827713
+    name: "SnvsIngress.MirrorSelectProduct"
+    alias: "MirrorSelectProduct"
+  }
+  match_fields {
+    id: 1
+    name: "port"
+    bitwidth: 9
+    match_type: OPTIONAL
+  }
+  match_fields {
+    id: 2
+    name: "vlan"
+    bitwidth: 12
+    match_type: OPTIONAL
+  }
+  action_refs {
+    id: 21257015
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 45152971
+    name: "SnvsIngress.FloodVlan"
+    alias: "FloodVlan"
+  }
+  match_fields {
+    id: 1
+    name: "vlan"
+    bitwidth: 12
+    match_type: EXACT
+  }
+  action_refs {
+    id: 32282839
+  }
+  action_refs {
+    id: 21257015
+    annotations: "@defaultonly"
+    scope: DEFAULT_ONLY
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 48583977
+    name: "SnvsEgress.OutputVlan"
+    alias: "OutputVlan"
+  }
+  match_fields {
+    id: 1
+    name: "port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  match_fields {
+    id: 2
+    name: "vlan"
+    bitwidth: 12
+    match_type: OPTIONAL
+  }
+  action_refs {
+    id: 21257015
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 47347158
+    name: "SnvsEgress.PriorityTagging"
+    alias: "PriorityTagging"
+  }
+  match_fields {
+    id: 1
+    name: "port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  match_fields {
+    id: 2
+    name: "nonzero_pcp"
+    annotations: "@nerpa_bool"
+    bitwidth: 1
+    match_type: EXACT
+  }
+  action_refs {
+    id: 21257015
+  }
+  size: 1024
+}
+actions {
+  preamble {
+    id: 21257015
+    name: "NoAction"
+    alias: "NoAction"
+    annotations: "@noWarn(\"unused\")"
+  }
+}
+actions {
+  preamble {
+    id: 23249285
+    name: "SnvsIngress.Drop"
+    alias: "Drop"
+  }
+}
+actions {
+  preamble {
+    id: 20521082
+    name: "SnvsIngress.SetVlan"
+    alias: "SetVlan"
+  }
+  params {
+    id: 1
+    name: "vid"
+    bitwidth: 12
+  }
+}
+actions {
+  preamble {
+    id: 31126376
+    name: "SnvsIngress.UseTaggedVlan"
+    alias: "UseTaggedVlan"
+  }
+}
+actions {
+  preamble {
+    id: 32282839
+    name: "SnvsIngress.set_flood"
+    alias: "set_flood"
+  }
+}
+registers {
+  preamble {
+    id: 372967203
+    name: "SnvsIngress.mac_table"
+    alias: "mac_table"
+  }
+  type_spec {
+    bitstring {
+      bit {
+        bitwidth: 69
+      }
+    }
+  }
+  size: 4096
+}
+type_info {
+}
