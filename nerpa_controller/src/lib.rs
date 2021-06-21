@@ -103,8 +103,8 @@ impl Controller {
                         for t in &switch.tables {
                             let tn = &t.preamble.name;
                             let tv = Vec::from_iter(tn.split(".").map(String::from));
-                            
                             let ts = tv.last().unwrap();
+
                             if name.contains(ts) {
                                 println!("found matching table name");
                                 table = t;

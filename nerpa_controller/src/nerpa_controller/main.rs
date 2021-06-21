@@ -37,13 +37,8 @@ pub async fn main() {
     // Instantiate DDlog program.
     let mut nerpa = Controller::new().unwrap();
 
-    // TODO: Better define the API for the management plane (i.e., the user interaction).
-    // We should read in the vector of port configs, or whatever the input becomes.
+    // TODO: Connect the OVS database management plane to the controller.
     // Add input to DDlog program.
-    // let ports = vec!(
-    //     types::Port{port_id: 11, config: types::PortConfig::Access{vlan: 1}},
-    // );
-    
     let updates = vec![
         Update::Insert{
             relid: Relations::snvs_mp_Port as RelId,
@@ -58,15 +53,11 @@ pub async fn main() {
         },
     ];
 
-    let output = nerpa.add_input(updates);
-    println!("{:#?}", output);
-    let delta = output.unwrap();
     // Compute and print output relation.
-    // let delta = nerpa.add_input(updates).unwrap();
-    // DDlogNerpa::dump_delta(&delta);
+    let output = nerpa.add_input(updates);
+    let delta = output.unwrap();
     Controller::dump_delta(&delta);
 
-    
     // TODO: Stop hard-coding arguments.
     // TODO: Get non-empty election ID working.
     let device_id : u64 = 0;
@@ -76,8 +67,6 @@ pub async fn main() {
     let ch = ChannelBuilder::new(env).connect(target);
     let client = P4RuntimeClient::new(ch);
 
-    // let p4info_str: &str = "examples/vlan/vlan.p4info.bin";
-    // let opaque_str: &str = "examples/vlan/vlan.json";
     let p4info_str: &str = "../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin";
     let opaque_str: &str = "../nerpa_controlplane/snvs_exp/snvs_p4/snvs.json";
     let cookie_str: &str = "";
@@ -94,16 +83,11 @@ pub async fn main() {
         &client,
     );
 
-    // let table_name : &str = "MyIngress.vlan_incoming_exact";
-    // let action_name: &str = "MyIngress.vlan_incoming_forward";
-
     Controller::push_outputs_to_switch(
         &delta,
         device_id,
         role_id,
         target,
-        // table_name,
-        // action_name,
         &client,
     );
 }
