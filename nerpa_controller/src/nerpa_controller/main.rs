@@ -23,9 +23,13 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
+use differential_datalog::ddval::DDValConvert;
+use differential_datalog::program::{RelId, Update};
 use grpcio::{ChannelBuilder, EnvBuilder};
 use nerpa_controller::Controller;
 use proto::p4runtime_grpc::P4RuntimeClient;
+use snvs_ddlog::Relations;
+use snvs_ddlog::typedefs::ddlog_std;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -36,15 +40,33 @@ pub async fn main() {
     // TODO: Better define the API for the management plane (i.e., the user interaction).
     // We should read in the vector of port configs, or whatever the input becomes.
     // Add input to DDlog program.
-    let ports = vec!(
-        types::Port{port_id: 11, config: types::PortConfig::Access{vlan: 1}},
-    );
+    // let ports = vec!(
+    //     types::Port{port_id: 11, config: types::PortConfig::Access{vlan: 1}},
+    // );
+    
+    let updates = vec![
+        Update::Insert{
+            relid: Relations::snvs_mp_Port as RelId,
+            v: types__snvs_mp::Port {
+                _uuid: 0,
+                id: 11,
+                vlan_mode: ddlog_std::Option::Some{x: "".to_string()},
+                tag: ddlog_std::Option::Some{x: 1},
+                trunks: ddlog_std::Set::new(),
+                priority_tagging: "no".to_string(), 
+            }.into_ddvalue(),
+        },
+    ];
 
+    let output = nerpa.add_input(updates);
+    println!("{:#?}", output);
+    let delta = output.unwrap();
     // Compute and print output relation.
-    let delta = nerpa.add_input(ports).unwrap();
+    // let delta = nerpa.add_input(updates).unwrap();
     // DDlogNerpa::dump_delta(&delta);
     Controller::dump_delta(&delta);
 
+    
     // TODO: Stop hard-coding arguments.
     // TODO: Get non-empty election ID working.
     let device_id : u64 = 0;
@@ -54,8 +76,10 @@ pub async fn main() {
     let ch = ChannelBuilder::new(env).connect(target);
     let client = P4RuntimeClient::new(ch);
 
-    let p4info_str: &str = "examples/vlan/vlan.p4info.bin";
-    let opaque_str: &str = "examples/vlan/vlan.json";
+    // let p4info_str: &str = "examples/vlan/vlan.p4info.bin";
+    // let opaque_str: &str = "examples/vlan/vlan.json";
+    let p4info_str: &str = "../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin";
+    let opaque_str: &str = "../nerpa_controlplane/snvs_exp/snvs_p4/snvs.json";
     let cookie_str: &str = "";
     let action_str: &str = "verify-and-commit";
 
@@ -70,18 +94,16 @@ pub async fn main() {
         &client,
     );
 
-    p4ext::list_tables(device_id, target, &client);
-
-    let table_name : &str = "MyIngress.vlan_incoming_exact";
-    let action_name: &str = "MyIngress.vlan_incoming_forward";
+    // let table_name : &str = "MyIngress.vlan_incoming_exact";
+    // let action_name: &str = "MyIngress.vlan_incoming_forward";
 
     Controller::push_outputs_to_switch(
         &delta,
         device_id,
         role_id,
         target,
-        table_name,
-        action_name,
+        // table_name,
+        // action_name,
         &client,
     );
 }
