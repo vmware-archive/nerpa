@@ -89,7 +89,6 @@ impl Controller {
             for (value, _weight) in output_map {
                 let record = value.clone().into_record();
                 
-                use std::iter::FromIterator;
                 match record {
                     Record::NamedStruct(name, recs) => {
                         // Translate the record table name to the P4 table name.
@@ -98,13 +97,13 @@ impl Controller {
                         
                         for t in &switch.tables {
                             let tn = &t.preamble.name;
-                            let tv = Vec::from_iter(tn.split(".").map(String::from));
+                            let tv: Vec<String> = tn.split('.').map(|s| s.to_string()).collect();
                             let ts = tv.last().unwrap();
 
                             if name.contains(ts) {
                                 println!("found matching table name");
                                 table = t;
-                                table_name = format!("{}", tn);
+                                table_name = tn.to_string();
                                 break;
                             }
                         }
@@ -127,11 +126,11 @@ impl Controller {
                                             for action_ref in &table.actions {
                                                 let a = &action_ref.action;
                                                 let an = &a.preamble.name;
-                                                let avec = Vec::from_iter(an.split(".").map(String::from));
+                                                let avec: Vec<String> = an.split('.').map(|s| s.to_string()).collect();
                                                 let asub = avec.last().unwrap();
     
                                                 if name.contains(asub) {
-                                                    action_name = format!("{}", an);
+                                                    action_name = an.to_string();
                                                     break;
                                                 }
                                             }
@@ -183,11 +182,7 @@ impl Controller {
         match r {
             Record::Bool(true) => 1,
             Record::Bool(false) => 0,
-            Record::Int(i) => match i.to_u16() {
-                Some(x) => x,
-                // TODO: Handle error.
-                None => 0, 
-            },
+            Record::Int(i) => i.to_u16().unwrap_or(0),
             // TODO: Handle other types.
             _ => 1,
         }
