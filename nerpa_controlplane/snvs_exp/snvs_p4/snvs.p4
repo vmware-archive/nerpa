@@ -224,6 +224,8 @@ control SnvsIngress(inout headers hdr,
         meta.flood = false;
         FloodVlan.apply();
 
+        // TODO: Factor out common logic between the two if-statements.
+
         // Learn source MAC.
         if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)) {
             // Hash the Ethernet address into two different buckets.
@@ -340,8 +342,7 @@ control SnvsComputeChecksum(inout headers hdr, inout metadata meta) {
 
 control SnvsDeparser(packet_out packet, in headers hdr) {
     apply {
-        packet.emit(hdr.eth);
-        packet.emit(hdr.vlan);  
+        packet.emit(hdr);
     }
 }
 

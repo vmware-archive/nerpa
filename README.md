@@ -16,10 +16,11 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 
 For better organization, create a dedicated directory for these dependencies, outside your clone of this repository. Run the installation script within this directory. Set `$NERPA_DEPS` equal to this directory's path.
 
-3. Generate the DDlog crate using the [setup script](nerpa_controlplane/generate.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle.
+3. Generate the DDlog crate for our example program using the [setup script](nerpa_controlplane/snvs_exp/generate-snvs.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle. This script also compiles the P4 program and generates intermediate DDlog programs for the data plane and management plane.
+
 ```
-cd $NERPA_DIR/nerpa_controlplane
-./generate.sh
+cd $NERPA_DIR/nerpa_controlplane/snvs_exp
+./generate-snvs.sh
 ``` 
 
 4. Build the `proto` crate containing P4 Runtime structures. Install necessary dependencies (the protobuf and gRPC compilers).
