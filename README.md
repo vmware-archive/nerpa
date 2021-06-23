@@ -11,12 +11,12 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 ## Installation
 ### Build
 0. Clone this repository. We will call its top-level directory  `$NERPA_DIR`. I would recommend using a fresh Ubuntu 18.04 VM for painless P4 installation.
-1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation). This codebase used version [v0.36.0](https://github.com/vmware/differential-datalog/releases/tag/v0.36.0).
+1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation). This codebase used version [v0.39.0](https://github.com/vmware/differential-datalog/releases/tag/v0.39.0).
 2. Install P4 using these [installation instructions](https://github.com/jafingerhut/p4-guide/blob/master/bin/README-install-troubleshooting.md#quick-instructions-for-successful-install-script-run). We used the install script `install-p4dev-v2.sh`. It is much more usable than the P4 README installation, and clones all necessary repositories and installs dependencies.
 
 For better organization, create a dedicated directory for these dependencies, outside your clone of this repository. Run the installation script within this directory. Set `$NERPA_DEPS` equal to this directory's path.
 
-3. Generate the DDlog crate for our example program using the [setup script](nerpa_controlplane/snvs_exp/generate-snvs.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle. This script also compiles the P4 program and generates intermediate DDlog programs for the data plane and management plane.
+3. Generate the DDlog crate for our example program, `snvs`, using the [setup script](nerpa_controlplane/snvs_exp/generate-snvs.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle. This script also compiles the P4 program and generates intermediate DDlog programs for the data plane and management plane.
 
 ```
 cd $NERPA_DIR/nerpa_controlplane/snvs_exp

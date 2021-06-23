@@ -26,20 +26,16 @@ extern crate protobuf;
 // This serves as a reference to a running DDlog program.
 // It implements `trait differential_datalog::DDlog`.
 use snvs_ddlog::api::HDDlog;
-use snvs_ddlog::Relations;
-use snvs_ddlog::typedefs::ddlog_std;
 
 // `differential_datalog` contains the DDlog runtime copied to each generated workspace.
 use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
 use differential_datalog::DDlogDynamic;
 use differential_datalog::DeltaMap; // Represents a set of changes to DDlog relations.
 use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog values.
-use differential_datalog::ddval::DDValConvert; // Trait to convert Rust types to/from DDValue.
-use differential_datalog::program::RelId;
 use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
-use p4ext::{Table, Action};
+use p4ext::Table;
 
 use proto::p4runtime_grpc::P4RuntimeClient;
 
@@ -83,7 +79,7 @@ impl Controller {
         role_id: u64,
         target: &str,
         client: &P4RuntimeClient,
-    ) {
+    ) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
 
         let pipeline = p4ext::get_pipeline_config(device_id, target, client);
@@ -116,11 +112,10 @@ impl Controller {
                         // Iterate through fields in the record.
                         // Map all match keys to values.
                         // If the field is the action, extract the action, name, and parameters.
-                        let mut action: &Action = &Action::default();
                         let mut action_name: String = "".to_string();
 
-                        let mut matches = &mut HashMap::<std::string::String, u16>::new();
-                        let mut params = &mut HashMap::<std::string::String, u16>::new();
+                        let matches = &mut HashMap::<std::string::String, u16>::new();
+                        let params = &mut HashMap::<std::string::String, u16>::new();
                         for (_, (fname, v)) in recs.iter().enumerate() {
                             let match_name: String = fname.to_string();
 
@@ -136,7 +131,6 @@ impl Controller {
                                                 let asub = avec.last().unwrap();
     
                                                 if name.contains(asub) {
-                                                    action = a;
                                                     action_name = format!("{}", an);
                                                     break;
                                                 }
@@ -181,7 +175,7 @@ impl Controller {
             }
         }
 
-        p4ext::write(updates, device_id, role_id, target, client);
+        p4ext::write(updates, device_id, role_id, target, client)
     }
 
     fn extract_record_value(r: &Record) -> u16 {

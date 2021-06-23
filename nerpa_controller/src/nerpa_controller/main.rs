@@ -89,5 +89,7 @@ pub async fn main() {
         role_id,
         target,
         &client,
+    ).unwrap_or_else(
+        |err| panic!("could not push outputs to switch: {}", err)
     );
 }
