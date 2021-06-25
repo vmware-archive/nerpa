@@ -35,7 +35,7 @@ use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog val
 use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
-use p4ext::Table;
+use p4ext::{ActionRef, Table};
 
 use proto::p4runtime_grpc::P4RuntimeClient;
 
@@ -60,7 +60,13 @@ impl Controller {
 
     pub fn add_input(&mut self, updates: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
         self.hddlog.transaction_start()?;
-        self.hddlog.apply_updates(&mut updates.into_iter())?;
+        
+        let update_result = self.hddlog.apply_updates(&mut updates.into_iter());
+        match update_result {
+            Ok(_) => {},
+            Err(_) => { self.hddlog.transaction_rollback()? }
+        };
+
         self.hddlog.transaction_commit_dump_changes()
     }
 
@@ -92,29 +98,24 @@ impl Controller {
                 match record {
                     Record::NamedStruct(name, recs) => {
                         // Translate the record table name to the P4 table name.
-                        let mut table: &Table = &Table::default();
+                        let mut table: Table = Table::default();
                         let mut table_name: String = "".to_string();
-                        
-                        for t in &switch.tables {
-                            let tn = &t.preamble.name;
-                            let tv: Vec<String> = tn.split('.').map(|s| s.to_string()).collect();
-                            let ts = tv.last().unwrap();
 
-                            if name.contains(ts) {
-                                println!("found matching table name");
+                        match Self::get_matching_table(name.to_string(), switch.tables.clone()) {
+                            Some(t) => {
                                 table = t;
-                                table_name = tn.to_string();
-                                break;
-                            }
-                        }
+                                table_name = table.preamble.name;
+                            },
+                            None => {},
+                        };
 
                         // Iterate through fields in the record.
                         // Map all match keys to values.
                         // If the field is the action, extract the action, name, and parameters.
                         let mut action_name: String = "".to_string();
-
                         let matches = &mut HashMap::<std::string::String, u16>::new();
                         let params = &mut HashMap::<std::string::String, u16>::new();
+                        let mut priority: i32 = 0;
                         for (_, (fname, v)) in recs.iter().enumerate() {
                             let match_name: String = fname.to_string();
 
@@ -123,17 +124,10 @@ impl Controller {
                                     match v {
                                         Record::NamedStruct(name, arecs) => {
                                             // Find matching action name from P4 table.
-                                            for action_ref in &table.actions {
-                                                let a = &action_ref.action;
-                                                let an = &a.preamble.name;
-                                                let avec: Vec<String> = an.split('.').map(|s| s.to_string()).collect();
-                                                let asub = avec.last().unwrap();
-    
-                                                if name.contains(asub) {
-                                                    action_name = an.to_string();
-                                                    break;
-                                                }
-                                            }
+                                            action_name = match Self::get_matching_action_name(name.to_string(), table.actions.clone()) {
+                                                Some(an) => an,
+                                                None => "".to_string()
+                                            };
     
                                             // Extract param values from action's records.
                                             for (_, (afname, aval)) in arecs.iter().enumerate() {
@@ -144,7 +138,7 @@ impl Controller {
                                     }
                                 },
                                 "priority" => {
-                                    // TODO: Handle priority when writing table entry.
+                                    priority = Self::extract_record_value(&v).into();
                                 },
                                 _ => {
                                     matches.insert(match_name, Self::extract_record_value(&v));
@@ -160,6 +154,7 @@ impl Controller {
                                 action_name.as_str(),
                                 params,
                                 matches,
+                                priority,
                                 device_id,
                                 target,
                                 client,
@@ -186,5 +181,33 @@ impl Controller {
             // TODO: Handle other types.
             _ => 1,
         }
+    }
+
+    fn get_matching_table(record_name: String, tables: Vec<Table>) -> Option<Table> {
+        for t in tables {
+            let tn = &t.preamble.name;
+            let tv: Vec<String> = tn.split('.').map(|s| s.to_string()).collect();
+            let ts = tv.last().unwrap();
+
+            if record_name.contains(ts) {
+                return Some(t);
+            }
+        }
+
+        None
+    }
+
+    fn get_matching_action_name(record_name: String, actions: Vec<ActionRef>) -> Option<String> {
+        for action_ref in actions {
+            let an = action_ref.action.preamble.name;
+            let av: Vec<String> = an.split('.').map(|s| s.to_string()).collect();
+            let asub = av.last().unwrap();
+
+            if record_name.contains(asub) {
+                return Some(an.to_string());
+            }
+        }
+
+        None
     }
 }

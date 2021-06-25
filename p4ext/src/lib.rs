@@ -533,7 +533,7 @@ impl Display for Action {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ActionRef {
     pub action: Action,
     may_be_default: bool, // Allowed as the default action?
@@ -571,7 +571,7 @@ impl Display for ActionRef {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Table {
     pub preamble: Preamble,
     pub match_fields: Vec<MatchField>,
@@ -849,6 +849,7 @@ pub fn build_table_entry(
     action_name: &str,
     params_values: &HashMap<String, u16>,
     match_fields_map: &HashMap<String, u16>,
+    priority: i32,
     device_id: u64,
     target: &str,
     client: &P4RuntimeClient
@@ -895,6 +896,7 @@ pub fn build_table_entry(
     let mut table_entry = TableEntry::new();
     table_entry.set_table_id(table.preamble.id);
     table_entry.set_action(table_action);
+    table_entry.set_priority(priority);
     table_entry.set_field_match(field_matches);
 
     Ok(table_entry)
@@ -906,6 +908,7 @@ pub fn build_table_entry_update(
     action_name: &str,
     params_values: &HashMap<String, u16>,
     match_fields_map: &HashMap<String, u16>,
+    priority: i32,
     device_id: u64,
     target: &str,
     client: &P4RuntimeClient,
@@ -915,6 +918,7 @@ pub fn build_table_entry_update(
         action_name,
         params_values,
         match_fields_map,
+        priority,
         device_id,
         target,
         client,

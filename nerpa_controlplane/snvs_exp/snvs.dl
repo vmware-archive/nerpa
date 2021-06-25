@@ -133,14 +133,14 @@ MirrorDst[ref_port] :-
 snvs_dp::MirrorDstDrop(port.id) :-
     MirrorDst[port].
 
-snvs_dp::MirrorSelectProduct(None, None, 0) :-
+snvs_dp::MirrorSelectProduct(None, None, 1) :-
     MirrorSelect(set_empty(), AllVlans).
 
-snvs_dp::MirrorSelectProduct(None, Some{vid}, 0) :-
+snvs_dp::MirrorSelectProduct(None, Some{vid}, 1) :-
     MirrorSelect(set_empty(), SomeVlans{vlans}),
     var vid = FlatMap(vlans).
 
-snvs_dp::MirrorSelectProduct(Some{port.id}, Some{vid}, 0) :-
+snvs_dp::MirrorSelectProduct(Some{port.id}, Some{vid}, 1) :-
     MirrorSelect(ports, SomeVlans{vlans}),
     var port = FlatMap(ports),
     var vid = FlatMap(vlans).
@@ -182,25 +182,27 @@ ReservedMcastDstDrop[bpdu_mac] :-
     ],
     var bpdu_mac = FlatMap(bpdu_macs).
 
-snvs_dp::InputVlan(port, false, None, 0, snvs_dp::InputVlanActionSetVlan{vid}) :-
+// InputVlan includes a priority that is given to the P4 table entry.
+// Since it has an optional field, this priority must be nonzero.
+snvs_dp::InputVlan(port, false, None, 1, snvs_dp::InputVlanActionSetVlan{vid}) :-
     Port(.id = port, .vlan = AccessPort{vid}).
-snvs_dp::InputVlan(port, false, None, 0, snvs_dp::InputVlanActionSetVlan{native_vid}) :-
+snvs_dp::InputVlan(port, false, None, 1, snvs_dp::InputVlanActionSetVlan{native_vid}) :-
     Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid}).
-snvs_dp::InputVlan(port, true, None, 0, snvs_dp::InputVlanActionUseTaggedVlan) :-
+snvs_dp::InputVlan(port, true, None, 1, snvs_dp::InputVlanActionUseTaggedVlan) :-
     Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}).
-snvs_dp::InputVlan(port, true, Some{vid}, 1, snvs_dp::InputVlanActionUseTaggedVlan) :-
+snvs_dp::InputVlan(port, true, Some{vid}, 2, snvs_dp::InputVlanActionUseTaggedVlan) :-
     Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
     var vid = FlatMap(vlans).
 
 // Output VLAN processing.
 //
 // When a match exists, it means that the VLAN should be tagged.
-snvs_dp::OutputVlan(port, Some{native_vid}, 1) :-
+snvs_dp::OutputVlan(port, Some{native_vid}, 2) :-
     Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid,
                                       .tag_native = true}).
-snvs_dp::OutputVlan(port, None, 0) :-
+snvs_dp::OutputVlan(port, None, 1) :-
     Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}).
-snvs_dp::OutputVlan(port, Some{vid}, 1) :-
+snvs_dp::OutputVlan(port, Some{vid}, 2) :-
     Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
     var vid = FlatMap(vlans).
 
