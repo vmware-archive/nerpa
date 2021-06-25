@@ -136,6 +136,21 @@ void get_mac_entry(register<Mac_register_entry> reg,
     me.vlan = (VlanID) (me_raw >> 9);
     me.port = (PortID) me_raw;
 }
+void hash_and_get_mac_entries(in EthernetAddress addr,
+    in VlanID vlan,
+    register<Mac_register_entry> mac_table,
+    out bit<32> i0,
+    out bit<32> i1,
+    out Mac_entry b0,
+    out Mac_entry b1)
+{
+    // Hash Ethernet address in two different buckets.
+    hash_mac_entry(addr, vlan, i0, i1);
+
+    // Fetch each bucket and look for the existing MAC entry.
+    get_mac_entry(mac_table, i0, b0);
+    get_mac_entry(mac_table, i1, b1);
+}
 void put_mac_entry(register<Mac_register_entry> reg,
                    in bit<32> index,
                    in Mac_entry me)
@@ -228,16 +243,11 @@ control SnvsIngress(inout headers hdr,
 
         // Learn source MAC.
         if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)) {
-            // Hash the Ethernet address into two different buckets.
             bit<32> i0;
             bit<32> i1;
-            hash_mac_entry(hdr.eth.src, meta.vlan, i0, i1);
-
-            // Fetch each bucket and look for existing entry.
             Mac_entry b0;
             Mac_entry b1;
-            get_mac_entry(mac_table, i0, b0);
-            get_mac_entry(mac_table, i1, b1);
+            hash_and_get_mac_entries(hdr.eth.src, meta.vlan, mac_table, i0, i1, b0, b1);
             if (!(b0.addr != hdr.eth.src || b0.vlan != meta.vlan) &&
                 !(b1.addr != hdr.eth.src || b1.vlan != meta.vlan)) {
                 // No match.  Replace one entry randomly.
@@ -253,16 +263,11 @@ control SnvsIngress(inout headers hdr,
         // Lookup destination MAC.
         PortID output = FLOOD_PORT;
         if (!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)) {
-            // Hash the Ethernet address into two different buckets.
             bit<32> i0;
             bit<32> i1;
-            hash_mac_entry(hdr.eth.dst, meta.vlan, i0, i1);
-
-            // Fetch each bucket and look for existing entry.
             Mac_entry b0;
             Mac_entry b1;
-            get_mac_entry(mac_table, i0, b0);
-            get_mac_entry(mac_table, i1, b1);
+            hash_and_get_mac_entries(hdr.eth.dst, meta.vlan, mac_table, i0, i1, b0, b1);
             if (b0.addr == hdr.eth.dst && b0.vlan == meta.vlan) {
                 output = b0.port;
             } else if (b1.addr == hdr.eth.dst && b1.vlan == meta.vlan) {
