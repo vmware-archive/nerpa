@@ -19,9 +19,10 @@ SOFTWARE.
 */
 
 /*
-This DDlog program imports two sets of generated relations: input from ovsdb and output from P4.
-The program defines additional relations to bridge differences in types between ovsdb and P4.
-The program defines all needed rules for input and output relations.
+This DDlog program serves as a control plane for the program in snvs.p4.
+- Imports two sets of generated relations: input from ovsdb and output from P4.
+- Defines additional relations to bridge differences in types between ovsdb and P4.
+- Defines all needed rules.
 */
 
 import snvs_dp as snvs_dp
