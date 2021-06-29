@@ -38,6 +38,27 @@ cd $NERPA_DIR/nerpa_controller
 cargo build
 ```
 
+6. Build `ovsdb-sys`, the crate with bindings to the Open vSwitch database (ovsdb).
+
+Include the `openvswitch/ovs` [codebase](https://github.com/openvswitch/ovs) using `git submodule`:
+```
+cd $NERPA_DIR/ovsdb-sys
+git submodule update --init
+cd ovs
+```
+
+Within the crate's `ovs` subdirectory, build and install Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
+
+Build the crate:
+```
+cargo build
+```
+
+Confirm the bindings built correctly by running the tests:
+```
+cargo test
+```
+
 ### Test
 1. Set the environmental variable `NERPA_DEPS` to the directory containing Nerpa dependencies, including `behavioral-model`. In other words, the `simple_switch_grpc` binary should have the following path: `$NERPA_DEPS/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc`.
 
