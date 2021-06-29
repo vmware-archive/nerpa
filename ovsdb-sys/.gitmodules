@@ -1,0 +1,3 @@
+[submodule "ovn"]
+	path = ovn
+	url = https://github.com/ovn-org/ovn.git

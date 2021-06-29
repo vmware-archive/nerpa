@@ -11,7 +11,7 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 ## Installation
 ### Build
 0. Clone this repository. We will call its top-level directory  `$NERPA_DIR`. I would recommend using a fresh Ubuntu 18.04 VM for painless P4 installation.
-1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation). This codebase used version [v0.36.0](https://github.com/vmware/differential-datalog/releases/tag/v0.36.0).
+1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation). This codebase used version [v0.38.0](https://github.com/vmware/differential-datalog/releases/tag/v0.38.0). At the time of writing, that version is the latest supported by Open vSwitch, which we use for the management plane.
 2. Install P4 using these [installation instructions](https://github.com/jafingerhut/p4-guide/blob/master/bin/README-install-troubleshooting.md#quick-instructions-for-successful-install-script-run). We used the install script `install-p4dev-v2.sh`. It is much more usable than the P4 README installation, and clones all necessary repositories and installs dependencies.
 
 For better organization, create a dedicated directory for these dependencies, outside your clone of this repository. Run the installation script within this directory. Set `$NERPA_DEPS` equal to this directory's path.
@@ -34,6 +34,22 @@ cargo install grpcio-compiler
 5. Build the intermediate controller program's crate.
 ```
 cd $NERPA_DIR/nerpa_controller
+cargo build
+```
+
+6. Build `ovsdb-sys`, the crate with bindings to the Open vSwitch database (ovsdb).
+
+Include the `openvswitch/ovs` [codebase](https://github.com/openvswitch/ovs) using `git submodule`:
+```
+cd $NERPA_DIR/ovsdb-sys
+git submodule update --init
+cd ovs
+```
+
+Within the crate's `ovs` subdirectory, build and install Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
+
+Build the crate:
+```
 cargo build
 ```
 
