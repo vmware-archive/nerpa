@@ -52,7 +52,7 @@ use std::str::FromStr;
 use std::string::String;
 use std::sync::Arc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct SourceLocation {
     file: String,
     line: i32,
@@ -82,7 +82,7 @@ impl Display for SourceLocation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Expression {
     String(String),
     Integer(i64),
@@ -112,7 +112,7 @@ impl Display for Expression {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KeyValuePair(String, Expression);
 
 impl From<&p4types::KeyValuePair> for KeyValuePair {
@@ -128,7 +128,7 @@ impl Display for KeyValuePair {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum AnnotationValue {
     Empty,
     Unstructured(String),
@@ -159,7 +159,7 @@ impl From<&p4types::StructuredAnnotation> for AnnotationValue {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Annotations(HashMap<String, (Option<SourceLocation>, AnnotationValue)>);
 
 fn parse_annotations<'a, T, U, V>(
@@ -252,7 +252,7 @@ impl Display for Annotations {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 struct Documentation {
     brief: String,
     description: String,
@@ -267,10 +267,10 @@ impl From<&p4info::Documentation> for Documentation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Preamble {
     id: u32,
-    name: String,
+    pub name: String,
     alias: String,
     annotations: Annotations,
     doc: Documentation,
@@ -292,6 +292,7 @@ impl From<&p4info::Preamble> for Preamble {
     }
 }
 
+#[derive(Clone)]
 enum MatchType {
     Unspecified,
     Exact,
@@ -300,6 +301,14 @@ enum MatchType {
     Range,
     Optional,
     Other(String),
+}
+
+use std::fmt::Debug;
+
+impl Debug for MatchType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl Display for MatchType {
@@ -318,11 +327,12 @@ impl Display for MatchType {
     }
 }
 
-struct MatchField {
+#[derive(Clone, Debug)]
+pub struct MatchField {
     // The protobuf representation of MatchField doesn't include a
     // Preamble but it includes everything in the preamble except
     // 'alias'.  It seems more uniform to just use Preamble here.
-    preamble: Preamble,
+    pub preamble: Preamble,
     bit_width: i32,
     match_type: MatchType,
     type_name: Option<String>,
@@ -430,12 +440,12 @@ fn parse_type_name(pnto: Option<&p4types::P4NamedType>) -> Option<String> {
     pnto.map(|pnt| pnt.name.clone())
 }
 
-#[derive(Clone)]
-struct Param {
+#[derive(Clone, Debug, Default)]
+pub struct Param {
     // The protobuf representation of Param doesn't include a
     // Preamble but it includes everything in the preamble except
     // 'alias'.  It seems more uniform to just use Preamble here.
-    preamble: Preamble,
+    pub preamble: Preamble,
     bit_width: i32,
     type_name: Option<String>,
 }
@@ -476,10 +486,10 @@ impl Param {
     }
 }
 
-#[derive(Clone)]
-struct Action {
-    preamble: Preamble,
-    params: Vec<Param>,
+#[derive(Clone, Debug, Default)]
+pub struct Action {
+    pub preamble: Preamble,
+    pub params: Vec<Param>,
 }
 
 impl From<&p4info::Action> for Action {
@@ -523,8 +533,9 @@ impl Display for Action {
     }
 }
 
-struct ActionRef {
-    action: Action,
+#[derive(Clone, Debug, Default)]
+pub struct ActionRef {
+    pub action: Action,
     may_be_default: bool, // Allowed as the default action?
     may_be_entry: bool,   // Allowed as an entry's action?
     annotations: Annotations,
@@ -560,10 +571,11 @@ impl Display for ActionRef {
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct Table {
-    preamble: Preamble,
-    match_fields: Vec<MatchField>,
-    actions: Vec<ActionRef>,
+    pub preamble: Preamble,
+    pub match_fields: Vec<MatchField>,
+    pub actions: Vec<ActionRef>,
     const_default_action: Option<Action>,
     //action_profile: Option<ActionProfile>,
     //direct_counter: Option<DirectCounter>,
@@ -837,6 +849,7 @@ pub fn build_table_entry(
     action_name: &str,
     params_values: &HashMap<String, u16>,
     match_fields_map: &HashMap<String, u16>,
+    priority: i32,
     device_id: u64,
     target: &str,
     client: &P4RuntimeClient
@@ -883,6 +896,7 @@ pub fn build_table_entry(
     let mut table_entry = TableEntry::new();
     table_entry.set_table_id(table.preamble.id);
     table_entry.set_action(table_action);
+    table_entry.set_priority(priority);
     table_entry.set_field_match(field_matches);
 
     Ok(table_entry)
@@ -894,6 +908,7 @@ pub fn build_table_entry_update(
     action_name: &str,
     params_values: &HashMap<String, u16>,
     match_fields_map: &HashMap<String, u16>,
+    priority: i32,
     device_id: u64,
     target: &str,
     client: &P4RuntimeClient,
@@ -903,6 +918,7 @@ pub fn build_table_entry_update(
         action_name,
         params_values,
         match_fields_map,
+        priority,
         device_id,
         target,
         client,

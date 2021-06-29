@@ -15,17 +15,21 @@ path = "src/nerpa_controller/main.rs"
 
 [dependencies]
 byteorder = "1.4.2"
-differential_datalog = {path = "../nerpa_controlplane/nerpa_ddlog/differential_datalog"}
+differential_datalog = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/differential_datalog"}
 futures = "0.3.12"
 grpcio = "0.8.0"
 itertools = "0.10.0"
-nerpa = {path = "../nerpa_controlplane/nerpa_ddlog"}
+num-traits = "0.2.14"
 p4ext = {path = "../p4ext"}
 proto = {path = "../proto"}
 protobuf = "2.22.0"
 protobuf-codegen = "2.22.0"
+snvs = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog"}
 tokio = { version = "1.2.0", features = ["full"] }
-types = {path = "../nerpa_controlplane/nerpa_ddlog/types"}
+types = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types"}
+types__snvs_dp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/snvs_dp"}
+types__snvs_mp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/snvs_mp"}
+
 
 [build-dependencies]
 protoc-grpcio = "3.0.0"
