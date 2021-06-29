@@ -53,6 +53,11 @@ Build the crate:
 cargo build
 ```
 
+Confirm the bindings built correctly by running the tests:
+```
+cargo test
+```
+
 ### Test
 1. Set the environmental variable `NERPA_DEPS` to the directory containing Nerpa dependencies, including `behavioral-model`. In other words, the `simple_switch_grpc` binary should have the following path: `$NERPA_DEPS/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc`.
 
