@@ -13,3 +13,6 @@
 [submodule "ovsdb-sys/ovs"]
 	path = ovsdb-sys/ovs
 	url = git@github.com:openvswitch/ovs.git
+[submodule "ovsdb-sys/openssl"]
+	path = ovsdb-sys/openssl
+	url = https://github.com/openssl/openssl
