@@ -25,7 +25,7 @@ extern crate protobuf;
 // The auto-generated crate `snvs_ddlog` declares the `HDDlog` type.
 // This serves as a reference to a running DDlog program.
 // It implements `trait differential_datalog::DDlog`.
-use snvs_ddlog::api::HDDlog;
+use differential_datalog::api::HDDlog;
 
 // `differential_datalog` contains the DDlog runtime copied to each generated workspace.
 use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
@@ -49,9 +49,9 @@ pub struct Controller {
 
 impl Controller {
     pub fn new() -> Result<Controller, String> {
-        let (hddlog, _init_state) = HDDlog::run(1, false)?;
+        let (hddlog, _) = snvs_ddlog::run(1, false)?;
         
-        Ok(Self{hddlog})
+        Ok(Self{hddlog: hddlog})
     }
 
     pub fn stop(&mut self) {
