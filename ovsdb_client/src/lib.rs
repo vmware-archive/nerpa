@@ -18,34 +18,36 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-extern crate bindgen;
-extern crate cc;
+extern crate ovsdb_sys;
 
-use std::env;
-use std::path::PathBuf;
+use differential_datalog::api::HDDlog;
 
-fn main() {
-    println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-changed=build.rs");
+use differential_datalog::ddval::DDValue;
+use differential_datalog::DeltaMap;
 
-    let bindings = bindgen::Builder::default()
-        .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .generate()
-        .expect("Unable to generate bindings!");
-    
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
-    
-    println!("cargo:rustc-link-search=."); 
-    println!("cargo:rustc-link-search=./ovs/lib/");
-    println!("cargo:rustc-link-search=/usr/local/lib/");
 
-    println!("cargo:rustc-link-lib=openvswitch");
-    println!("cargo:rustc-link-lib=unbound");
-    println!("cargo:rustc-link-lib=unwind");
-    println!("cargo:rustc-link-lib=ssl");
-    println!("cargo:rustc-link-lib=crypto");
+// TODO: Fill out Context with necessary fields.
+pub struct Context {}
+
+impl Context {
+    pub fn run(&mut self) {
+        unsafe {
+            let cs : *mut ovsdb_sys::ovsdb_cs = std::ptr::null_mut();
+            let events : *mut ovsdb_sys::ovs_list = std::ptr::null_mut();
+
+            println!("This should cause a segfault");
+            ovsdb_sys::ovsdb_cs_run(cs, events);
+        }
+    }
+}
+
+
+// TODO: Loop over this function.
+pub fn export_input_from_ovsdb(
+    mut ddlog: &HDDlog
+) -> Option<DeltaMap<DDValue>> {
+    let mut ctx = Context{};
+    ctx.run();
+
+    None
 }

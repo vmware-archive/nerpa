@@ -54,6 +54,10 @@ impl Controller {
         Ok(Self{hddlog: hddlog})
     }
 
+    pub fn get_ddlog(&mut self) -> &mut HDDlog {
+        &mut self.hddlog
+    } 
+
     pub fn stop(&mut self) {
         self.hddlog.stop().unwrap();
     }

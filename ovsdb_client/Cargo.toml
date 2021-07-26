@@ -1,12 +1,10 @@
 [package]
-name = "ovsdb-sys"
+name = "ovsdb_client"
 version = "0.1.0"
-build = "build.rs"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
-[build-dependencies]
-bindgen= "0.57.0"
+differential_datalog = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/differential_datalog"}
+ovsdb-sys = {path = "../ovsdb-sys"}
