@@ -7,4 +7,5 @@ edition = "2018"
 
 [dependencies]
 differential_datalog = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/differential_datalog"}
+libc = "0.2.98"
 ovsdb-sys = {path = "../ovsdb-sys"}

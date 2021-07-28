@@ -19,6 +19,7 @@ differential_datalog = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/differ
 futures = "0.3.12"
 grpcio = "0.8.0"
 itertools = "0.10.0"
+libc = "0.2.98"
 num-traits = "0.2.14"
 ovsdb_client = {path = "../ovsdb_client"}
 p4ext = {path = "../p4ext"}
