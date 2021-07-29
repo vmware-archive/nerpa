@@ -64,7 +64,7 @@ pub struct Context {
     prefix: String,
     input_relations: Vec<String>,
     // output_relations: Vec<String>,
-    //output_only_relations: Vec<String>,
+    output_only_relations: Vec<String>,
 
     /* OVSDB connection. */
     // cs: ovsdb_sys::ovsdb_cs,
@@ -73,7 +73,7 @@ pub struct Context {
     state: Option<ConnectionState>,
 
     /* Database info. */
-    // db_name: String,
+    db_name: String,
     output_only_data: Option<ovsdb_sys::json>,
     // lock_name: Option<String>, /* Optional name of lock needed. */
     // paused: bool,
@@ -248,7 +248,7 @@ impl Context {
         Ok(())
     }
 
-    unsafe fn ddlog_cleared(&mut self) -> bool {
+    fn ddlog_cleared(&mut self) -> bool {
         let mut num_failures = 0;
         for input_relation in self.input_relations.iter() {
             let table = format!("{}{}", self.prefix, input_relation);
@@ -263,8 +263,59 @@ impl Context {
         num_failures == 0
     }
 
+    /* Sends the database server a request for all row UUIDs in output-only tables. */
+    // TODO: Change return to Result.
     pub unsafe fn send_output_only_data_request(&mut self) {
-        // TODO: Implement.
+        if self.output_only_relations.len() > 0 {
+            // TODO: json_destroy(ctx->output_only_data)
+            self.output_only_data = None;
+
+            let ops = ovsdb_sys::json_array_create_1(
+                ovsdb_sys::json_string_create(db_cs.as_ptr()));
+            
+            for output_only_rel in self.output_only_relations.iter() {
+                let op = ovsdb_sys::json_object_create();
+                
+                let op_s = ffi::CString::new("op").unwrap();
+                let select_s = ffi::CString::new("select").unwrap();
+                ovsdb_sys::json_object_put_string(
+                    op,
+                    op_s.as_ptr(),
+                    select_s.as_ptr(),
+                );
+
+                let table_s = ffi::CString::new("table").unwrap();
+                let oor_s = ffi::CString::new(output_only_rel.as_str()).unwrap();
+                ovsdb_sys::json_object_put_string(
+                    op,
+                    table_s.as_ptr(),
+                    oor_s.as_ptr(),
+                );
+
+                let columns_s = ffi::CString::new("columns").unwrap();
+                let uuid_s = ffi::CString::new("_uuid").unwrap();
+                let uuid_json = ovsdb_sys::json_string_create(uuid_s.as_ptr());                ovsdb_sys::json_object_put(
+                    op,
+                    columns_s,
+                    ovsdb_sys::json_array_create_1(uuid_json),
+                );
+
+                let where_s = ffi::CString::new("where").unwrap();
+                ovsdb_sys::json_object_put(
+                    op,
+                    where_s.as_ptr(),
+                    ovsdb_sys::json_array_create_empty(),
+                );
+
+                ovsdb_sys::json_array_add(ops, op);
+            }
+
+            self.state = Some(ConnectionState::OutputOnlyDataRequested);
+
+            // TODO: self.request_id = ovsdb_cs_send_transaction(ctx->cs, ops);
+        } else {
+            self.state = Some(ConnectionState::Update);
+        }
     }
 
     // TODO: Streamline pointer getters.
@@ -310,12 +361,14 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     // TODO: Write proper initializer function.
     let mut ctx = Context {
         prog: prog,
-        prefix: String::new(), // Properly initialize.
+        prefix: String::new(),
         input_relations: Vec::<String>::new(),
+        output_only_relations: Vec::<String>::new(),
         cs: None,
         request_id: None,
         state: None,
         output_only_data: None,
+        db_name: String::new(),
     };
     
     unsafe {
