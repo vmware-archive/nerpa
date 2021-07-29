@@ -413,6 +413,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ddlog_ovsdb_adapter"
+version = "0.1.0"
+dependencies = [
+ "differential_datalog",
+ "num",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "ddlog_rt"
 version = "0.1.0"
 dependencies = [
@@ -1217,6 +1227,7 @@ dependencies = [
  "differential_datalog",
  "libc",
  "ovsdb-sys",
+ "snvs",
 ]
 
 [[package]]
@@ -1721,6 +1732,7 @@ dependencies = [
  "crossbeam-channel",
  "ddlog_bigint",
  "ddlog_log",
+ "ddlog_ovsdb_adapter",
  "ddlog_rt",
  "ddlog_std",
  "debug",

@@ -38,7 +38,7 @@ pub async fn main() {
     let mut nerpa = Controller::new().unwrap();
 
     // TODO: Connect the OVS database management plane to the controller.
-    ovsdb_client::export_input_from_ovsdb(nerpa.get_ddlog());
+    ovsdb_client::export_input_from_ovsdb();
 
     // Add input to DDlog program.
     let updates = vec![

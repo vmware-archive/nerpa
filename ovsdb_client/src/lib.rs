@@ -18,13 +18,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+extern crate ddlog_ovsdb_adapter;
 extern crate libc;
 extern crate ovsdb_sys;
+extern crate snvs_ddlog;
 
 use differential_datalog::api::HDDlog;
 
 use differential_datalog::ddval::DDValue;
+use differential_datalog::DDlog;
+use differential_datalog::DDlogDynamic;
 use differential_datalog::DeltaMap;
+use differential_datalog::program::Update;
 
 /* Aliases for types in the ovsdb-sys bindings. */
 type UpdateEvent = ovsdb_sys::ovsdb_cs_event__bindgen_ty_1_ovsdb_cs_update_event;
@@ -42,6 +47,7 @@ enum ConnectionState {
 
 // TODO: Fill out Context with necessary fields.
 pub struct Context {
+    prog: HDDlog,
     // ddlog_prog ddlog
     // ddlog_delta *delta /* Accumulated delta to send to OVSDB. */
 
@@ -50,7 +56,7 @@ pub struct Context {
      * The '*_relations' vectors contain DDlog relation names.
      * 'prefix' is the prefix for the DDlog module containing relations. */
     
-    // prefix: String,
+    prefix: String,
     // input_relations: Vec<String>,
     // output_relations: Vec<String>,
     //output_only_relations: Vec<String>,
@@ -129,16 +135,8 @@ impl Context {
 
         if self.state == Some(ConnectionState::Initial)
         && ovsdb_sys::ovsdb_cs_may_send_transaction(cs_ptr) {
-            /* TODO: self.send_output_only_data_request() */
-           }
-    }
-
-    pub unsafe fn parse_updates(&mut self, updates: Vec<ovsdb_sys::ovsdb_cs_event>) {
-        if updates.len() == 0 {
-            return;
+            self.send_output_only_data_request();
         }
-
-        // TODO: Implement.
     }
 
     pub unsafe fn process_txn_reply(
@@ -164,7 +162,7 @@ impl Context {
         if (*reply).type_ == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
             let reply_str = ovsdb_sys::jsonrpc_msg_to_string(reply);
             println!("received database error: {:#?}", reply_str);
-            // TODO: Make this work. libc::free(reply_str);
+            // TODO: We need to free the external pointer. libc::free(reply_str);
 
             /* 'ovsdb_cs_force_reconnect' does not check for a null pointer. */
             let mut cs_ptr = self.get_cs_mut_ptr();
@@ -202,6 +200,66 @@ impl Context {
         }
     }
 
+    pub unsafe fn parse_updates(&mut self, updates_v: Vec<ovsdb_sys::ovsdb_cs_event>) -> Result<(), String> {
+        if updates_v.len() == 0 {
+            return Ok(());
+        }
+
+        self.prog.transaction_start()?;
+
+        for update in updates_v {
+            if update.type_ != ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE {
+                continue;
+            }
+
+            let update_event = update.__bindgen_anon_1.update;
+            if update_event.clear /* && TODO !self.ddlog_cleared() */ {
+                self.prog.transaction_rollback()?;
+            }
+
+            let updates_cp = ovsdb_sys::json_to_string(update_event.table_updates, 0);
+            let updates_s: &str = ""; // TODO: Convert updates_cp to &str.
+
+            // Convert prefix into a *const c_char.
+            // TODO: There must be an easier way to do this.
+            // let prefix_cs = ffi::CString::new(self.prefix.as_str()).unwrap();
+            // let prefix_cp = prefix_cs.as_ptr() as *const raw::c_char;
+
+            // ovsdb_api::apply_updates(self.prog, prefix_cp, updates_cp);
+
+            let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str(self.prefix.as_str(), updates_s)?;
+            let updates: Result<Vec<Update<DDValue>>, String> = commands
+                .iter()
+                .map(|c| self.prog.convert_update_command(c))
+                .collect();
+
+            match self.prog.apply_updates(&mut updates?.into_iter()) {
+                Ok(_) => {},
+                Err(e) => {
+                    self.prog.transaction_rollback()?;
+                }
+            }
+
+            // TODO: free(updates_cp);
+        }
+
+        /* Commit changes to DDlog. */
+        match self.prog.transaction_commit() {
+            Ok(_) => {},
+            Err(e) => {
+                self.prog.transaction_rollback()?;
+            }
+        }
+
+        // TODO: Poll immediate wake.
+
+        Ok(())
+    }
+
+    pub unsafe fn send_output_only_data_request(&mut self) {
+        // TODO: Implement.
+    }
+
     // TODO: Streamline pointer getters.
     // It may be cleaner to unify these getter methods using a general Option<T> function.
 
@@ -235,13 +293,19 @@ impl Context {
 
 
 // TODO: Loop over this function.
-pub fn export_input_from_ovsdb(
-    mut _ddlog: &HDDlog
-) -> Option<DeltaMap<DDValue>> {
+pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
+    // Ideally, the handle to the running program would be passed from the controller. Creating a new one here is suboptimal.
+    let (prog, init_state) = match snvs_ddlog::run(1, false).ok() {
+        Some((p, is)) => (p, is),
+        None => return None,
+    };
+
     // TODO: Write proper initializer function.
     let mut ctx = Context {
+        prog: prog,
         cs: None,
         request_id: None,
+        prefix: String::new(), // Properly initialize.
         state: None,
         output_only_data: None,
     };
