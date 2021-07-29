@@ -23,6 +23,11 @@ extern crate libc;
 extern crate ovsdb_sys;
 extern crate snvs_ddlog;
 
+use std::{
+    ffi,
+    os::raw,
+};
+
 use differential_datalog::api::HDDlog;
 
 use differential_datalog::ddval::DDValue;
@@ -57,7 +62,7 @@ pub struct Context {
      * 'prefix' is the prefix for the DDlog module containing relations. */
     
     prefix: String,
-    // input_relations: Vec<String>,
+    input_relations: Vec<String>,
     // output_relations: Vec<String>,
     //output_only_relations: Vec<String>,
 
@@ -213,19 +218,12 @@ impl Context {
             }
 
             let update_event = update.__bindgen_anon_1.update;
-            if update_event.clear /* && TODO !self.ddlog_cleared() */ {
+            if update_event.clear && self.ddlog_cleared() {
                 self.prog.transaction_rollback()?;
             }
 
-            let updates_cp = ovsdb_sys::json_to_string(update_event.table_updates, 0);
-            let updates_s: &str = ""; // TODO: Convert updates_cp to &str.
-
-            // Convert prefix into a *const c_char.
-            // TODO: There must be an easier way to do this.
-            // let prefix_cs = ffi::CString::new(self.prefix.as_str()).unwrap();
-            // let prefix_cp = prefix_cs.as_ptr() as *const raw::c_char;
-
-            // ovsdb_api::apply_updates(self.prog, prefix_cp, updates_cp);
+            let updates_buf: *const raw::c_char = ovsdb_sys::json_to_string(update_event.table_updates, 0);
+            let updates_s: &str = ffi::CStr::from_ptr(updates_buf).to_str().unwrap();
 
             let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str(self.prefix.as_str(), updates_s)?;
             let updates: Result<Vec<Update<DDValue>>, String> = commands
@@ -233,27 +231,36 @@ impl Context {
                 .map(|c| self.prog.convert_update_command(c))
                 .collect();
 
-            match self.prog.apply_updates(&mut updates?.into_iter()) {
-                Ok(_) => {},
-                Err(e) => {
-                    self.prog.transaction_rollback()?;
-                }
-            }
-
+            self.prog.apply_updates(&mut updates?.into_iter()).unwrap_or_else(|e| {
+                self.prog.transaction_rollback();
+            });
+            
             // TODO: free(updates_cp);
         }
 
         /* Commit changes to DDlog. */
-        match self.prog.transaction_commit() {
-            Ok(_) => {},
-            Err(e) => {
-                self.prog.transaction_rollback()?;
-            }
-        }
+        self.prog.transaction_commit().unwrap_or_else(|e| {
+            self.prog.transaction_rollback();
+        });
 
         // TODO: Poll immediate wake.
 
         Ok(())
+    }
+
+    unsafe fn ddlog_cleared(&mut self) -> bool {
+        let mut num_failures = 0;
+        for input_relation in self.input_relations.iter() {
+            let table = format!("{}{}", self.prefix, input_relation);
+            let tid = match self.prog.inventory.get_table_id(table.as_str()) {
+                Ok(relid) => relid,
+                Err(_) => 0, // TODO: max value of the type of the argument to clear_relation
+            };
+
+            num_failures += self.prog.clear_relation(tid).map(|_| 0).unwrap_or_else(|e|{1});
+        }
+
+        num_failures == 0
     }
 
     pub unsafe fn send_output_only_data_request(&mut self) {
@@ -303,9 +310,10 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     // TODO: Write proper initializer function.
     let mut ctx = Context {
         prog: prog,
+        prefix: String::new(), // Properly initialize.
+        input_relations: Vec::<String>::new(),
         cs: None,
         request_id: None,
-        prefix: String::new(), // Properly initialize.
         state: None,
         output_only_data: None,
     };
