@@ -23,6 +23,7 @@ extern crate libc;
 extern crate ovsdb_sys;
 extern crate snvs_ddlog;
 
+use std::convert::TryFrom;
 use std::{
     ffi,
     os::raw,
@@ -34,7 +35,12 @@ use differential_datalog::ddval::DDValue;
 use differential_datalog::DDlog;
 use differential_datalog::DDlogDynamic;
 use differential_datalog::DeltaMap;
-use differential_datalog::program::Update;
+use differential_datalog::program::{RelId, Update};
+use differential_datalog::record::IntoRecord;
+
+use ddlog_ovsdb_adapter::record_into_insert_str;
+
+use snvs_ddlog::Relations;
 
 /* Aliases for types in the ovsdb-sys bindings. */
 type UpdateEvent = ovsdb_sys::ovsdb_cs_event__bindgen_ty_1_ovsdb_cs_update_event;
@@ -53,8 +59,7 @@ enum ConnectionState {
 // TODO: Fill out Context with necessary fields.
 pub struct Context {
     prog: HDDlog,
-    // ddlog_prog ddlog
-    // ddlog_delta *delta /* Accumulated delta to send to OVSDB. */
+    delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
 
     /* Database info.
      *
@@ -63,7 +68,7 @@ pub struct Context {
     
     prefix: String,
     input_relations: Vec<String>,
-    // output_relations: Vec<String>,
+    output_relations: Vec<String>,
     output_only_relations: Vec<String>,
 
     /* OVSDB connection. */
@@ -144,6 +149,50 @@ impl Context {
         }
     }
 
+    /* Pass the changes from the Context to its database server. */
+    pub unsafe fn send_deltas(&mut self) {
+        if self.request_id.is_some()
+        || !ovsdb_sys::ovsdb_cs_may_send_transaction(self.get_cs_mut_ptr()) {
+            return;
+        }
+
+        let opt_ops_s = self.get_database_ops();
+        if opt_ops_s.is_none() {
+            return;
+        }
+
+        let ops_s = opt_ops_s.unwrap();
+        let ops_cs = ffi::CString::new(ops_s.as_str()).unwrap();
+        let ops = ovsdb_sys::json_from_string(ops_cs.as_ptr());
+
+
+        let op_cs = ffi::CString::new("op").unwrap();
+        let comment_cs = ffi::CString::new("comment").unwrap();
+        let comment = ovsdb_sys::json_object_create();
+        ovsdb_sys::json_object_put_string(
+            comment,
+            op_cs.as_ptr(),
+            comment_cs.as_ptr(),
+        );
+
+        // TODO: Determine proper name for the comment.
+        let name_cs = ffi::CString::new("ovn-northd-ddlog").unwrap();
+        ovsdb_sys::json_object_put_string(
+            comment,
+            comment_cs.as_ptr(),
+            name_cs.as_ptr(),
+        );
+
+        ovsdb_sys::json_array_add(ops, comment);
+
+        let tx_request_id = ovsdb_sys::ovsdb_cs_send_transaction(self.get_cs_mut_ptr(), ops);
+        if tx_request_id.is_null() {
+            self.request_id = None;
+        } else {
+            self.request_id = Some(*tx_request_id);
+        }
+    }
+
     pub unsafe fn process_txn_reply(
         &mut self,
         reply: *mut ovsdb_sys::jsonrpc_msg,
@@ -205,7 +254,10 @@ impl Context {
         }
     }
 
-    pub unsafe fn parse_updates(&mut self, updates_v: Vec<ovsdb_sys::ovsdb_cs_event>) -> Result<(), String> {
+    pub unsafe fn parse_updates(
+        &mut self,
+        updates_v: Vec<ovsdb_sys::ovsdb_cs_event>,
+    ) -> Result<(), String> {
         if updates_v.len() == 0 {
             return Ok(());
         }
@@ -270,8 +322,9 @@ impl Context {
             // TODO: json_destroy(ctx->output_only_data)
             self.output_only_data = None;
 
+            let db_s = ffi::CString::new(self.db_name.as_str()).unwrap();
             let ops = ovsdb_sys::json_array_create_1(
-                ovsdb_sys::json_string_create(db_cs.as_ptr()));
+                ovsdb_sys::json_string_create(db_s.as_ptr()));
             
             for output_only_rel in self.output_only_relations.iter() {
                 let op = ovsdb_sys::json_object_create();
@@ -296,7 +349,7 @@ impl Context {
                 let uuid_s = ffi::CString::new("_uuid").unwrap();
                 let uuid_json = ovsdb_sys::json_string_create(uuid_s.as_ptr());                ovsdb_sys::json_object_put(
                     op,
-                    columns_s,
+                    columns_s.as_ptr(),
                     ovsdb_sys::json_array_create_1(uuid_json),
                 );
 
@@ -316,6 +369,110 @@ impl Context {
         } else {
             self.state = Some(ConnectionState::Update);
         }
+    }
+
+    fn get_database_ops(&mut self) -> Option<String> {
+        let mut ops_s = String::new();
+        ops_s.push('[');
+        // TODO json_string_escape(ctx->db_name, &ops_s);
+        ops_s.push(',');
+        let start_len = ops_s.len();
+
+        ops_s.push_str(self.ddlog_table_update_deltas().unwrap().as_str());
+
+        // TODO: Implement the output-only data optimization.
+
+        ops_s.push_str(self.ddlog_table_update_output().as_str());
+
+        // If additional operations were added, we replace the final ',' with a ']' and return.
+        if ops_s.len() > start_len {
+            ops_s.pop();
+            ops_s.push(']');
+
+            return Some(ops_s);
+        }
+
+        None
+    }
+
+    fn ddlog_table_update_deltas(&mut self) -> Result<String, String> {
+        let mut updates = String::new();
+
+        for table in self.output_relations.iter() {
+            let plus_table_name = format!("{}::DeltaPlus_{}", self.db_name, table);
+            let minus_table_name = format!("{}::DeltaMinus_{}", self.db_name, table);
+            let upd_table_name = format!("{}::Update_{}", self.db_name, table);
+
+            /* DeltaPlus */
+            let plus_cmds: Result<Vec<String>, String> = {
+                let plus_table_id = Relations::try_from(plus_table_name.as_str())
+                    .map_err(|()| format!("unknown table {}", plus_table_name))?;
+
+                self.delta.try_get_rel(plus_table_id as RelId).map_or_else(
+                    || Ok(vec![]),
+                    |rel| {
+                        rel.iter()
+                            .map(|(v, w)| {
+                                assert!(*w == 1 );
+                                ddlog_ovsdb_adapter::record_into_insert_str(v.clone().into_record(), table)
+                            })
+                            .collect()
+                    },
+                )
+            };
+            let plus_cmds = plus_cmds?;
+            updates.push_str(plus_cmds.join(",").as_str());
+
+            /* DeltaMinus */
+            let minus_cmds: Result<Vec<String>, String> = {
+                match Relations::try_from(minus_table_name.as_str()) {
+                    Ok(minus_table_id) => self.delta.try_get_rel(minus_table_id as RelId).map_or_else(
+                        || Ok(vec![]),
+                        |rel| {
+                            rel.iter()
+                                .map(|(v, w)| {
+                                    assert!(*w == 1);
+                                    ddlog_ovsdb_adapter::record_into_delete_str(v.clone().into_record(), table)
+                                })
+                                .collect()
+                        },
+                    ),
+                    Err(()) => Ok(vec![]),
+                }
+            };
+            let mut minus_cmds = minus_cmds?;
+            updates.push_str(minus_cmds.join(",").as_str());
+            
+            /* Update */
+            let upd_cmds: Result<Vec<String>, String> = {
+                match Relations::try_from(upd_table_name.as_str()) {
+                    Ok(upd_table_id) => self.delta.try_get_rel(upd_table_id as RelId).map_or_else(
+                        || Ok(vec![]),
+                        |rel| {
+                            rel.iter()
+                                .map(|(v, w)| {
+                                    assert!(*w == 1);
+                                    ddlog_ovsdb_adapter::record_into_update_str(v.clone().into_record(), table)
+                                })
+                                .collect()
+                        },
+                    ),
+                    Err(()) => Ok(vec![]),
+                }
+            };
+            let mut upd_cmds = upd_cmds?;
+            updates.push_str(upd_cmds.join(",").as_str());
+
+            updates.push(',');
+        }
+
+        Ok(updates)
+    }
+    
+    fn ddlog_table_update_output(&mut self) -> String {
+        let updates = String::new();
+        // TODO implement
+        updates
     }
 
     // TODO: Streamline pointer getters.
@@ -353,7 +510,7 @@ impl Context {
 // TODO: Loop over this function.
 pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     // Ideally, the handle to the running program would be passed from the controller. Creating a new one here is suboptimal.
-    let (prog, init_state) = match snvs_ddlog::run(1, false).ok() {
+    let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
         Some((p, is)) => (p, is),
         None => return None,
     };
@@ -361,8 +518,10 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     // TODO: Write proper initializer function.
     let mut ctx = Context {
         prog: prog,
+        delta: delta,
         prefix: String::new(),
         input_relations: Vec::<String>::new(),
+        output_relations: Vec::<String>::new(),
         output_only_relations: Vec::<String>::new(),
         cs: None,
         request_id: None,
@@ -373,6 +532,7 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     
     unsafe {
         ctx.run();
+        
     }
 
     None
