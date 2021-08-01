@@ -382,7 +382,7 @@ impl Context {
 
         // TODO: Implement the output-only data optimization.
 
-        ops_s.push_str(self.ddlog_table_update_output().as_str());
+        ops_s.push_str(self.ddlog_table_update_output().unwrap().as_str());
 
         // If additional operations were added, we replace the final ',' with a ']' and return.
         if ops_s.len() > start_len {
@@ -469,10 +469,38 @@ impl Context {
         Ok(updates)
     }
     
-    fn ddlog_table_update_output(&mut self) -> String {
-        let updates = String::new();
-        // TODO implement
-        updates
+    fn ddlog_table_update_output(&mut self) -> Result<String, String> {
+        let mut updates = String::new();
+        for table in self.output_only_relations.iter() {
+            let table_name = format!("{}::Out_{}", self.db_name, table);
+
+            /* DeltaPlus */
+            let cmds: Result<Vec<String>, String> = {
+                let table_id = Relations::try_from(table_name.as_str())
+                    .map_err(|()| format!("unknown table {}", table_name))?;
+
+                self.delta.try_get_rel(table_id as RelId).map_or_else(
+                    || Ok(vec![]),
+                    |rel| {
+                        rel.iter()
+                            .map(|(v, w)| {
+                                assert!(*w == 1 || *w == -1);
+                                if (*w == 1) {
+                                    ddlog_ovsdb_adapter::record_into_insert_str(v.clone().into_record(), table)
+                                } else {
+                                    ddlog_ovsdb_adapter::record_into_delete_str(v.clone().into_record(), table)
+                                }
+                            })
+                            .collect()
+                    }
+                )
+            };
+
+            let cmds = cmds?;
+            updates.push_str(cmds.join(",").as_str());
+        }
+
+        Ok(updates)
     }
 
     // TODO: Streamline pointer getters.
