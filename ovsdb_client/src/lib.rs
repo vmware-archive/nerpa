@@ -23,6 +23,9 @@ extern crate libc;
 extern crate ovsdb_sys;
 extern crate snvs_ddlog;
 
+#[allow(dead_code)]
+mod ovs_list;
+
 use std::convert::TryFrom;
 use std::{
     ffi,
@@ -38,12 +41,14 @@ use differential_datalog::DeltaMap;
 use differential_datalog::program::{RelId, Update};
 use differential_datalog::record::IntoRecord;
 
-use ddlog_ovsdb_adapter::record_into_insert_str;
-
 use snvs_ddlog::Relations;
 
 /* Aliases for types in the ovsdb-sys bindings. */
-type UpdateEvent = ovsdb_sys::ovsdb_cs_event__bindgen_ty_1_ovsdb_cs_update_event;
+type EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type;
+const EVENT_TYPE_RECONNECT: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_RECONNECT;
+const EVENT_TYPE_LOCKED: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_LOCKED;
+const EVENT_TYPE_UPDATE: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE;
+const EVENT_TYPE_TXN_REPLY: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_TXN_REPLY;
 
 #[derive(PartialEq)]
 enum ConnectionState {
@@ -72,7 +77,6 @@ pub struct Context {
     output_only_relations: Vec<String>,
 
     /* OVSDB connection. */
-    // cs: ovsdb_sys::ovsdb_cs,
     cs: Option<ovsdb_sys::ovsdb_cs>,
     request_id: Option<ovsdb_sys::json>, /* JSON request ID for outstanding transaction, if any. */
     state: Option<ConnectionState>,
@@ -80,15 +84,21 @@ pub struct Context {
     /* Database info. */
     db_name: String,
     output_only_data: Option<ovsdb_sys::json>,
-    // lock_name: Option<String>, /* Optional name of lock needed. */
-    // paused: bool,
+
+    /* TODO: As the management plane usage becomes more complex, these fields may become useful.
+    lock_name: Option<String>, /* Optional name of lock needed. */
+    paused: bool, */
 }
 
 impl Context {
-    /* Process a batch of messages from the database server on 'ctx'. */
-    pub unsafe fn run(&mut self) {
+    /// Process a batch of messages from the database server.
+    /// # Safety
+    /// Context.cs must be non-None.
+    pub unsafe fn run(&mut self) -> Result<(), String> {
+        let events = &mut ovs_list::OvsList::default().to_ovs_list();
+
         let cs : *mut ovsdb_sys::ovsdb_cs = std::ptr::null_mut();
-        let events : *mut ovsdb_sys::ovs_list = std::ptr::null_mut();
+        // let events : *mut ovsdb_sys::ovs_list = std::ptr::null_mut();
 
         println!("This should cause a segfault");
         ovsdb_sys::ovsdb_cs_run(cs, events);
@@ -96,20 +106,20 @@ impl Context {
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
         // TODO: Confirm the list pointer is advanced correctly.
-        while !ovs_list_is_empty(events) {
-            let elem = ovs_list_pop_front(events);
-            let event = ovs_list_to_event(elem);
+        while !ovs_list::is_empty(events) {
+            let elem = ovs_list::pop_front(events);
+            let event = ovs_list::to_event(elem);
 
             match event.type_ {
-                ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_RECONNECT => {
+                EVENT_TYPE_RECONNECT => {
                     /* 'json_destroy' checks for a null pointer. */
                     ovsdb_sys::json_destroy(self.get_request_id_mut_ptr());
                     self.state = Some(ConnectionState::Initial);
                 },
-                ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_LOCKED => {
+                EVENT_TYPE_LOCKED => {
                     /* Nothing to do here. */
                 },
-                ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE => {
+                EVENT_TYPE_UPDATE => {
                     if event.__bindgen_anon_1.update.clear {
                         updates = Vec::new();
                     }
@@ -117,8 +127,8 @@ impl Context {
                     updates.push(event);
                     continue;
                 },
-                ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_TXN_REPLY => {
-                    self.process_txn_reply(event.__bindgen_anon_1.txn_reply);
+                EVENT_TYPE_TXN_REPLY => {
+                    self.process_txn_reply(event.__bindgen_anon_1.txn_reply)?;
                 },
                 _ => {
                     println!("received invalid event type from ovsdb");
@@ -129,36 +139,55 @@ impl Context {
             /* TODO: Check if this free is required.
              *
              * Since the event is created within the loop on the Rust side,
-             * I don't think we need to free it. Keeping the TODO because I am not sure.
+             * we may not need to free it. Keeping the TODO because I am not sure.
              
             ovsdb_sys::ovsdb_cs_event_destroy(event); */
         }
 
-        self.parse_updates(updates);
+        self.parse_updates(updates)?;
 
         /* 'ovsdb_cs_may_send_transaction' does not check for null.
          * If the optional client-sync is None, early return. */
         let cs_ptr = self.get_cs_mut_ptr();
         if cs_ptr.is_null() {
-            return;
+            let e = "found empty client-sync after parsing updates";
+            return Err(e.to_string());
         }
 
         if self.state == Some(ConnectionState::Initial)
         && ovsdb_sys::ovsdb_cs_may_send_transaction(cs_ptr) {
-            self.send_output_only_data_request();
+            self.send_output_only_data_request()?;
         }
+
+        Ok(())
     }
 
-    /* Pass the changes from the Context to its database server. */
-    pub unsafe fn send_deltas(&mut self) {
-        if self.request_id.is_some()
-        || !ovsdb_sys::ovsdb_cs_may_send_transaction(self.get_cs_mut_ptr()) {
-            return;
+    /// Pass the changes from the Context to its database server.
+    /// 
+    /// # Safety
+    /// This function is unsafe because it calls external functions. It checks all fields as needed.
+    pub unsafe fn send_deltas(&mut self) -> Result<(), String> {
+        /* 'ovsdb_cs_may_send_transaction' does not check for null.
+         * If the optional client-sync is None, early return. */
+        if self.cs.is_none() {
+            let e = "empty client-sync when sending deltas";
+            return Err(e.to_string());
+        }
+
+        if self.request_id.is_some() {
+            let e = "found non-empty request_id when sending deltas";
+            return Err(e.to_string());
+        }
+
+        let cs_ptr = self.get_cs_mut_ptr();
+        if !ovsdb_sys::ovsdb_cs_may_send_transaction(cs_ptr) {
+            let e = "cannot send transaction to client-sync";
+            return Err(e.to_string());
         }
 
         let opt_ops_s = self.get_database_ops();
         if opt_ops_s.is_none() {
-            return;
+            return Ok(());
         }
 
         let ops_s = opt_ops_s.unwrap();
@@ -185,28 +214,31 @@ impl Context {
 
         ovsdb_sys::json_array_add(ops, comment);
 
-        let tx_request_id = ovsdb_sys::ovsdb_cs_send_transaction(self.get_cs_mut_ptr(), ops);
+        // Set the context request_id using the OVSDB response.
+        let tx_request_id = ovsdb_sys::ovsdb_cs_send_transaction(cs_ptr, ops);
         if tx_request_id.is_null() {
             self.request_id = None;
         } else {
             self.request_id = Some(*tx_request_id);
         }
+
+        Ok(())
     }
 
-    pub unsafe fn process_txn_reply(
+    unsafe fn process_txn_reply(
         &mut self,
         reply: *mut ovsdb_sys::jsonrpc_msg,
-    ) {
+    ) -> Result<(), String> {
         if reply.is_null() {
-            println!("received a null transaction reply message");
-            return
+            let e = "received a null transaction reply message";
+            return Err(e.to_string());
         }
 
-        /* 'json_equal' checks for a null pointer. */
+        /* 'json_equal' checks for null pointers. */
         let request_id_ptr = self.get_request_id_mut_ptr();
         if !ovsdb_sys::json_equal((*reply).id, request_id_ptr) {
-            println!("unexpected transaction reply");
-            return;
+            let e = "transaction reply has incorrect request id";
+            return Err(e.to_string());
         }
 
         /* 'json_destroy' checks for a null pointer. */
@@ -214,23 +246,28 @@ impl Context {
         self.request_id = None;
 
         if (*reply).type_ == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
-            let reply_str = ovsdb_sys::jsonrpc_msg_to_string(reply);
-            println!("received database error: {:#?}", reply_str);
-            // TODO: We need to free the external pointer. libc::free(reply_str);
+            // Convert the jsonrpc_msg to a *mut c_char.
+            // Represent it in a Rust string for debugging, and free the C string.
+            let reply_cs = ovsdb_sys::jsonrpc_msg_to_string(reply);
+            let reply_e = format!("received database error: {:#?}", reply_cs);
+            println!("{}", reply_e);
+            libc::free(reply_cs as *mut libc::c_void);
 
             /* 'ovsdb_cs_force_reconnect' does not check for a null pointer. */
-            let mut cs_ptr = self.get_cs_mut_ptr();
+            let cs_ptr = self.get_cs_mut_ptr();
             if cs_ptr.is_null() {
-                panic!("needs non-nil client sync to reconnect after txn reply error");
+                let e = "needs non-nil client sync to force reconnect after txn reply error"; 
+                return Err(e.to_string());
             }
 
             ovsdb_sys::ovsdb_cs_force_reconnect(cs_ptr);
-            return
+            return Err(reply_e.to_string());
         }
 
         match self.state {
             Some(ConnectionState::Initial) => {
-                panic!("found initial state while processing transaction reply");
+                let e = "found initial state while processing transaction reply";
+                return Err(e.to_string());
             },
             Some(ConnectionState::OutputOnlyDataRequested) => {
                 /* 'json_destroy' checks for a null pointer. */
@@ -249,16 +286,19 @@ impl Context {
                 /* Nothing to do. */
             },
             None => {
-                panic!("found invalid state while processing transaction reply");
+                let e = "found invalid state while processing transaction reply";
+                return Err(e.to_string());
             }
         }
+
+        Ok(())
     }
 
-    pub unsafe fn parse_updates(
+    unsafe fn parse_updates(
         &mut self,
         updates_v: Vec<ovsdb_sys::ovsdb_cs_event>,
     ) -> Result<(), String> {
-        if updates_v.len() == 0 {
+        if updates_v.is_empty() {
             return Ok(());
         }
 
@@ -283,19 +323,19 @@ impl Context {
                 .map(|c| self.prog.convert_update_command(c))
                 .collect();
 
-            self.prog.apply_updates(&mut updates?.into_iter()).unwrap_or_else(|e| {
-                self.prog.transaction_rollback();
+            self.prog.apply_updates(&mut updates?.into_iter()).unwrap_or_else(|_| {
+                self.prog.transaction_rollback().ok();
             });
             
-            // TODO: free(updates_cp);
+            // TODO: Determine whether to free updates_s.
         }
 
         /* Commit changes to DDlog. */
-        self.prog.transaction_commit().unwrap_or_else(|e| {
-            self.prog.transaction_rollback();
+        self.prog.transaction_commit().unwrap_or_else(|_| {
+            self.prog.transaction_rollback().ok();
         });
 
-        // TODO: Poll immediate wake.
+        // TODO: Poll immediate wake. This will be needed when this is a long-running program.
 
         Ok(())
     }
@@ -306,20 +346,19 @@ impl Context {
             let table = format!("{}{}", self.prefix, input_relation);
             let tid = match self.prog.inventory.get_table_id(table.as_str()) {
                 Ok(relid) => relid,
-                Err(_) => 0, // TODO: max value of the type of the argument to clear_relation
+                Err(_) => std::usize::MAX as RelId,
             };
 
-            num_failures += self.prog.clear_relation(tid).map(|_| 0).unwrap_or_else(|e|{1});
+            num_failures += self.prog.clear_relation(tid).map(|_| 0).unwrap_or_else(|_|{1});
         }
 
         num_failures == 0
     }
 
     /* Sends the database server a request for all row UUIDs in output-only tables. */
-    // TODO: Change return to Result.
-    pub unsafe fn send_output_only_data_request(&mut self) {
-        if self.output_only_relations.len() > 0 {
-            // TODO: json_destroy(ctx->output_only_data)
+    unsafe fn send_output_only_data_request(&mut self) -> Result<(), String> {
+        if !self.output_only_relations.is_empty() {
+            // TODO: Check if needed: json_destroy(ctx->output_only_data)
             self.output_only_data = None;
 
             let db_s = ffi::CString::new(self.db_name.as_str()).unwrap();
@@ -365,10 +404,23 @@ impl Context {
 
             self.state = Some(ConnectionState::OutputOnlyDataRequested);
 
-            // TODO: self.request_id = ovsdb_cs_send_transaction(ctx->cs, ops);
+            // Set the context request_id using the OVSDB response.
+            if self.cs.is_none() {
+                let e = "found empty client-sync when sending output-only data request";
+                return Err(e.to_string());
+            }
+
+            let tx_request_id = ovsdb_sys::ovsdb_cs_send_transaction(self.get_cs_mut_ptr(), ops);
+            if tx_request_id.is_null() {
+                self.request_id = None;
+            } else {
+                self.request_id = Some(*tx_request_id);
+            }
         } else {
-            self.state = Some(ConnectionState::Update);
+            self.state = Some(ConnectionState::Update);   
         }
+
+        Ok(())
     }
 
     fn get_database_ops(&mut self) -> Option<String> {
@@ -440,7 +492,7 @@ impl Context {
                     Err(()) => Ok(vec![]),
                 }
             };
-            let mut minus_cmds = minus_cmds?;
+            let minus_cmds = minus_cmds?;
             updates.push_str(minus_cmds.join(",").as_str());
             
             /* Update */
@@ -460,7 +512,7 @@ impl Context {
                     Err(()) => Ok(vec![]),
                 }
             };
-            let mut upd_cmds = upd_cmds?;
+            let upd_cmds = upd_cmds?;
             updates.push_str(upd_cmds.join(",").as_str());
 
             updates.push(',');
@@ -485,7 +537,7 @@ impl Context {
                         rel.iter()
                             .map(|(v, w)| {
                                 assert!(*w == 1 || *w == -1);
-                                if (*w == 1) {
+                                if *w == 1 {
                                     ddlog_ovsdb_adapter::record_into_insert_str(v.clone().into_record(), table)
                                 } else {
                                     ddlog_ovsdb_adapter::record_into_delete_str(v.clone().into_record(), table)
@@ -495,6 +547,13 @@ impl Context {
                     }
                 )
             };
+
+            // Clear table.
+            let table_id = match self.prog.inventory.get_table_id(table_name.as_str()) {
+                Ok(relid) => relid,
+                Err(_) => std::usize::MAX as RelId, // TODO: Replace with max_value.
+            };
+            self.delta.clear_rel(table_id); 
 
             let cmds = cmds?;
             updates.push_str(cmds.join(",").as_str());
@@ -543,10 +602,11 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
         None => return None,
     };
 
-    // TODO: Write proper initializer function.
+    // TODO: Write function to correctly initialize Context fields.
+
     let mut ctx = Context {
-        prog: prog,
-        delta: delta,
+        prog,
+        delta,
         prefix: String::new(),
         input_relations: Vec::<String>::new(),
         output_relations: Vec::<String>::new(),
@@ -559,121 +619,23 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     };
     
     unsafe {
-        ctx.run();
-        
-    }
+        ctx.run().ok()?;
 
-    None
-}
+        /* 'ovsdb_cs_may_send_transaction' does not check for null.
+         * If the optional client-sync is None, early return. */
+        let cs_ptr = ctx.get_cs_mut_ptr();
+        if cs_ptr.is_null() {
+            println!("the client-sync was not set correctly");
+            return None;
+        }
 
-unsafe fn ovs_list_to_event(
-    list: *mut ovsdb_sys::ovs_list
-) -> ovsdb_sys::ovsdb_cs_event {
-    // Translate the node to the intrusive list.
-    // TODO: Implement this from the OVS macros, rather than hardcoding.
-    let update_event = UpdateEvent {
-        clear: true,
-        monitor_reply: true,
-        table_updates: std::ptr::null_mut(),
-        version: 0,
-    };
-
-    ovsdb_sys::ovsdb_cs_event {
-        list_node: *list,
-        type_: ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_RECONNECT,
-        __bindgen_anon_1: ovsdb_sys::ovsdb_cs_event__bindgen_ty_1 {
-            txn_reply: std::ptr::null_mut(),
+        if ctx.state == Some(ConnectionState::Update)
+        && ovsdb_sys::ovsdb_cs_may_send_transaction(cs_ptr) {
+            ctx.send_deltas().ok()?;
         }
     }
-}
 
-/* OVS list functions. Because these are `inline`, bindgen does not generate them. */
-// TODO: Move these to a separate module.
+    // TODO: Wait?
 
-/* Initializes 'list' as an empty list. */
-// TODO: Rewrite this function in a Rust-like manner.
-unsafe fn ovs_list_init(list: *mut ovsdb_sys::ovs_list) {
-    (*list).prev = list;
-    (*list).next = list;
-}
-
-/* Initializes 'list' with pointers that cause segfaults if dereferenced and will show up in a debugger. */
-unsafe fn ovs_list_poison(list: *mut ovsdb_sys::ovs_list) {
-    *list = ovsdb_sys::OVS_LIST_POISON;
-}
-
-// TODO: Implement `ovs_list_splice`.
-
-/* Insert 'elem' just before 'before'. */
-unsafe fn ovs_list_insert(
-    before: *mut ovsdb_sys::ovs_list,
-    elem: *mut ovsdb_sys::ovs_list,
-) {
-    (*elem).prev = (*before).prev;
-    (*elem).next = before;
-    (*(*before).prev).next = elem;
-    (*before).prev = elem;
-}
-
-/* Insert 'elem' at the beginning of 'list', so it becomes the front in 'list'. */
-unsafe fn ovs_list_push_front(
-    list: *mut ovsdb_sys::ovs_list,
-    elem: *mut ovsdb_sys::ovs_list,
-) {
-    ovs_list_insert((*list).next, elem);
-}
-
-/* Insert 'elem' at the end of 'list', so it becomes the back in 'list'. */
-unsafe fn ovs_list_push_back(
-    list: *mut ovsdb_sys::ovs_list,
-    elem: *mut ovsdb_sys::ovs_list,
-) {
-    ovs_list_insert(list, elem);
-}
-
-/* Puts 'elem' in the position currently occupied by 'position'.
- * Afterward, 'position' is not part of a list. */
-unsafe fn ovs_list_replace(
-    element: *mut ovsdb_sys::ovs_list,
-    position: *const ovsdb_sys::ovs_list,
-) {
-    (*element).next = (*position).next;
-    (*(*element).next).prev = element;
-
-    (*element).prev = (*position).prev;
-    (*(*element).prev).next = element;
-}
-
-// TODO: Implement `ovs_list_moved`.
-
-unsafe fn ovs_list_remove(
-    elem: *mut ovsdb_sys::ovs_list
-) -> *mut ovsdb_sys::ovs_list {
-    (*(*elem).prev).next = (*elem).next;
-    (*(*elem).next).prev = (*elem).prev;
-    return (*elem).next;
-}
-
-unsafe fn ovs_list_pop_front(
-    list: *mut ovsdb_sys::ovs_list
-) -> *mut ovsdb_sys::ovs_list {
-    let front: *mut ovsdb_sys::ovs_list = (*list).next;
-
-    ovs_list_remove(front);
-    return front;
-}
-
-unsafe fn ovs_list_pop_back(
-    list: *mut ovsdb_sys::ovs_list
-) -> *mut ovsdb_sys::ovs_list {
-    let back: *mut ovsdb_sys::ovs_list = (*list).prev;
-
-    ovs_list_remove(back);
-    return back;
-}
-
-unsafe fn ovs_list_is_empty(
-    list: *mut ovsdb_sys::ovs_list,
-) -> bool {
-    (*list).next == list
+    Some(ctx.delta)
 }
