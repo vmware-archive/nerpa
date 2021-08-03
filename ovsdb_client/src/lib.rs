@@ -26,6 +26,8 @@ extern crate snvs_ddlog;
 #[macro_use]
 extern crate memoffset;
 
+mod nerpa_rels;
+
 #[allow(dead_code)]
 mod ovs_list;
 
@@ -702,15 +704,6 @@ pub fn create_context(
     Some(ctx)
 }
 
-fn parse_schema(_file: String) -> Result<(Vec<String>, Vec<String>, Vec<String>), String> {
-    // TODO: Implement properly.
-    let input_relations = Vec::<String>::new();
-    let output_relations = Vec::<String>::new();
-    let output_only_relations = Vec::<String>::new();
-
-    Ok((input_relations, output_relations, output_only_relations))
-}
-
 // TODO: Loop, so this function takes multiple inputs.
 pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
@@ -718,20 +711,14 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
         None => return None,
     };
 
-    let schema_fn = "";
-    let (input_relations, output_relations, output_only_relations) = parse_schema(schema_fn.to_string()).ok()?;
-
     // TODO: Properly initialize the context parameters.
     let database: String = "../ovsdb_client/ovsdb_nerpa.sock".to_string();
-    // let input_relations = Vec::<String>::new();
-    // let output_relations = Vec::<String>::new();
-    // let output_only_relations = Vec::<String>::new();
 
     let mut ctx = create_context(
         database,
-        input_relations,
-        output_relations,
-        output_only_relations,
+        nerpa_rels::nerpa_input_relations(),
+        nerpa_rels::nerpa_output_relations(),
+        nerpa_rels::nerpa_output_only_relations(),
     )?;
     
     unsafe {

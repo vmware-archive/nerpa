@@ -1227,6 +1227,7 @@ dependencies = [
  "ddlog_ovsdb_adapter",
  "differential_datalog",
  "libc",
+ "memoffset",
  "ovsdb-sys",
  "snvs",
 ]
