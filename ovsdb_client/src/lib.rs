@@ -30,6 +30,7 @@ use std::convert::TryFrom;
 use std::{
     ffi,
     os::raw,
+    ptr,
 };
 
 use differential_datalog::api::HDDlog;
@@ -95,13 +96,15 @@ impl Context {
     /// # Safety
     /// Context.cs must be non-None.
     pub unsafe fn run(&mut self) -> Result<(), String> {
+        if self.cs.is_none() {
+            let e = "must establish client-sync before processing messages";
+            return Err(e.to_string());
+        }
+
         let events = &mut ovs_list::OvsList::default().to_ovs_list();
 
-        let cs : *mut ovsdb_sys::ovsdb_cs = std::ptr::null_mut();
-        // let events : *mut ovsdb_sys::ovs_list = std::ptr::null_mut();
-
         println!("This should cause a segfault");
-        ovsdb_sys::ovsdb_cs_run(cs, events);
+        ovsdb_sys::ovsdb_cs_run(self.get_cs_mut_ptr(), events);
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
@@ -567,7 +570,7 @@ impl Context {
 
     pub fn get_cs_mut_ptr(&mut self) -> *mut ovsdb_sys::ovsdb_cs {
         match self.cs {
-            None => std::ptr::null_mut(),
+            None => ptr::null_mut(),
             Some(mut cs) => {
                 &mut cs as *mut ovsdb_sys::ovsdb_cs
             }
@@ -576,7 +579,7 @@ impl Context {
 
     pub fn get_request_id_mut_ptr(&mut self) -> *mut ovsdb_sys::json {
         match self.request_id {
-            None => std::ptr::null_mut(),
+            None => ptr::null_mut(),
             Some(mut ri) => {
                 &mut ri as *mut ovsdb_sys::json
             }
@@ -585,7 +588,7 @@ impl Context {
 
     pub fn get_output_only_data_mut_ptr(&mut self) -> *mut ovsdb_sys::json {
         match self.output_only_data {
-            None => std::ptr::null_mut(),
+            None => ptr::null_mut(),
             Some(mut ood) => {
                 &mut ood as *mut ovsdb_sys::json
             }
@@ -593,30 +596,77 @@ impl Context {
     }
 }
 
-
-// TODO: Loop over this function.
-pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
-    // Ideally, the handle to the running program would be passed from the controller. Creating a new one here is suboptimal.
+pub fn create_context(
+    database: String,
+    input_relations: Vec<String>,
+    output_relations: Vec<String>,
+    output_only_relations: Vec<String>,
+) -> Option<Context> {
+    // TODO: Ideally, the handle to the running program would be passed from the controller. Creating a new one here is suboptimal.
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
         Some((p, is)) => (p, is),
         None => return None,
     };
 
-    // TODO: Write function to correctly initialize Context fields.
+    let opt_cs : Option<ovsdb_sys::ovsdb_cs> = unsafe {
+        let database_cs = ffi::CString::new(database.as_str()).unwrap();
 
-    let mut ctx = Context {
-        prog,
-        delta,
-        prefix: String::new(),
-        input_relations: Vec::<String>::new(),
-        output_relations: Vec::<String>::new(),
-        output_only_relations: Vec::<String>::new(),
-        cs: None,
-        request_id: None,
-        state: None,
-        output_only_data: None,
-        db_name: String::new(),
+        // TODO: Determine whether or not the function can be None.
+        let cs_ops = ovsdb_sys::ovsdb_cs_ops {
+            compose_monitor_requests: None,
+        };
+        
+        // TODO: Determine if the *void passed to ovsdb_cs_create can be null.
+        let cs_ops_void = ptr::null_mut() as *mut ffi::c_void;
+
+        let cs = ovsdb_sys::ovsdb_cs_create(
+            database_cs.as_ptr(),
+            1,
+            &cs_ops as *const ovsdb_sys::ovsdb_cs_ops,
+            cs_ops_void,
+        );
+
+        match cs.is_null() {
+            true => None,
+            false => Some(*cs),
+        }
     };
+
+    let ctx = Context {
+        prog: prog,
+        delta: delta,
+        prefix: format!("{}::", database),
+        input_relations: input_relations,
+        output_relations: output_relations,
+        output_only_relations: output_only_relations,
+        cs: opt_cs,
+        request_id: None, /* This gets set later. */
+        state: Some(ConnectionState::Initial),
+        output_only_data: None, /* This will get filled in later. */
+        db_name: database,
+    };
+
+    Some(ctx)
+}
+
+// TODO: Loop over this function.
+pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
+    let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
+        Some((p, is)) => (p, is),
+        None => return None,
+    };
+
+    let database = String::new();
+    let input_relations = Vec::<String>::new();
+    let output_relations = Vec::<String>::new();
+    let output_only_relations = Vec::<String>::new();
+
+    let mut ctx = create_context(
+        database,
+        input_relations,
+        output_relations,
+        output_only_relations,
+    )?;
     
     unsafe {
         ctx.run().ok()?;
@@ -635,7 +685,7 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
         }
     }
 
-    // TODO: Wait?
+    // TODO: May need to wait for some other event.
 
     Some(ctx.delta)
 }
