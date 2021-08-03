@@ -61,8 +61,6 @@ enum ConnectionState {
     Update,
 }
 
-
-// TODO: Fill out Context with necessary fields.
 pub struct Context {
     prog: HDDlog,
     delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
@@ -326,17 +324,23 @@ impl Context {
                 .map(|c| self.prog.convert_update_command(c))
                 .collect();
 
-            self.prog.apply_updates(&mut updates?.into_iter()).unwrap_or_else(|_| {
-                self.prog.transaction_rollback().ok();
-            });
+            self.prog
+                .apply_updates(&mut updates?.into_iter())
+                .unwrap_or_else(|_| {
+                    self.prog.transaction_rollback().ok();
+                }
+            );
             
             // TODO: Determine whether to free updates_s.
         }
 
         /* Commit changes to DDlog. */
-        self.prog.transaction_commit().unwrap_or_else(|_| {
-            self.prog.transaction_rollback().ok();
-        });
+        self.prog
+            .transaction_commit()
+            .unwrap_or_else(|_| {
+                self.prog.transaction_rollback().ok();
+            }
+        );
 
         // TODO: Poll immediate wake. This will be needed when this is a long-running program.
 
@@ -596,6 +600,38 @@ impl Context {
     }
 }
 
+unsafe extern "C" fn compose_monitor_request(
+    schema_json: *const ovsdb_sys::json,
+    aux: *mut raw::c_void,
+) -> *mut ovsdb_sys::json {
+    let schema = ovsdb_sys::ovsdb_cs_parse_schema(schema_json);
+
+    let monitor_requests = ovsdb_sys::json_object_create();
+
+    // TODO: Implement below.
+
+    // Iterate over schema, initialize a `shash_node` for each key.
+    let table_name = ""; /* node -> name */
+    for input_rel in self.input_relations.iter() {
+        if table_name != input_rel {
+            continue;
+        }
+
+        let subscribed_columns = ovsdb_sys::json_array_create_empty();
+
+        // Iterate over schema columns, and add each to a JSON array.
+
+        let monitor_request = ovsdb_sys::json_object_create();
+        
+        // Put subscribed_columns in monitor_request.
+        // Put monitor_request in monitor_requests.
+    }
+
+    ovsdb_sys::ovsdb_cs_free_schema(schema);
+
+    monitor_requests
+}
+
 pub fn create_context(
     database: String,
     input_relations: Vec<String>,
@@ -605,15 +641,17 @@ pub fn create_context(
     // TODO: Ideally, the handle to the running program would be passed from the controller. Creating a new one here is suboptimal.
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
         Some((p, is)) => (p, is),
-        None => return None,
+        None => {
+            println!("DDlog instance could not be created");
+            return None;
+        },
     };
 
     let opt_cs : Option<ovsdb_sys::ovsdb_cs> = unsafe {
         let database_cs = ffi::CString::new(database.as_str()).unwrap();
 
-        // TODO: Determine whether or not the function can be None.
         let cs_ops = ovsdb_sys::ovsdb_cs_ops {
-            compose_monitor_requests: None,
+            compose_monitor_requests: Some(compose_monitor_request),
         };
         
         // TODO: Determine if the *void passed to ovsdb_cs_create can be null.
@@ -649,14 +687,15 @@ pub fn create_context(
     Some(ctx)
 }
 
-// TODO: Loop over this function.
+// TODO: Loop, so this function takes multiple inputs.
 pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
         Some((p, is)) => (p, is),
         None => return None,
     };
 
-    let database = String::new();
+    // TODO: Properly initialize the context parameters.
+    let database: String = "../ovsdb_client/ovsdb_nerpa.sock".to_string();
     let input_relations = Vec::<String>::new();
     let output_relations = Vec::<String>::new();
     let output_only_relations = Vec::<String>::new();
