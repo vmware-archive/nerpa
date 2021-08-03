@@ -23,6 +23,9 @@ extern crate libc;
 extern crate ovsdb_sys;
 extern crate snvs_ddlog;
 
+#[macro_use]
+extern crate memoffset;
+
 #[allow(dead_code)]
 mod ovs_list;
 
@@ -99,7 +102,7 @@ impl Context {
             return Err(e.to_string());
         }
 
-        let events = &mut ovs_list::OvsList::default().to_ovs_list();
+        let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
 
         println!("This should cause a segfault");
         ovsdb_sys::ovsdb_cs_run(self.get_cs_mut_ptr(), events);
@@ -108,13 +111,21 @@ impl Context {
 
         // TODO: Confirm the list pointer is advanced correctly.
         while !ovs_list::is_empty(events) {
-            let elem = ovs_list::pop_front(events);
-            let event = ovs_list::to_event(elem);
+            /* Extract the event from the intrusive list received from OVSDB. */
+            let opt_event = ovs_list::to_event(events);
+            let event = match opt_event {
+                None => break,
+                Some(e) => e,
+            };
+
+            /* `events` should be non-null, since `to_event` checks null.
+             * This dereferences events; advances the pointer; and creates a mutable reference. */
+            events = &mut *((*events).next);
 
             match event.type_ {
                 EVENT_TYPE_RECONNECT => {
-                    /* 'json_destroy' checks for a null pointer. */
-                    ovsdb_sys::json_destroy(self.get_request_id_mut_ptr());
+                    /* TODO: Check if needed: 'json_destroy'. */
+                    self.request_id = None;
                     self.state = Some(ConnectionState::Initial);
                 },
                 EVENT_TYPE_LOCKED => {
@@ -606,13 +617,18 @@ unsafe extern "C" fn compose_monitor_request(
 ) -> *mut ovsdb_sys::json {
     let schema = ovsdb_sys::ovsdb_cs_parse_schema(schema_json);
 
+    let ctx_ptr: *mut Context = aux as *mut Context;
+    if ctx_ptr.is_null() {
+        panic!("received null pointer representing context");
+    }
+
     let monitor_requests = ovsdb_sys::json_object_create();
 
     // TODO: Implement below.
 
     // Iterate over schema, initialize a `shash_node` for each key.
     let table_name = ""; /* node -> name */
-    for input_rel in self.input_relations.iter() {
+    for input_rel in (*ctx_ptr).input_relations.iter() {
         if table_name != input_rel {
             continue;
         }
@@ -622,7 +638,7 @@ unsafe extern "C" fn compose_monitor_request(
         // Iterate over schema columns, and add each to a JSON array.
 
         let monitor_request = ovsdb_sys::json_object_create();
-        
+
         // Put subscribed_columns in monitor_request.
         // Put monitor_request in monitor_requests.
     }
@@ -687,6 +703,15 @@ pub fn create_context(
     Some(ctx)
 }
 
+fn parse_schema(_file: String) -> Result<(Vec<String>, Vec<String>, Vec<String>), String> {
+    // TODO: Implement properly.
+    let input_relations = Vec::<String>::new();
+    let output_relations = Vec::<String>::new();
+    let output_only_relations = Vec::<String>::new();
+
+    Ok((input_relations, output_relations, output_only_relations))
+}
+
 // TODO: Loop, so this function takes multiple inputs.
 pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
@@ -694,11 +719,14 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
         None => return None,
     };
 
+    let schema_fn = "";
+    let (input_relations, output_relations, output_only_relations) = parse_schema(schema_fn.to_string()).ok()?;
+
     // TODO: Properly initialize the context parameters.
     let database: String = "../ovsdb_client/ovsdb_nerpa.sock".to_string();
-    let input_relations = Vec::<String>::new();
-    let output_relations = Vec::<String>::new();
-    let output_only_relations = Vec::<String>::new();
+    // let input_relations = Vec::<String>::new();
+    // let output_relations = Vec::<String>::new();
+    // let output_only_relations = Vec::<String>::new();
 
     let mut ctx = create_context(
         database,

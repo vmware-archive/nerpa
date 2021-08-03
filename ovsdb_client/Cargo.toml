@@ -11,4 +11,5 @@ libc = "0.2.98"
 ddlog_ovsdb_adapter = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/ovsdb"}
 ovsdb-sys = {path = "../ovsdb-sys"}
 snvs = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog", features = ["ovsdb"]}
+memoffset = "0.6.4"
 

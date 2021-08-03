@@ -19,6 +19,7 @@ SOFTWARE.
 */
 
 /* OVS list functions. Because these are `inline`, bindgen does not generate them. */
+
 extern crate ovsdb_sys;
 
 use std::{
@@ -67,24 +68,22 @@ pub struct OvsdbCsEvent {
 
 /* Cast an ovs_list to an ovsdb_cs_event. */
 pub unsafe fn to_event(
-    list: *mut ovsdb_sys::ovs_list
-) -> ovsdb_sys::ovsdb_cs_event {
-    // Translate the node to the intrusive list.
-    // TODO: Implement this from the OVS macros, rather than hardcoding.
-    let update_event = UpdateEvent {
-        clear: true,
-        monitor_reply: true,
-        table_updates: std::ptr::null_mut(),
-        version: 0,
-    };
-
-    ovsdb_sys::ovsdb_cs_event {
-        list_node: *list,
-        type_: ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_RECONNECT,
-        __bindgen_anon_1: ovsdb_sys::ovsdb_cs_event__bindgen_ty_1 {
-            update: update_event,
-        }
+    list_ptr: *mut ovsdb_sys::ovs_list
+) -> Option<ovsdb_sys::ovsdb_cs_event> {
+    if list_ptr.is_null() {
+        return None;
     }
+
+    let event_ptr = list_ptr
+        .cast::<u8>()
+        .wrapping_sub(offset_of!(ovsdb_sys::ovsdb_cs_event, list_node))
+        .cast::<ovsdb_sys::ovsdb_cs_event>();
+    
+    if event_ptr.is_null() {
+        return None;
+    }
+
+    Some(*event_ptr)
 }
 
 
