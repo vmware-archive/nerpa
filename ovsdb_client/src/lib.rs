@@ -662,16 +662,29 @@ pub fn create_context(
             return None;
         },
     };
+    let database_cs = ffi::CString::new(database.as_str()).unwrap();
 
-    let opt_cs : Option<ovsdb_sys::ovsdb_cs> = unsafe {
-        let database_cs = ffi::CString::new(database.as_str()).unwrap();
+    let mut ctx = Context {
+        prog: prog,
+        delta: delta,
+        prefix: format!("{}::", database),
+        input_relations: input_relations,
+        output_relations: output_relations,
+        output_only_relations: output_only_relations,
+        cs: None, /* We set this below, so we can pass `ctx` as a pointer. */
+        request_id: None, /* This gets set later. */
+        state: Some(ConnectionState::Initial),
+        output_only_data: None, /* This will get filled in later. */
+        db_name: database,
+    };
 
+    // We construct the client-sync here so that `ctx` can be passed when creating the connection.
+    ctx.cs = unsafe {
         let cs_ops = ovsdb_sys::ovsdb_cs_ops {
             compose_monitor_requests: Some(compose_monitor_request),
         };
         
-        // TODO: Determine if the *void passed to ovsdb_cs_create can be null.
-        let cs_ops_void = ptr::null_mut() as *mut ffi::c_void;
+        let cs_ops_void = &mut ctx as *mut Context as *mut ffi::c_void;
 
         let cs = ovsdb_sys::ovsdb_cs_create(
             database_cs.as_ptr(),
@@ -684,20 +697,6 @@ pub fn create_context(
             true => None,
             false => Some(*cs),
         }
-    };
-
-    let ctx = Context {
-        prog: prog,
-        delta: delta,
-        prefix: format!("{}::", database),
-        input_relations: input_relations,
-        output_relations: output_relations,
-        output_only_relations: output_only_relations,
-        cs: opt_cs,
-        request_id: None, /* This gets set later. */
-        state: Some(ConnectionState::Initial),
-        output_only_data: None, /* This will get filled in later. */
-        db_name: database,
     };
 
     Some(ctx)
