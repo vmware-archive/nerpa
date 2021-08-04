@@ -26,6 +26,8 @@ extern crate snvs_ddlog;
 #[macro_use]
 extern crate memoffset;
 
+mod hmap;
+
 mod nerpa_rels;
 
 #[allow(dead_code)]
@@ -121,7 +123,7 @@ impl Context {
             };
 
             /* `events` should be non-null, since `to_event` checks null.
-             * This dereferences events; advances the pointer; and creates a mutable reference. */
+             * This dereferences events; advances the pointer; and assigns a mutable reference to events. */
             events = &mut *((*events).next);
 
             match event.type_ {
@@ -617,7 +619,10 @@ unsafe extern "C" fn compose_monitor_request(
     schema_json: *const ovsdb_sys::json,
     aux: *mut raw::c_void,
 ) -> *mut ovsdb_sys::json {
-    let schema = ovsdb_sys::ovsdb_cs_parse_schema(schema_json);
+    let schema_ptr = ovsdb_sys::ovsdb_cs_parse_schema(schema_json);
+    if schema_ptr.is_null() {
+        panic!("could not parse database schema");
+    }
 
     let ctx_ptr: *mut Context = aux as *mut Context;
     if ctx_ptr.is_null() {
@@ -628,24 +633,46 @@ unsafe extern "C" fn compose_monitor_request(
 
     // TODO: Implement below.
 
-    // Iterate over schema, initialize a `shash_node` for each key.
-    let table_name = ""; /* node -> name */
-    for input_rel in (*ctx_ptr).input_relations.iter() {
-        if table_name != input_rel {
+
+    /* Create an initial 'hmap_node' from the schema. */
+    let schema_hmap = (*schema_ptr).map;
+    let schema_hmap_ptr = &schema_hmap as *const ovsdb_sys::hmap;
+    let mut node = hmap::first(schema_hmap_ptr);
+
+    while !node.is_null() {
+        let shash = hmap::shash(node);
+
+        /* Advance the node to the next pointer. */
+        node = hmap::next(schema_hmap_ptr, node);
+
+        if shash.is_null() {
             continue;
         }
 
-        let subscribed_columns = ovsdb_sys::json_array_create_empty();
+        let table_cs = (*shash).name;
+        if table_cs.is_null() {
+            continue;
+        }
 
-        // Iterate over schema columns, and add each to a JSON array.
+        let table_s = ffi::CStr::from_ptr(table_cs).to_str().unwrap();
 
-        let monitor_request = ovsdb_sys::json_object_create();
-
-        // Put subscribed_columns in monitor_request.
-        // Put monitor_request in monitor_requests.
+        for input_rel in (*ctx_ptr).input_relations.iter() {
+            if table_s != input_rel {
+                continue;
+            }
+    
+            let subscribed_columns = ovsdb_sys::json_array_create_empty();
+    
+            // Iterate over schema columns, and add each to a JSON array.
+    
+            let monitor_request = ovsdb_sys::json_object_create();
+    
+            // Put subscribed_columns in monitor_request.
+            // Put monitor_request in monitor_requests.
+        }
     }
 
-    ovsdb_sys::ovsdb_cs_free_schema(schema);
+    ovsdb_sys::ovsdb_cs_free_schema(schema_ptr);
 
     monitor_requests
 }

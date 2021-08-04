@@ -2,3 +2,5 @@
 #include "ovs/lib/daemon.h"
 #include "ovs/lib/jsonrpc.h"
 #include "ovs/include/openvswitch/json.h"
+#include "ovs/include/openvswitch/shash.h"
+#include "ovs/include/openvswitch/hmap.h"

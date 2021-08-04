@@ -59,11 +59,12 @@ Confirm the bindings built correctly by running the tests:
 cargo test
 ```
 
-7. Set up the OVSDB client crate.
+7. Generate necessary files, and then build the OVSDB client crate.
 ```
 cd $NERPA_DIR/ovsdb_client
 pip3 install -r requirements.txt
 python3 ovsdb2ddlog2rust --schema-file=../nerpa_controlplane/snvs_exp/snvs.ovsschema -p nerpa_ --output-file src/nerpa_rels.rs
+cargo build
 ```
 
 ### Test
