@@ -27,6 +27,14 @@ use std::{
     ptr,
 };
 
+pub fn sset(
+    hmap_node: *const ovsdb_sys::hmap_node
+) -> *const ovsdb_sys::sset_node {
+    hmap_node
+        .cast::<u8>()
+        .wrapping_sub(offset_of!(ovsdb_sys::sset_node, hmap_node))
+        .cast::<ovsdb_sys::sset_node>()
+}
 
 pub fn shash(
     hmap_node: *const ovsdb_sys::hmap_node

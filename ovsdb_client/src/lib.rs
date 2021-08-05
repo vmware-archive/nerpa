@@ -631,26 +631,29 @@ unsafe extern "C" fn compose_monitor_request(
 
     let monitor_requests = ovsdb_sys::json_object_create();
 
-    // TODO: Implement below.
-
-
     /* Create an initial 'hmap_node' from the schema. */
     let schema_hmap = (*schema_ptr).map;
     let schema_hmap_ptr = &schema_hmap as *const ovsdb_sys::hmap;
-    let mut node = hmap::first(schema_hmap_ptr);
+    let mut hmap_node = hmap::first(schema_hmap_ptr);
 
-    while !node.is_null() {
-        let shash = hmap::shash(node);
+    while !hmap_node.is_null() {
+        let shash_node = hmap::shash(hmap_node);
 
-        /* Advance the node to the next pointer. */
-        node = hmap::next(schema_hmap_ptr, node);
+        /* Advance the hmap_node to next. */
+        hmap_node = hmap::next(schema_hmap_ptr, hmap_node);
 
-        if shash.is_null() {
+        /* Extract the necessary fields, and check for null pointers. */
+        if shash_node.is_null() {
             continue;
         }
 
-        let table_cs = (*shash).name;
+        let table_cs = (*shash_node).name;
         if table_cs.is_null() {
+            continue;
+        }
+
+        let schema_columns: *const ovsdb_sys::sset = (*shash_node).data as *const ovsdb_sys::sset;
+        if schema_columns.is_null() {
             continue;
         }
 
@@ -660,18 +663,57 @@ unsafe extern "C" fn compose_monitor_request(
             if table_s != input_rel {
                 continue;
             }
-    
+
             let subscribed_columns = ovsdb_sys::json_array_create_empty();
-    
-            // Iterate over schema columns, and add each to a JSON array.
+
+            /* Iterate over schema columns, and add each to a JSON array. We have checked for null above, so the dereference is safe. */
+            let schema_hmap = &(*schema_columns).map as *const ovsdb_sys::hmap;
+            let mut schema_hmap_node = hmap::first(schema_hmap);
+            while !schema_hmap_node.is_null() {
+                let sset_node = hmap::sset(schema_hmap_node);
+                
+                /* Advance the schema_hmap_node to next. */
+                schema_hmap_node = hmap::next(schema_hmap, schema_hmap_node);
+
+                /* Checking sset_node for null allows safe dereference. */
+                if sset_node.is_null() {
+                    continue;
+                }
+
+                let column_cs = &(*sset_node).name as *const raw::c_char;
+                if column_cs.is_null() {
+                    continue;
+                }
+
+                let column_s = ffi::CStr::from_ptr(column_cs).to_str().unwrap();
+                if column_s != "_version" {
+                    ovsdb_sys::json_array_add(
+                        subscribed_columns,
+                        ovsdb_sys::json_string_create(column_cs)
+                    );
+                }
+            }
     
             let monitor_request = ovsdb_sys::json_object_create();
-    
-            // Put subscribed_columns in monitor_request.
-            // Put monitor_request in monitor_requests.
+            let columns_cs = ffi::CString::new("columns").unwrap();
+            ovsdb_sys::json_object_put(
+                monitor_request,
+                columns_cs.as_ptr(),
+                subscribed_columns,
+            );
+
+            ovsdb_sys::json_object_put(
+                monitor_requests,
+                table_cs,
+                ovsdb_sys::json_array_create_1(monitor_request),
+            );
+            
+            break;
         }
     }
 
+    /* Since the schema contained memory allocated in the external C program,
+     * we call the OVSDB function to free it. */
     ovsdb_sys::ovsdb_cs_free_schema(schema_ptr);
 
     monitor_requests

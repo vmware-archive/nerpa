@@ -4,3 +4,4 @@
 #include "ovs/include/openvswitch/json.h"
 #include "ovs/include/openvswitch/shash.h"
 #include "ovs/include/openvswitch/hmap.h"
+#include "ovs/lib/sset.h"
