@@ -70,7 +70,7 @@ enum ConnectionState {
 
 pub struct Context {
     prog: HDDlog,
-    delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
+    pub delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
 
     /* Database info.
      *
@@ -108,7 +108,6 @@ impl Context {
 
         let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
 
-        println!("This should cause a segfault");
         ovsdb_sys::ovsdb_cs_run(self.get_cs_mut_ptr(), events);
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
@@ -179,7 +178,8 @@ impl Context {
     }
 
     /// Pass the changes from the Context to its database server.
-    /// 
+    /// This function (and its callees) are currently unused, until we have a more complex management plane.
+    ///
     /// # Safety
     /// This function is unsafe because it calls external functions. It checks all fields as needed.
     pub unsafe fn send_deltas(&mut self) -> Result<(), String> {
@@ -321,7 +321,7 @@ impl Context {
         self.prog.transaction_start()?;
 
         for update in updates_v {
-            if update.type_ != ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE {
+            if update.type_ != EVENT_TYPE_UPDATE {
                 continue;
             }
 
@@ -350,14 +350,25 @@ impl Context {
         }
 
         /* Commit changes to DDlog. */
-        self.prog
-            .transaction_commit()
-            .unwrap_or_else(|_| {
-                self.prog.transaction_rollback().ok();
-            }
-        );
+        self.ddlog_commit().unwrap_or_else(|_| {
+            println!("transaction commit failed");
+            self.prog.transaction_rollback().ok();
+        });
 
         // TODO: Poll immediate wake. This will be needed when this is a long-running program.
+
+        Ok(())
+    }
+
+    fn ddlog_commit(&mut self) -> Result<(), String> {
+        /* We currently overwrite self.delta with the committed result.
+         * This works because we loop until we get a result, and then return it.
+         * It likely will not work with a more complex management plane. */
+        
+        // TODO: Check if we need to remove warnings from deltas.
+
+        let new_delta = self.prog.transaction_commit_dump_changes()?;
+        self.delta = new_delta;
 
         Ok(())
     }
@@ -712,7 +723,7 @@ unsafe extern "C" fn compose_monitor_request(
         }
     }
 
-    /* Since the schema contained memory allocated in the external C program,
+    /* Since the schema contained memory allocated in the C program,
      * we call the OVSDB function to free it. */
     ovsdb_sys::ovsdb_cs_free_schema(schema_ptr);
 
@@ -773,15 +784,13 @@ pub fn create_context(
     Some(ctx)
 }
 
-// TODO: Loop, so this function takes multiple inputs.
-pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
+pub fn export_input_from_ovsdb(
+    database: String,
+) -> Option<DeltaMap<DDValue>> {
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
         Some((p, is)) => (p, is),
         None => return None,
     };
-
-    // TODO: Properly initialize the context parameters.
-    let database: String = "../ovsdb_client/ovsdb_nerpa.sock".to_string();
 
     let mut ctx = create_context(
         database,
@@ -790,24 +799,15 @@ pub fn export_input_from_ovsdb() -> Option<DeltaMap<DDValue>> {
         nerpa_rels::nerpa_output_only_relations(),
     )?;
     
-    unsafe {
-        ctx.run().ok()?;
+    /* This currently loops until it finds a DDlog output, then returns it.
+     * A more complex management plane may send deltas to a southbound database, a la `ovn-northd-ddlog`. */
+    while true {
+        unsafe { ctx.run().ok()? };
 
-        /* 'ovsdb_cs_may_send_transaction' does not check for null.
-         * If the optional client-sync is None, early return. */
-        let cs_ptr = ctx.get_cs_mut_ptr();
-        if cs_ptr.is_null() {
-            println!("the client-sync was not set correctly");
-            return None;
+        if ctx.delta.len() > 0 {
+            return Some(ctx.delta);
         }
 
-        if ctx.state == Some(ConnectionState::Update)
-        && ovsdb_sys::ovsdb_cs_may_send_transaction(cs_ptr) {
-            ctx.send_deltas().ok()?;
-        }
+        std::thread::sleep(time::Duration::from_millis(10 * 1000));
     }
-
-    // TODO: May need to wait for some other event.
-
-    Some(ctx.delta)
 }
