@@ -5,3 +5,4 @@
 #include "ovs/include/openvswitch/shash.h"
 #include "ovs/include/openvswitch/hmap.h"
 #include "ovs/lib/sset.h"
+#include "ovs/lib/ovsdb-cs.h"

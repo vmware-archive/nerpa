@@ -106,9 +106,23 @@ impl Context {
             return Err(e.to_string());
         }
 
+        let cs = self.get_cs_mut_ptr();
+        // check if ovsdb connected
+        println!("checking in run");
+        println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
+        println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
+
+
+        if cs.is_null() {
+            let e = "got null pointer from client-sync";
+            return Err(e.to_string())
+        }
+
         let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
 
-        ovsdb_sys::ovsdb_cs_run(self.get_cs_mut_ptr(), events);
+        println!("About to call ovsdb_cs_run");
+        ovsdb_sys::ovsdb_cs_run(cs, events);
+        println!("Just called ovsdb_cs_run");
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
@@ -158,7 +172,7 @@ impl Context {
              
             ovsdb_sys::ovsdb_cs_event_destroy(event); */
         }
-
+        println!("found {} updates to parse!", updates.len());
         self.parse_updates(updates)?;
 
         /* 'ovsdb_cs_may_send_transaction' does not check for null.
@@ -241,7 +255,7 @@ impl Context {
         Ok(())
     }
 
-    unsafe fn process_txn_reply(
+    pub unsafe fn process_txn_reply(
         &mut self,
         reply: *mut ovsdb_sys::jsonrpc_msg,
     ) -> Result<(), String> {
@@ -730,7 +744,156 @@ unsafe extern "C" fn compose_monitor_request(
     monitor_requests
 }
 
+// Temporary function until pointer provenance issues with the expected workflow are fixed.
+pub unsafe fn create_context_and_loop(
+    server: String,
+    database: String,
+    input_relations: Vec<String>,
+    output_relations: Vec<String>,
+    output_only_relations: Vec<String>,
+) -> Option<DeltaMap<DDValue>> {
+    let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
+        Some((p, is)) => (p, is),
+        None => {
+            println!("DDlog instance could not be created");
+            return None;
+        },
+    };
+    let database_cs = ffi::CString::new(database.as_str()).unwrap();
+
+    let mut ctx = Context {
+        prog: prog,
+        delta: delta,
+        prefix: format!("{}::", database),
+        input_relations: input_relations,
+        output_relations: output_relations,
+        output_only_relations: output_only_relations,
+        cs: None, /* We set this below, so we can pass `ctx` as a pointer. */
+        request_id: None, /* This gets set later. */
+        state: Some(ConnectionState::Initial),
+        output_only_data: None, /* This will get filled in later. */
+        db_name: database,
+    };
+
+    // We construct the client-sync here so that `ctx` can be passed when creating the connection.
+    let cs_ops = ovsdb_sys::ovsdb_cs_ops {
+        compose_monitor_requests: Some(compose_monitor_request),
+    };
+    
+    let cs_ops_void = &mut ctx as *mut Context as *mut ffi::c_void;
+
+    let cs = ovsdb_sys::ovsdb_cs_create(
+        database_cs.as_ptr(),
+        1,
+        &cs_ops as *const ovsdb_sys::ovsdb_cs_ops,
+        cs_ops_void,
+    );
+
+    let server_cs = ffi::CString::new(server.as_str()).unwrap();
+    ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
+    ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
+
+    // check if ovsdb connected
+    // TODO: Remove.
+    println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
+    println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
+
+    while true {
+        println!("top of large while loop");
+        println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
+        println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
+
+        let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
+        println!("checking event with default: event {:#?}, pointer {:p}", events, events);
+
+        println!("About to call ovsdb_cs_run");
+        ovsdb_sys::ovsdb_cs_run(cs, events);
+        println!("Just called ovsdb_cs_run");
+
+        let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
+        println!("checking event after run: event {:#?}, pointer {:p}", events, events);
+
+        while !ovs_list::is_empty(events) {
+            println!("checking event at the top of the loop: event {:#?}, pointer {:p}", events, events);
+            /* Extract the event from the intrusive list received from OVSDB. */
+            let opt_event = ovs_list::to_event(events);
+            let event = match opt_event {
+                None => {
+                    println!("no event found");
+                    break
+                },
+                Some(e) => {
+                    println!("some event found");
+                    e
+                },
+            };
+
+            /* `events` should be non-null, since `to_event` checks null.
+             * This dereferences events; advances the pointer; and assigns a mutable reference to events. */
+            // events = &mut *((*events).next);
+            events = ovs_list::remove(events).as_mut().unwrap();
+            println!("checking event after advancement: event {:#?}, pointer {:p}", events, events);
+
+            match event.type_ {
+                EVENT_TYPE_RECONNECT => {
+                    println!("found reconnect event");
+                    /* TODO: Check if needed: 'json_destroy'. */
+                    ctx.request_id = None;
+                    ctx.state = Some(ConnectionState::Initial);
+                },
+                EVENT_TYPE_LOCKED => {
+                    println!("found locked event");
+                    /* Nothing to do here. */
+                },
+                EVENT_TYPE_UPDATE => {
+                    println!("found update event");
+                    if event.__bindgen_anon_1.update.clear {
+                        updates = Vec::new();
+                    }
+
+                    updates.push(event);
+                    continue;
+                },
+                EVENT_TYPE_TXN_REPLY => {
+                    println!("found txn reply event");
+                    ctx.process_txn_reply(event.__bindgen_anon_1.txn_reply).ok()?
+                },
+                _ => {
+                    println!("received invalid event type from ovsdb");
+                    continue;
+                }
+            }
+
+            break;
+
+            /* TODO: Check if this free is required.
+             *
+             * Since the event is created within the loop on the Rust side,
+             * we may not need to free it. Keeping the TODO because I am not sure.
+             
+            ovsdb_sys::ovsdb_cs_event_destroy(event); */
+        }
+        println!("found {} updates to parse!", updates.len());
+        ctx.parse_updates(updates).ok()?;
+
+        if ctx.state == Some(ConnectionState::Initial)
+        && ovsdb_sys::ovsdb_cs_may_send_transaction(cs) {
+            ctx.send_output_only_data_request().ok()?;
+        }
+
+
+        if ctx.delta.len() > 0 {
+            return Some(ctx.delta);
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
+    }
+
+    None
+}
+
 pub fn create_context(
+    server: String,
     database: String,
     input_relations: Vec<String>,
     output_relations: Vec<String>,
@@ -775,6 +938,10 @@ pub fn create_context(
             cs_ops_void,
         );
 
+        let server_cs = ffi::CString::new(server.as_str()).unwrap();
+        ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
+        ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
+
         match cs.is_null() {
             true => None,
             false => Some(*cs),
@@ -785,6 +952,7 @@ pub fn create_context(
 }
 
 pub fn export_input_from_ovsdb(
+    server: String,
     database: String,
 ) -> Option<DeltaMap<DDValue>> {
     let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
@@ -792,22 +960,11 @@ pub fn export_input_from_ovsdb(
         None => return None,
     };
 
-    let mut ctx = create_context(
+    unsafe{create_context_and_loop(
+        server,
         database,
         nerpa_rels::nerpa_input_relations(),
         nerpa_rels::nerpa_output_relations(),
         nerpa_rels::nerpa_output_only_relations(),
-    )?;
-    
-    /* This currently loops until it finds a DDlog output, then returns it.
-     * A more complex management plane may send deltas to a southbound database, a la `ovn-northd-ddlog`. */
-    while true {
-        unsafe { ctx.run().ok()? };
-
-        if ctx.delta.len() > 0 {
-            return Some(ctx.delta);
-        }
-
-        std::thread::sleep(time::Duration::from_millis(10 * 1000));
-    }
+    )}
 }

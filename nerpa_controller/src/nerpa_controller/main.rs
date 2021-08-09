@@ -38,8 +38,9 @@ pub async fn main() {
     let mut nerpa = Controller::new().unwrap();
 
     // TODO: Connect the OVS database management plane to the controller.
-    let database = "/usr/local/var/run/openvswitch/db.sock";
-    let mp_output = ovsdb_client::export_input_from_ovsdb(database.to_string());
+    let server = "unix:/usr/local/var/run/openvswitch/db.sock";
+    let database = "snvs";
+    let mp_output = ovsdb_client::export_input_from_ovsdb(server.to_string(), database.to_string());
     println!("management plane output: {:#?}", mp_output);
 
     // Add input to DDlog program.
