@@ -1059,8 +1059,8 @@ dependencies = [
  "snvs",
  "tokio",
  "types",
+ "types__Snvs_mp",
  "types__snvs_dp",
- "types__snvs_mp",
 ]
 
 [[package]]
@@ -1757,10 +1757,10 @@ dependencies = [
  "timely",
  "triomphe",
  "types",
+ "types__Snvs_mp",
  "types__ovsdb",
  "types__set",
  "types__snvs_dp",
- "types__snvs_mp",
  "types__uuid",
 ]
 
@@ -2079,10 +2079,38 @@ dependencies = [
  "serde_json",
  "time",
  "timely",
+ "types__Snvs_mp",
  "types__ovsdb",
  "types__set",
  "types__snvs_dp",
- "types__snvs_mp",
+ "types__uuid",
+]
+
+[[package]]
+name = "types__Snvs_mp"
+version = "0.1.0"
+dependencies = [
+ "abomonation",
+ "ddlog_bigint",
+ "ddlog_derive",
+ "ddlog_log",
+ "ddlog_rt",
+ "ddlog_std",
+ "debug",
+ "differential-dataflow",
+ "differential_datalog",
+ "erased-serde",
+ "fnv",
+ "internment 0.1.0",
+ "libc",
+ "num",
+ "once_cell",
+ "ordered-float",
+ "serde",
+ "serde_json",
+ "time",
+ "timely",
+ "types__ovsdb",
  "types__uuid",
 ]
 
@@ -2163,34 +2191,6 @@ dependencies = [
  "serde_json",
  "time",
  "timely",
-]
-
-[[package]]
-name = "types__snvs_mp"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "ddlog_bigint",
- "ddlog_derive",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "num",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
- "time",
- "timely",
- "types__ovsdb",
- "types__uuid",
 ]
 
 [[package]]

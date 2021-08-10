@@ -270,31 +270,22 @@ impl Context {
             }
 
             let update_event = update.__bindgen_anon_1.update;
+
+            /* TODO: Put back in once we process the updates successfully.
             if update_event.clear && self.ddlog_cleared() {
+                println!("update event / ddlog cleared");
                 self.prog.transaction_rollback()?;
-            }
+                return Ok(());
+            } */
 
             let ddlog_ptr = &self.prog as *const HDDlog;
 
             let updates_buf: *const raw::c_char = ovsdb_sys::json_to_string(update_event.table_updates, 0);
             let updates_s: &str = ffi::CStr::from_ptr(updates_buf).to_str().unwrap();
-            println!("updates string: {}", updates_s);
-
-            // let prefix_s = ffi::CString::new(self.prefix.as_str()).unwrap();
-            let prefix_s = ffi::CString::new("").unwrap();
-
-            // if ovsdb_api::ddlog_apply_ovsdb_updates(
-            //     ddlog_ptr,
-            //     prefix_s.as_ptr(),
-            //     updates_buf,
-            // ) != 0 {
-            //     println!("apply updates failed");
-            //     self.prog.transaction_rollback().ok();
-            // }
+            println!("Update message from OVSDB: {}", updates_s);
 
             
-            let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str("", updates_s)?;
-            println!("{:#?}", commands);
+            let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str(&self.prefix, updates_s)?;
 
             let updates: Result<Vec<Update<DDValue>>, String> = commands
                 .iter()
@@ -303,9 +294,10 @@ impl Context {
 
             self.prog
                 .apply_updates(&mut updates?.into_iter())
-                .unwrap_or_else(|_| {
-                    println!("apply updates failed");
+                .unwrap_or_else(|e| {
                     self.prog.transaction_rollback().ok();
+                    let err = format!("apply_updates failed with error {}", e);
+                    println!("{}", err);
                 }
             );
             
@@ -313,9 +305,10 @@ impl Context {
         }
 
         /* Commit changes to DDlog. */
-        self.ddlog_commit().unwrap_or_else(|_| {
-            println!("transaction commit failed");
+        self.ddlog_commit().unwrap_or_else(|e| {
             self.prog.transaction_rollback().ok();
+            let err = format!("transaction_commit failed with error {}", e);
+            println!("{}", err);
         });
 
         // TODO: Poll immediate wake. This will be needed when this is a long-running program.
@@ -332,7 +325,6 @@ impl Context {
 
         let new_delta = self.prog.transaction_commit_dump_changes()?;
         self.delta = new_delta;
-        println!("committed deltas!");
 
         Ok(())
     }
@@ -523,10 +515,21 @@ pub unsafe fn create_context_and_loop(
     };
     let database_cs = ffi::CString::new(database.as_str()).unwrap();
 
+    let prefix = {
+        let db = database.clone();
+        let lower_prefix = format!("{}_mp::", db);
+        
+        let mut c = lower_prefix.chars();
+        match c.next() {
+            None => String::new(),
+            Some(f) => f.to_uppercase().chain(c).collect(),
+        }
+    };
+
     let mut ctx = Context {
         prog: prog,
         delta: delta,
-        prefix: format!("{}::", database),
+        prefix: prefix,
         input_relations: input_relations,
         output_relations: output_relations,
         output_only_relations: output_only_relations,

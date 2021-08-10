@@ -30,7 +30,7 @@ snvs = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog"}
 tokio = { version = "1.2.0", features = ["full"] }
 types = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types"}
 types__snvs_dp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/snvs_dp"}
-types__snvs_mp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/snvs_mp"}
+types__Snvs_mp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/Snvs_mp"}
 
 
 [build-dependencies]

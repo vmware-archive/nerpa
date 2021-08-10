@@ -8,7 +8,7 @@ fi
 # It generates the input and output relations. 
 
 # Generate DDlog input relations from OVS schema.
-ovsdb2ddlog -f snvs.ovsschema --output-file=snvs_mp.dl
+ovsdb2ddlog -f snvs.ovsschema --output-file=Snvs_mp.dl
 
 # Compile P4 program,
 cd snvs_p4 && ./run-p4c.sh && cd ..

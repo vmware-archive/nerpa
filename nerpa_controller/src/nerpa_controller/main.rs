@@ -37,30 +37,11 @@ pub async fn main() {
     // Instantiate DDlog program.
     let mut nerpa = Controller::new().unwrap();
 
-    // TODO: Connect the OVS database management plane to the controller.
+    // Connect the OVS database management plane to the controller.
     let server = "unix:/usr/local/var/run/openvswitch/db.sock";
     let database = "snvs";
-    let mp_output = ovsdb_client::export_input_from_ovsdb(server.to_string(), database.to_string());
-    println!("management plane output: {:#?}", mp_output);
+    let delta = ovsdb_client::export_input_from_ovsdb(server.to_string(), database.to_string()).unwrap();
 
-    // Add input to DDlog program.
-    let updates = vec![
-        Update::Insert{
-            relid: Relations::snvs_mp_Port as RelId,
-            v: types__snvs_mp::Port {
-                _uuid: 0,
-                id: 11,
-                vlan_mode: ddlog_std::Option::Some{x: "".to_string()},
-                tag: ddlog_std::Option::Some{x: 1},
-                trunks: ddlog_std::Set::new(),
-                priority_tagging: "no".to_string(), 
-            }.into_ddvalue(),
-        },
-    ];
-
-    // Compute and print output relation.
-    let output = nerpa.add_input(updates);
-    let delta = output.unwrap();
     Controller::dump_delta(&delta);
 
     // TODO: Stop hard-coding arguments.
