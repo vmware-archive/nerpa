@@ -166,7 +166,6 @@ impl Context {
              
             ovsdb_sys::ovsdb_cs_event_destroy(event); */
         }
-        println!("found {} updates to parse!", updates.len());
         self.parse_updates(updates)?;
 
         /* 'ovsdb_cs_may_send_transaction' does not check for null.
@@ -273,7 +272,6 @@ impl Context {
 
             /* TODO: Put back in once we process the updates successfully.
             if update_event.clear && self.ddlog_cleared() {
-                println!("update event / ddlog cleared");
                 self.prog.transaction_rollback()?;
                 return Ok(());
             } */
@@ -282,7 +280,7 @@ impl Context {
 
             let updates_buf: *const raw::c_char = ovsdb_sys::json_to_string(update_event.table_updates, 0);
             let updates_s: &str = ffi::CStr::from_ptr(updates_buf).to_str().unwrap();
-            println!("Update message from OVSDB: {}", updates_s);
+            println!("\n\nProcessing update from OVSDB, with message: {}", updates_s);
 
             
             let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str(&self.prefix, updates_s)?;
@@ -493,7 +491,7 @@ unsafe extern "C" fn compose_monitor_request(
     // Print monitor_requests out for debugging.
     let monitor_requests_cs: *const raw::c_char = ovsdb_sys::json_to_string(monitor_requests, 0);
     let monitor_requests_s: &str = ffi::CStr::from_ptr(monitor_requests_cs).to_str().unwrap();
-    println!("monitor requests string: {}", monitor_requests_s);
+    println!("\nMonitoring the following OVSDB columns: {}\n", monitor_requests_s);
 
     monitor_requests
 }
@@ -561,44 +559,31 @@ pub unsafe fn create_context_and_loop(
     loop {
         // this loops over the logic of `run()` without the previous pointer provenance issues.
 
-        println!("top of large while loop");
-        println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
-        println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
-
         let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
         ovsdb_sys::ovsdb_cs_run(cs, events);
-
-        println!("events from cs_run: {:#?}, {:p}", events, events);
-
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
-
         while !ovs_list::is_empty(events) {
             /* Advance the pointer, and convert the list to an event. */
             events = ovs_list::remove(events).as_mut().unwrap();
             let event = match ovs_list::to_event(events) {
                 None => {
-                    println!("no event found");
                     break;
                 },
                 Some(e) => {
-                    println!("some event found");
                     e
                 }
             };
 
             match event.type_ {
                 EVENT_TYPE_RECONNECT => {
-                    println!("found reconnect event");
                     /* TODO: Check if needed: 'json_destroy'. */
                     ctx.request_id = None;
                     ctx.state = Some(ConnectionState::Initial);
                 },
                 EVENT_TYPE_LOCKED => {
-                    println!("found locked event");
                     /* Nothing to do here. */
                 },
                 EVENT_TYPE_UPDATE => {
-                    println!("found update event");
                     if event.__bindgen_anon_1.update.clear {
                         updates = Vec::new();
                     }
@@ -607,7 +592,6 @@ pub unsafe fn create_context_and_loop(
                     continue;
                 },
                 EVENT_TYPE_TXN_REPLY => {
-                    println!("found txn reply event");
                     ctx.process_txn_reply(event.__bindgen_anon_1.txn_reply).ok()?
                 },
                 _ => {
@@ -625,7 +609,7 @@ pub unsafe fn create_context_and_loop(
              
             ovsdb_sys::ovsdb_cs_event_destroy(event); */
         }
-        println!("found {} updates to parse!", updates.len());
+        println!("Received {} update events from OVSDB.", updates.len());
         ctx.parse_updates(updates).ok()?;
 
         if ctx.state == Some(ConnectionState::Initial)

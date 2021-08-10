@@ -42,6 +42,7 @@ pub async fn main() {
     let database = "snvs";
     let delta = ovsdb_client::export_input_from_ovsdb(server.to_string(), database.to_string()).unwrap();
 
+    println!("\n\nProcessed input from OVSDB! Got following output...");
     Controller::dump_delta(&delta);
 
     // TODO: Stop hard-coding arguments.
