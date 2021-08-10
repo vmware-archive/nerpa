@@ -33,6 +33,8 @@ mod nerpa_rels;
 #[allow(dead_code)]
 mod ovs_list;
 
+use serde_json::Value;
+
 use std::convert::TryFrom;
 use std::{
     ffi,
@@ -50,6 +52,7 @@ use differential_datalog::program::{RelId, Update};
 use differential_datalog::record::IntoRecord;
 
 use snvs_ddlog::Relations;
+use snvs_ddlog::ovsdb_api;
 
 /* Aliases for types in the ovsdb-sys bindings. */
 type EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type;
@@ -107,22 +110,13 @@ impl Context {
         }
 
         let cs = self.get_cs_mut_ptr();
-        // check if ovsdb connected
-        println!("checking in run");
-        println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
-        println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
-
-
         if cs.is_null() {
             let e = "got null pointer from client-sync";
             return Err(e.to_string())
         }
 
         let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
-
-        println!("About to call ovsdb_cs_run");
         ovsdb_sys::ovsdb_cs_run(cs, events);
-        println!("Just called ovsdb_cs_run");
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
@@ -280,10 +274,28 @@ impl Context {
                 self.prog.transaction_rollback()?;
             }
 
+            let ddlog_ptr = &self.prog as *const HDDlog;
+
             let updates_buf: *const raw::c_char = ovsdb_sys::json_to_string(update_event.table_updates, 0);
             let updates_s: &str = ffi::CStr::from_ptr(updates_buf).to_str().unwrap();
+            println!("updates string: {}", updates_s);
 
-            let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str(self.prefix.as_str(), updates_s)?;
+            // let prefix_s = ffi::CString::new(self.prefix.as_str()).unwrap();
+            let prefix_s = ffi::CString::new("").unwrap();
+
+            // if ovsdb_api::ddlog_apply_ovsdb_updates(
+            //     ddlog_ptr,
+            //     prefix_s.as_ptr(),
+            //     updates_buf,
+            // ) != 0 {
+            //     println!("apply updates failed");
+            //     self.prog.transaction_rollback().ok();
+            // }
+
+            
+            let commands = ddlog_ovsdb_adapter::cmds_from_table_updates_str("", updates_s)?;
+            println!("{:#?}", commands);
+
             let updates: Result<Vec<Update<DDValue>>, String> = commands
                 .iter()
                 .map(|c| self.prog.convert_update_command(c))
@@ -292,6 +304,7 @@ impl Context {
             self.prog
                 .apply_updates(&mut updates?.into_iter())
                 .unwrap_or_else(|_| {
+                    println!("apply updates failed");
                     self.prog.transaction_rollback().ok();
                 }
             );
@@ -319,6 +332,7 @@ impl Context {
 
         let new_delta = self.prog.transaction_commit_dump_changes()?;
         self.delta = new_delta;
+        println!("committed deltas!");
 
         Ok(())
     }
@@ -369,7 +383,8 @@ impl Context {
 
                 let columns_s = ffi::CString::new("columns").unwrap();
                 let uuid_s = ffi::CString::new("_uuid").unwrap();
-                let uuid_json = ovsdb_sys::json_string_create(uuid_s.as_ptr());                ovsdb_sys::json_object_put(
+                let uuid_json = ovsdb_sys::json_string_create(uuid_s.as_ptr());
+                ovsdb_sys::json_object_put(
                     op,
                     columns_s.as_ptr(),
                     ovsdb_sys::json_array_create_1(uuid_json),
@@ -441,102 +456,52 @@ unsafe extern "C" fn compose_monitor_request(
     schema_json: *const ovsdb_sys::json,
     aux: *mut raw::c_void,
 ) -> *mut ovsdb_sys::json {
-    let schema_ptr = ovsdb_sys::ovsdb_cs_parse_schema(schema_json);
-    if schema_ptr.is_null() {
-        panic!("could not parse database schema");
-    }
-
-    let ctx_ptr: *mut Context = aux as *mut Context;
-    if ctx_ptr.is_null() {
-        panic!("received null pointer representing context");
-    }
-
     let monitor_requests = ovsdb_sys::json_object_create();
 
-    /* Create an initial 'hmap_node' from the schema. */
-    let schema_hmap = (*schema_ptr).map;
-    let schema_hmap_ptr = &schema_hmap as *const ovsdb_sys::hmap;
-    let mut hmap_node = hmap::first(schema_hmap_ptr);
+    /* Convert the bindgen-generated 'json' to a Rust 'str'. */
+    let schema_cs = ovsdb_sys::json_to_string(schema_json, 0);
+    let schema_s = ffi::CStr::from_ptr(schema_cs).to_str().unwrap();
 
-    while !hmap_node.is_null() {
-        let shash_node = hmap::shash(hmap_node);
+    let json_v: Value = serde_json::from_str(schema_s).unwrap();
+    let tables = &json_v["tables"].as_object().unwrap();
 
-        /* Advance the hmap_node to next. */
-        hmap_node = hmap::next(schema_hmap_ptr, hmap_node);
+    for (tk, tv) in tables.iter() {
+        let to = &tv.as_object().unwrap();
+        let cols = to["columns"].as_object().unwrap();
 
-        /* Extract the necessary fields, and check for null pointers. */
-        if shash_node.is_null() {
-            continue;
-        }
+        /* Construct a JSON array of each column. */
+        let subscribed_cols = ovsdb_sys::json_array_create_empty();
+        for (ck, cv) in cols.iter() {
+            let ck_cs = ffi::CString::new(ck.as_str()).unwrap();
+            let ck_cp = ck_cs.as_ptr() as *const raw::c_char;
 
-        let table_cs = (*shash_node).name;
-        if table_cs.is_null() {
-            continue;
-        }
-
-        let schema_columns: *const ovsdb_sys::sset = (*shash_node).data as *const ovsdb_sys::sset;
-        if schema_columns.is_null() {
-            continue;
-        }
-
-        let table_s = ffi::CStr::from_ptr(table_cs).to_str().unwrap();
-
-        for input_rel in (*ctx_ptr).input_relations.iter() {
-            if table_s != input_rel {
-                continue;
-            }
-
-            let subscribed_columns = ovsdb_sys::json_array_create_empty();
-
-            /* Iterate over schema columns, and add each to a JSON array. We have checked for null above, so the dereference is safe. */
-            let schema_hmap = &(*schema_columns).map as *const ovsdb_sys::hmap;
-            let mut schema_hmap_node = hmap::first(schema_hmap);
-            while !schema_hmap_node.is_null() {
-                let sset_node = hmap::sset(schema_hmap_node);
-                
-                /* Advance the schema_hmap_node to next. */
-                schema_hmap_node = hmap::next(schema_hmap, schema_hmap_node);
-
-                /* Checking sset_node for null allows safe dereference. */
-                if sset_node.is_null() {
-                    continue;
-                }
-
-                let column_cs = &(*sset_node).name as *const raw::c_char;
-                if column_cs.is_null() {
-                    continue;
-                }
-
-                let column_s = ffi::CStr::from_ptr(column_cs).to_str().unwrap();
-                if column_s != "_version" {
-                    ovsdb_sys::json_array_add(
-                        subscribed_columns,
-                        ovsdb_sys::json_string_create(column_cs)
-                    );
-                }
-            }
-    
-            let monitor_request = ovsdb_sys::json_object_create();
-            let columns_cs = ffi::CString::new("columns").unwrap();
-            ovsdb_sys::json_object_put(
-                monitor_request,
-                columns_cs.as_ptr(),
-                subscribed_columns,
+            ovsdb_sys::json_array_add(
+                subscribed_cols,
+                ovsdb_sys::json_string_create(ck_cp),
             );
-
-            ovsdb_sys::json_object_put(
-                monitor_requests,
-                table_cs,
-                ovsdb_sys::json_array_create_1(monitor_request),
-            );
-            
-            break;
         }
+
+        /* Map "columns": [<subscribed_cols>]. */
+        let monitor_request = ovsdb_sys::json_object_create();
+        let columns_cs = ffi::CString::new("columns").unwrap();
+        ovsdb_sys::json_object_put(
+            monitor_request,
+            columns_cs.as_ptr(),
+            subscribed_cols,
+        );
+
+        let table_cs = ffi::CString::new(tk.as_str()).unwrap();
+        ovsdb_sys::json_object_put(
+            monitor_requests,
+            table_cs.as_ptr(),
+            ovsdb_sys::json_array_create_1(monitor_request),
+        );
     }
 
-    /* Since the schema contained memory allocated in the C program,
-     * we call the OVSDB function to free it. */
-    ovsdb_sys::ovsdb_cs_free_schema(schema_ptr);
+    // Print monitor_requests out for debugging.
+    let monitor_requests_cs: *const raw::c_char = ovsdb_sys::json_to_string(monitor_requests, 0);
+    let monitor_requests_s: &str = ffi::CStr::from_ptr(monitor_requests_cs).to_str().unwrap();
+    println!("monitor requests string: {}", monitor_requests_s);
 
     monitor_requests
 }
@@ -590,46 +555,33 @@ pub unsafe fn create_context_and_loop(
     ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
     ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
 
-    // check if ovsdb connected
-    // TODO: Remove.
-    println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
-    println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
+    loop {
+        // this loops over the logic of `run()` without the previous pointer provenance issues.
 
-    while true {
         println!("top of large while loop");
         println!("is ovsdb connection alive: {:#?}", ovsdb_sys::ovsdb_cs_is_alive(cs));
         println!("did ovsdb connect: {:#?}", ovsdb_sys::ovsdb_cs_is_connected(cs));
 
         let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
-        println!("checking event with default: event {:#?}, pointer {:p}", events, events);
-
-        println!("About to call ovsdb_cs_run");
         ovsdb_sys::ovsdb_cs_run(cs, events);
-        println!("Just called ovsdb_cs_run");
+
+        println!("events from cs_run: {:#?}, {:p}", events, events);
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
-        println!("checking event after run: event {:#?}, pointer {:p}", events, events);
 
         while !ovs_list::is_empty(events) {
-            println!("checking event at the top of the loop: event {:#?}, pointer {:p}", events, events);
-            /* Extract the event from the intrusive list received from OVSDB. */
-            let opt_event = ovs_list::to_event(events);
-            let event = match opt_event {
+            /* Advance the pointer, and convert the list to an event. */
+            events = ovs_list::remove(events).as_mut().unwrap();
+            let event = match ovs_list::to_event(events) {
                 None => {
                     println!("no event found");
-                    break
+                    break;
                 },
                 Some(e) => {
                     println!("some event found");
                     e
-                },
+                }
             };
-
-            /* `events` should be non-null, since `to_event` checks null.
-             * This dereferences events; advances the pointer; and assigns a mutable reference to events. */
-            // events = &mut *((*events).next);
-            events = ovs_list::remove(events).as_mut().unwrap();
-            println!("checking event after advancement: event {:#?}, pointer {:p}", events, events);
 
             match event.type_ {
                 EVENT_TYPE_RECONNECT => {
