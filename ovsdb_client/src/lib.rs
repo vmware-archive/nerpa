@@ -26,8 +26,6 @@ extern crate snvs_ddlog;
 #[macro_use]
 extern crate memoffset;
 
-mod hmap;
-
 mod nerpa_rels;
 
 #[allow(dead_code)]
@@ -35,7 +33,6 @@ mod ovs_list;
 
 use serde_json::Value;
 
-use std::convert::TryFrom;
 use std::{
     ffi,
     os::raw,
@@ -49,10 +46,6 @@ use differential_datalog::DDlog;
 use differential_datalog::DDlogDynamic;
 use differential_datalog::DeltaMap;
 use differential_datalog::program::{RelId, Update};
-use differential_datalog::record::IntoRecord;
-
-use snvs_ddlog::Relations;
-use snvs_ddlog::ovsdb_api;
 
 /* Aliases for types in the ovsdb-sys bindings. */
 type EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type;
@@ -276,8 +269,6 @@ impl Context {
                 return Ok(());
             } */
 
-            let ddlog_ptr = &self.prog as *const HDDlog;
-
             let updates_buf: *const raw::c_char = ovsdb_sys::json_to_string(update_event.table_updates, 0);
             let updates_s: &str = ffi::CStr::from_ptr(updates_buf).to_str().unwrap();
             println!("\n\nProcessing update from OVSDB, with message: {}", updates_s);
@@ -461,7 +452,7 @@ unsafe extern "C" fn compose_monitor_request(
 
         /* Construct a JSON array of each column. */
         let subscribed_cols = ovsdb_sys::json_array_create_empty();
-        for (ck, cv) in cols.iter() {
+        for (ck, _cv) in cols.iter() {
             let ck_cs = ffi::CString::new(ck.as_str()).unwrap();
             let ck_cp = ck_cs.as_ptr() as *const raw::c_char;
 
@@ -624,8 +615,6 @@ pub unsafe fn create_context_and_loop(
 
         std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
     }
-
-    None
 }
 
 pub fn create_context(

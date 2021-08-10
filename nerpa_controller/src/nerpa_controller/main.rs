@@ -23,20 +23,13 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use differential_datalog::ddval::DDValConvert;
-use differential_datalog::program::{RelId, Update};
 use grpcio::{ChannelBuilder, EnvBuilder};
 use nerpa_controller::Controller;
 use proto::p4runtime_grpc::P4RuntimeClient;
-use snvs_ddlog::Relations;
-use snvs_ddlog::typedefs::ddlog_std;
 use std::sync::Arc;
 
 #[tokio::main]
 pub async fn main() {
-    // Instantiate DDlog program.
-    let mut nerpa = Controller::new().unwrap();
-
     // Connect the OVS database management plane to the controller.
     let server = "unix:/usr/local/var/run/openvswitch/db.sock";
     let database = "snvs";
