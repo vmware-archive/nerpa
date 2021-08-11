@@ -113,18 +113,15 @@ impl Context {
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
-        // TODO: Confirm the list pointer is advanced correctly.
         while !ovs_list::is_empty(events) {
-            /* Extract the event from the intrusive list received from OVSDB. */
-            let opt_event = ovs_list::to_event(events);
-            let event = match opt_event {
+            /* Advance the pointer, and convert the list to an event. */
+            events = ovs_list::remove(events).as_mut().unwrap();
+
+            /* Convert the list to an event. */
+            let event = match ovs_list::to_event(events) {
                 None => break,
                 Some(e) => e,
             };
-
-            /* `events` should be non-null, since `to_event` checks null.
-             * This dereferences events; advances the pointer; and assigns a mutable reference to events. */
-            events = &mut *((*events).next);
 
             match event.type_ {
                 EVENT_TYPE_RECONNECT => {
@@ -162,15 +159,10 @@ impl Context {
         self.parse_updates(updates)?;
 
         /* 'ovsdb_cs_may_send_transaction' does not check for null.
-         * If the optional client-sync is None, early return. */
-        let cs_ptr = self.get_cs_mut_ptr();
-        if cs_ptr.is_null() {
-            let e = "found empty client-sync after parsing updates";
-            return Err(e.to_string());
-        }
-
+         * The client-sync pointer 'cs' was checked for null above.
+         * It is not assigned null in the in-between FFI code. */
         if self.state == Some(ConnectionState::Initial)
-        && ovsdb_sys::ovsdb_cs_may_send_transaction(cs_ptr) {
+        && ovsdb_sys::ovsdb_cs_may_send_transaction(cs) {
             self.send_output_only_data_request()?;
         }
 
@@ -634,10 +626,21 @@ pub fn create_context(
     };
     let database_cs = ffi::CString::new(database.as_str()).unwrap();
 
+    let prefix = {
+        let db = database.clone();
+        let lower_prefix = format!("{}_mp::", db);
+        
+        let mut c = lower_prefix.chars();
+        match c.next() {
+            None => String::new(),
+            Some(f) => f.to_uppercase().chain(c).collect(),
+        }
+    };
+
     let mut ctx = Context {
         prog: prog,
         delta: delta,
-        prefix: format!("{}::", database),
+        prefix: prefix,
         input_relations: input_relations,
         output_relations: output_relations,
         output_only_relations: output_only_relations,
