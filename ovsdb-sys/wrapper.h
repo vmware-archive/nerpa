@@ -5,4 +5,6 @@
 #include "ovs/include/openvswitch/shash.h"
 #include "ovs/include/openvswitch/hmap.h"
 #include "ovs/lib/sset.h"
-#include "ovs/lib/ovsdb-cs.h"
+#include "ovs/lib/svec.h"
+#include "ovs/lib/stream.h"
+#include "ovs/lib/reconnect.h"

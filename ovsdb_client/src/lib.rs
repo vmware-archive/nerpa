@@ -27,6 +27,7 @@ extern crate snvs_ddlog;
 extern crate memoffset;
 
 mod nerpa_rels;
+mod ovsdb_cs;
 
 #[allow(dead_code)]
 mod ovs_list;
@@ -64,6 +65,62 @@ enum ConnectionState {
     Update,
 }
 
+/// Client-synchronization object wrapper.
+pub struct ClientSync {
+    ptr: ptr::NonNull<ovsdb_cs::ClientSync>
+}
+
+impl ClientSync {
+    pub fn new(
+        database: String,
+        ctx: &mut Context,
+    ) -> ClientSync {
+        println!("making new clientsync with name: {:#?}", database.as_str());
+        let database_cs = ffi::CString::new(database.as_str()).unwrap();
+        let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
+            compose_monitor_requests: Some(compose_monitor_request),
+        } as *const ovsdb_sys::ovsdb_cs_ops;
+        let cs_ops_void = ctx as *mut Context as *mut ffi::c_void;
+
+        ClientSync {
+            ptr: unsafe {
+                let cs_cp = ovsdb_sys::ovsdb_cs_create(
+                    database_cs.as_ptr(),
+                    1,
+                    cs_ops,
+                    cs_ops_void,
+                );
+    
+                /* 'ovsdb_cs_create' does not return null, so we can call 'new_unchecked'. */
+                ptr::NonNull::new_unchecked(cs_cp as *mut ovsdb_cs::ClientSync)
+            }
+        }
+    }
+
+    pub fn as_mut_ptr(&self) -> *mut ovsdb_sys::ovsdb_cs {
+        self.ptr.as_ptr() as *mut ovsdb_sys::ovsdb_cs
+    }
+
+    pub fn set_remote(&self, server: String) {
+        let server_cs = ffi::CString::new(server.as_str()).unwrap();
+        unsafe {
+            ovsdb_sys::ovsdb_cs_set_remote(
+                self.as_mut_ptr(),
+                server_cs.as_ptr(),
+                true,
+            );
+        }
+    }
+
+    pub fn run(&self) -> *mut ovsdb_sys::ovs_list {
+        let events = &mut ovs_list::OvsList::default().to_ovs_list();
+        unsafe { ovsdb_sys::ovsdb_cs_run(self.as_mut_ptr(), events)};
+
+        events
+    }
+}
+
+#[repr(C)]
 pub struct Context {
     prog: HDDlog,
     pub delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
@@ -79,7 +136,8 @@ pub struct Context {
     output_only_relations: Vec<String>,
 
     /* OVSDB connection. */
-    cs: Option<ovsdb_sys::ovsdb_cs>,
+    // cs: Option<ovsdb_sys::ovsdb_cs>,
+    cs: Option<ClientSync>,
     request_id: Option<ovsdb_sys::json>, /* JSON request ID for outstanding transaction, if any. */
     state: Option<ConnectionState>,
 
@@ -101,15 +159,20 @@ impl Context {
             let e = "must establish client-sync before processing messages";
             return Err(e.to_string());
         }
+        
+        let cs = self.cs.as_ref().unwrap();
+        // let cs = ClientSync::new(self.db_name.clone(), self);
+        let mut events = cs.run();
 
-        let cs = self.get_cs_mut_ptr();
+        /* let cs = self.get_cs_mut_ptr();
         if cs.is_null() {
             let e = "got null pointer from client-sync";
             return Err(e.to_string())
-        }
+        } */
 
-        let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
-        ovsdb_sys::ovsdb_cs_run(cs, events);
+        // let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
+        // ovsdb_sys::ovsdb_cs_run(cs, events);
+        // ovsdb_sys::ovsdb_cs_run(cs.as_mut_ptr(), events);
 
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
@@ -156,15 +219,16 @@ impl Context {
              
             ovsdb_sys::ovsdb_cs_event_destroy(event); */
         }
+        println!("Received {} update events from OVSDB.", updates.len());
         self.parse_updates(updates)?;
 
         /* 'ovsdb_cs_may_send_transaction' does not check for null.
          * The client-sync pointer 'cs' was checked for null above.
          * It is not assigned null in the in-between FFI code. */
-        if self.state == Some(ConnectionState::Initial)
-        && ovsdb_sys::ovsdb_cs_may_send_transaction(cs) {
-            self.send_output_only_data_request()?;
-        }
+        // if self.state == Some(ConnectionState::Initial)
+        // && ovsdb_sys::ovsdb_cs_may_send_transaction(cs) {
+        //     self.send_output_only_data_request()?;
+        // }
 
         Ok(())
     }
@@ -398,12 +462,11 @@ impl Context {
     // It may be cleaner to unify these getter methods using a general Option<T> function.
 
     pub fn get_cs_mut_ptr(&mut self) -> *mut ovsdb_sys::ovsdb_cs {
-        match self.cs {
-            None => ptr::null_mut(),
-            Some(mut cs) => {
-                &mut cs as *mut ovsdb_sys::ovsdb_cs
-            }
+        if self.cs.is_none() {
+            return ptr::null_mut();
         }
+        
+        self.cs.as_ref().unwrap().as_mut_ptr()
     }
 
     pub fn get_request_id_mut_ptr(&mut self) -> *mut ovsdb_sys::json {
@@ -648,15 +711,17 @@ pub fn create_context(
         request_id: None, /* This gets set later. */
         state: Some(ConnectionState::Initial),
         output_only_data: None, /* This will get filled in later. */
-        db_name: database,
+        db_name: database.clone(),
     };
 
     // We construct the client-sync here so that `ctx` can be passed when creating the connection.
     ctx.cs = unsafe {
-        let cs_ops = ovsdb_sys::ovsdb_cs_ops {
-            compose_monitor_requests: Some(compose_monitor_request),
-        };
+        let cs = ClientSync::new(database, &mut ctx);
+        cs.set_remote(server);
+
+        Some(cs)
         
+        /*
         let cs_ops_void = &mut ctx as *mut Context as *mut ffi::c_void;
 
         let cs = ovsdb_sys::ovsdb_cs_create(
@@ -673,7 +738,7 @@ pub fn create_context(
         match cs.is_null() {
             true => None,
             false => Some(*cs),
-        }
+        } */
     };
 
     Some(ctx)
@@ -683,16 +748,31 @@ pub fn export_input_from_ovsdb(
     server: String,
     database: String,
 ) -> Option<DeltaMap<DDValue>> {
-    let (prog, delta) = match snvs_ddlog::run(1, false).ok() {
-        Some((p, is)) => (p, is),
-        None => return None,
+
+    unsafe {
+        let mut ctx = unsafe {
+            match create_context(
+                server,
+                database,
+                nerpa_rels::nerpa_input_relations(),
+                nerpa_rels::nerpa_output_relations(),
+                nerpa_rels::nerpa_output_only_relations(),
+            ) {
+                None => panic!("no context!"),
+                Some(c) => c,
+            }
+        };
+    
+        loop {
+            ctx.run();
+
+            if ctx.delta.len() > 0 {
+                return Some(ctx.delta);
+            }
+    
+            std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
+        };
     };
 
-    unsafe{create_context_and_loop(
-        server,
-        database,
-        nerpa_rels::nerpa_input_relations(),
-        nerpa_rels::nerpa_output_relations(),
-        nerpa_rels::nerpa_output_only_relations(),
-    )}
+    None
 }
