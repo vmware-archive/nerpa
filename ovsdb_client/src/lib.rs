@@ -151,10 +151,40 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn create_client_sync(
+        &mut self,
+        server:String,
+        database: String,
+    ) -> *mut ovsdb_sys::ovsdb_cs {
+        let database_cs = ffi::CString::new(database.as_str()).unwrap();
+        let server_cs = ffi::CString::new(server.as_str()).unwrap();
+
+        let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
+            compose_monitor_requests: Some(compose_monitor_request),
+        } as *const ovsdb_sys::ovsdb_cs_ops;
+        let ctx_void = self as *mut Context as *mut ffi::c_void;
+
+        unsafe {
+            let cs = ovsdb_sys::ovsdb_cs_create(
+                database_cs.as_ptr(),
+                1,
+                cs_ops,
+                ctx_void,
+            );
+            ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
+
+            cs
+        }
+    }
+
     /// Process a batch of messages from the database server.
     /// # Safety
     /// Context.cs must be non-None.
-    pub unsafe fn run(&mut self) -> Result<(), String> {
+    pub unsafe fn run(
+        &mut self,
+        cs: *mut ovsdb_sys::ovsdb_cs,
+    ) -> Result<(), String> {
+        /*
         if self.cs.is_none() {
             let e = "must establish client-sync before processing messages";
             return Err(e.to_string());
@@ -173,7 +203,10 @@ impl Context {
         // let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
         // ovsdb_sys::ovsdb_cs_run(cs, events);
         // ovsdb_sys::ovsdb_cs_run(cs.as_mut_ptr(), events);
+        */
 
+        let mut events = &mut ovs_list::OvsList::default().to_ovs_list();
+        ovsdb_sys::ovsdb_cs_run(cs, events);
         let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
         while !ovs_list::is_empty(events) {
@@ -748,12 +781,22 @@ pub fn export_input_from_ovsdb(
     server: String,
     database: String,
 ) -> Option<DeltaMap<DDValue>> {
+    unsafe {
+        create_context_and_loop(
+            server,
+            database,
+            nerpa_rels::nerpa_input_relations(),
+            nerpa_rels::nerpa_output_relations(),
+            nerpa_rels::nerpa_output_only_relations(),
+        )
+    }
 
+    /*
     unsafe {
         let mut ctx = unsafe {
             match create_context(
-                server,
-                database,
+                server.clone(),
+                database.clone(),
                 nerpa_rels::nerpa_input_relations(),
                 nerpa_rels::nerpa_output_relations(),
                 nerpa_rels::nerpa_output_only_relations(),
@@ -762,17 +805,18 @@ pub fn export_input_from_ovsdb(
                 Some(c) => c,
             }
         };
+
+        let cs = ctx.create_client_sync(server, database);
     
         loop {
-            ctx.run();
+            ctx.run(cs);
 
             if ctx.delta.len() > 0 {
                 return Some(ctx.delta);
             }
     
             std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
-        };
+        }; 
     };
-
-    None
+    */
 }
