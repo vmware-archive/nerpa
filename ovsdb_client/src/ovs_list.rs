@@ -27,9 +27,6 @@ use std::{
     ptr,
 };
 
-/* Aliases for types in the ovsdb-sys bindings. */
-type UpdateEvent = ovsdb_sys::ovsdb_cs_event__bindgen_ty_1_ovsdb_cs_update_event;
-
 // Should have same C representation as `ovs_list` from bindgen crate.
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -39,7 +36,7 @@ pub struct OvsList {
 }
 
 impl OvsList {
-    pub fn to_ovs_list(&mut self) -> ovsdb_sys::ovs_list {
+    pub fn as_ovs_list(&mut self) -> ovsdb_sys::ovs_list {
         let prev_ptr = match self.prev.get() {
             None => ptr::null_mut(),
             Some(p) => p.as_ptr() as *mut ovsdb_sys::ovs_list,
@@ -56,15 +53,6 @@ impl OvsList {
         }
     }
 }
-
-// Should have same C representation as `ovsdb_cs_event` from bindgen crate.
-#[repr(C)]
-pub struct OvsdbCsEvent {
-    pub list_node: OvsList,
-    pub type_: ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type,
-    pub __bindgen_anon_1: ovsdb_sys::ovsdb_cs_event__bindgen_ty_1,
-}
-
 
 /* Cast an ovs_list to an ovsdb_cs_event. */
 pub unsafe fn to_event(
@@ -86,63 +74,6 @@ pub unsafe fn to_event(
     Some(*event_ptr)
 }
 
-
-/* Initializes 'list' as an empty list. */
-// TODO: Rewrite this function in a Rust-like manner.
-pub unsafe fn init(list: *mut ovsdb_sys::ovs_list) {
-    (*list).prev = list;
-    (*list).next = list;
-}
-
-/* Initializes 'list' with pointers that cause segfaults if dereferenced and will show up in a debugger. */
-pub unsafe fn poison(list: *mut ovsdb_sys::ovs_list) {
-    *list = ovsdb_sys::OVS_LIST_POISON;
-}
-
-// TODO: Implement `splice`.
-
-/* Insert 'elem' just before 'before'. */
-pub unsafe fn insert(
-    before: *mut ovsdb_sys::ovs_list,
-    elem: *mut ovsdb_sys::ovs_list,
-) {
-    (*elem).prev = (*before).prev;
-    (*elem).next = before;
-    (*(*before).prev).next = elem;
-    (*before).prev = elem;
-}
-
-/* Insert 'elem' at the beginning of 'list', so it becomes the front in 'list'. */
-pub unsafe fn push_front(
-    list: *mut ovsdb_sys::ovs_list,
-    elem: *mut ovsdb_sys::ovs_list,
-) {
-    insert((*list).next, elem);
-}
-
-/* Insert 'elem' at the end of 'list', so it becomes the back in 'list'. */
-pub unsafe fn push_back(
-    list: *mut ovsdb_sys::ovs_list,
-    elem: *mut ovsdb_sys::ovs_list,
-) {
-    insert(list, elem);
-}
-
-/* Puts 'elem' in the position currently occupied by 'position'.
- * Afterward, 'position' is not part of a list. */
-pub unsafe fn replace(
-    element: *mut ovsdb_sys::ovs_list,
-    position: *const ovsdb_sys::ovs_list,
-) {
-    (*element).next = (*position).next;
-    (*(*element).next).prev = element;
-
-    (*element).prev = (*position).prev;
-    (*(*element).prev).next = element;
-}
-
-// TODO: Implement `moved`.
-
 pub unsafe fn remove(
     elem: *mut ovsdb_sys::ovs_list
 ) -> *mut ovsdb_sys::ovs_list {
@@ -150,24 +81,6 @@ pub unsafe fn remove(
     (*(*elem).next).prev = (*elem).prev;
     
     (*elem).next
-}
-
-pub unsafe fn pop_front(
-    list: *mut ovsdb_sys::ovs_list
-) -> *mut ovsdb_sys::ovs_list {
-    let front: *mut ovsdb_sys::ovs_list = (*list).next;
-
-    remove(front);
-    front
-}
-
-pub unsafe fn pop_back(
-    list: *mut ovsdb_sys::ovs_list
-) -> *mut ovsdb_sys::ovs_list {
-    let back: *mut ovsdb_sys::ovs_list = (*list).prev;
-
-    remove(back);
-    back
 }
 
 pub unsafe fn is_empty(
