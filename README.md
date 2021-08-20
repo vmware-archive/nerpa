@@ -16,7 +16,9 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 
 For better organization, create a dedicated directory for these dependencies, outside your clone of this repository. Run the installation script within this directory. Set `$NERPA_DEPS` equal to this directory's path.
 
-3. Build the `proto` crate containing P4 Runtime structures. Install necessary dependencies (the protobuf and gRPC compilers).
+3. Install Open vSwitch using the appropriate [instructions](https://docs.openvswitch.org/en/latest/intro/install/).
+
+4. Build the `proto` crate containing P4 Runtime structures. Install necessary dependencies (the protobuf and gRPC compilers).
 
 ```
 cd $NERPA_DIR/proto
@@ -25,20 +27,20 @@ cargo install protobuf-codegen
 cargo install grpcio-compiler
 ```
 
-4. Generate the DDlog crate for our example program, `snvs`, using the [setup script](nerpa_controlplane/snvs_exp/generate-snvs.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle. This script also compiles the P4 program and generates intermediate DDlog programs for the data plane and management plane.
+5. Generate the DDlog crate for our example program, `snvs`, using the [setup script](nerpa_controlplane/snvs_exp/generate-snvs.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle. This script also compiles the P4 program and generates intermediate DDlog programs for the data plane and management plane.
 
 ```
 cd $NERPA_DIR/nerpa_controlplane/snvs_exp
 ./generate-snvs.sh
 ``` 
 
-5. Build the intermediate controller program's crate.
+6. Build the intermediate controller program's crate.
 ```
 cd $NERPA_DIR/nerpa_controller
 cargo build
 ```
 
-6. Build `ovsdb-sys`, the crate with bindings to the Open vSwitch database (ovsdb).
+7. Build `ovsdb-sys`, the crate with bindings to the Open vSwitch database (ovsdb).
 
 Include the `openvswitch/ovs` [codebase](https://github.com/openvswitch/ovs) using `git submodule`:
 ```
@@ -59,7 +61,7 @@ Confirm the bindings built correctly by running the tests:
 cargo test
 ```
 
-7. Generate necessary files, and then build the OVSDB client crate.
+8. Build `ovsdb_client`. This requires generating the DDlog relations in Rust using `ovsdb2ddlog2rust`.
 ```
 cd $NERPA_DIR/ovsdb_client
 pip3 install -r requirements.txt
@@ -81,14 +83,36 @@ cargo test
 ```
 ./simple_switch_grpc --log-console --no-p4 -- --grpc-server-addr 0.0.0.0:50051 --cpu-port 1010
 ```
-2. Run the intermediate controller program.
+2. Set up OVSDB. These example commmands are for Linux and include sample data.
+
+Create a database from the provided OVS schema:
+```
+ovsdb-tool create /usr/local/etc/openvswitch/snvs.db punix:/usr/local/var/run/openvswitch/db.sock /usr/local/etc/openvswitch/snvs.db
+```
+Run the OVSDB server:
+```
+ovsdb-server --pidfile --detach --log-file --remote punix:/usr/local/var/run/openvswitch/db.sock /usr/local/etc/openvswitch/snvs.db
+```
+Listen for connections:
+```
+ovs-appctl -t ovsdb-server ovsdb-server/add-remote ptcp:6640
+```
+In a new terminal, insert a row in the Port table:
+```
+ovsdb-client transact tcp:localhost:6640 '["snvs",{"op":"insert","table":"Port","row":{"id":11,"priority_tagging":"no","tag":[1]}}]'
+```
+
+3. Run the intermediate controller program.
 ```
 cd $NERPA_DIR/nerpa_controller
 cargo run
 ```
-Note that the input relations are currently hardcoded, because the  user interaction with the intermediate controller is unimplemented.  
-Running this program should print:
+
+Running this program will print OVSDB logs and should end with the following output:
 ```
-Changes to relation Vlans
-Vlans{.number = 11, .vlans = [1]} +1
+Changes to relation MulticastGroup
+MulticastGroup{.mcast_id = 1, .ports = [11, 22]} +1
+Changes to relation snvs_dp::InputVlan
+snvs_dp::InputVlan{.port = 11, .has_vlan = false, .vid = ddlog_std::None{}, .priority = 1, .action = snvs_dp::InputVlanActionSetVlan{.vid = 1}} +1
+snvs_dp::InputVlan{.port = 22, .has_vlan = false, .vid = ddlog_std::None{}, .priority = 1, .action = snvs_dp::InputVlanActionSetVlan{.vid = 1}} +1
 ```

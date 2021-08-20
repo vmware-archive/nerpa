@@ -22,17 +22,8 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-// The auto-generated crate `snvs_ddlog` declares the `HDDlog` type.
-// This serves as a reference to a running DDlog program.
-// It implements `trait differential_datalog::DDlog`.
-use differential_datalog::api::HDDlog;
-
-// `differential_datalog` contains the DDlog runtime copied to each generated workspace.
-use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
-use differential_datalog::DDlogDynamic;
 use differential_datalog::DeltaMap; // Represents a set of changes to DDlog relations.
 use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog values.
-use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
 use p4ext::{ActionRef, Table};
@@ -44,38 +35,16 @@ use std::collections::HashMap;
 // Controller
 // It contains a handle to the DDlog program, so we can use it to determine the form of packets.
 pub struct Controller {
-    hddlog: HDDlog,
+    delta: DeltaMap<DDValue>
 }
 
 impl Controller {
-    pub fn new() -> Result<Controller, String> {
-        let (hddlog, _) = snvs_ddlog::run(1, false)?;
-        
-        Ok(Self{hddlog: hddlog})
+    pub fn new(delta: DeltaMap<DDValue>) -> Controller {
+        Controller{delta}
     }
 
-    pub fn get_ddlog(&mut self) -> &mut HDDlog {
-        &mut self.hddlog
-    } 
-
-    pub fn stop(&mut self) {
-        self.hddlog.stop().unwrap();
-    }
-
-    pub fn add_input(&mut self, updates: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
-        self.hddlog.transaction_start()?;
-        
-        let update_result = self.hddlog.apply_updates(&mut updates.into_iter());
-        match update_result {
-            Ok(_) => {},
-            Err(_) => { self.hddlog.transaction_rollback()? }
-        };
-
-        self.hddlog.transaction_commit_dump_changes()
-    }
-
-    pub fn dump_delta(delta: &DeltaMap<DDValue>) {
-        for (rel, changes) in delta.iter() {
+    pub fn dump_delta(&mut self) {
+        for (rel, changes) in self.delta.iter() {
             println!("Changes to relation {}", snvs_ddlog::relid2name(*rel).unwrap());
             for (val, weight) in changes.iter() {
                 println!("{} {:+}", val, weight);
@@ -84,7 +53,7 @@ impl Controller {
     }
 
     pub fn push_outputs_to_switch(
-        delta: &DeltaMap<DDValue>,
+        &mut self,
         device_id: u64,
         role_id: u64,
         target: &str,
@@ -95,7 +64,7 @@ impl Controller {
         let pipeline = p4ext::get_pipeline_config(device_id, target, client);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
-        for (_rel_id, output_map) in (*delta).clone().into_iter() {
+        for (_rel_id, output_map) in self.delta.iter() {
             for (value, _weight) in output_map {
                 let record = value.clone().into_record();
                 

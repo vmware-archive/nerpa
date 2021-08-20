@@ -76,13 +76,12 @@ pub struct Context {
     prefix: String,
     input_relations: Vec<String>,
 
-    /* OVSDB connection.
-     * TODO: Add client-sync on struct. */
+    /* OVSDB connection. */
+    // TODO: Add client-sync on struct.
     state: Option<ConnectionState>,
 
     /* Database info. */
     db_name: String,
-    output_only_data: Option<ovsdb_sys::json>,
 }
 
 impl Context {
@@ -92,18 +91,28 @@ impl Context {
         reply: *mut ovsdb_sys::jsonrpc_msg,
     ) -> Result<(), String> {
         if reply.is_null() {
-            let e = "received a null transaction reply message";
-            return Err(e.to_string());
+            return Err(
+                format!("received a null transaction reply message")
+            );
         }
 
         /* Dereferencing 'reply' is safe due to the nil check. */
-        if unsafe{(*reply).type_} == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
-            // Convert the jsonrpc_msg to a *mut c_char.
-            // Represent it in a Rust string for debugging, and free the C string.
-            let reply_cs = unsafe{ovsdb_sys::jsonrpc_msg_to_string(reply)};
-            let reply_e = format!("received database error: {:#?}", reply_cs);
-            println!("{}", reply_e);
-            unsafe{libc::free(reply_cs as *mut libc::c_void)};
+        let reply_type = unsafe{
+            (*reply).type_
+        };
+
+        if reply_type == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
+            /* Convert the jsonrpc_msg to a *mut c_char.
+             * Represent it in a Rust string for debugging, and free the C string. */
+            let reply_s = unsafe {
+                let reply_cs = ovsdb_sys::jsonrpc_msg_to_string(reply);
+                let reply_s = format!("received database error: {:#?}", reply_cs);
+                libc::free(reply_cs as *mut libc::c_void);
+
+                reply_s
+            };
+
+            println!("{}", reply_s);
 
             /* 'ovsdb_cs_force_reconnect' does not check for a null pointer. */
             if cs.is_null() {
@@ -111,24 +120,29 @@ impl Context {
                 return Err(e.to_string());
             }
 
-            unsafe{ovsdb_sys::ovsdb_cs_force_reconnect(cs)};
-            return Err(reply_e);
+            unsafe {
+                ovsdb_sys::ovsdb_cs_force_reconnect(cs);
+            }
+
+            return Err(reply_s);
         }
 
         match self.state {
             Some(ConnectionState::Initial) => {
-                let e = "found initial state while processing transaction reply";
-                return Err(e.to_string());
+                return Err(
+                    format!("found initial state while processing transaction reply")
+                );
             },
             Some(ConnectionState::OutputOnlyDataRequested) => {
-                // TODO: In future, replace the output_only_data field on the Context.
+                // TODO: Store and update 'output_only_data' on Context.
 
                 self.state = Some(ConnectionState::Update);
             },
             Some(ConnectionState::Update) => {}, /* Nothing to do. */
             None => {
-                let e = "found invalid state while processing transaction reply";
-                return Err(e.to_string());
+                return Err(
+                    format!("found invalid state while processing transaction reply")
+                );
             }
         }
 
@@ -150,10 +164,13 @@ impl Context {
                 continue;
             }
 
-            let update_event = unsafe{update.__bindgen_anon_1.update};
+            let updates_s = unsafe {
+                let event = update.__bindgen_anon_1.update;
+                let buf = ovsdb_sys::json_to_string(event.table_updates, 0);
+                
+                ffi::CStr::from_ptr(buf).to_str().unwrap()
+            };
 
-            let updates_buf = unsafe{ovsdb_sys::json_to_string(update_event.table_updates, 0)};
-            let updates_s = unsafe{ffi::CStr::from_ptr(updates_buf).to_str().unwrap()};
             println!("\n\nProcessing update from OVSDB, with message: {}", updates_s);
 
             
@@ -183,7 +200,7 @@ impl Context {
             println!("{}", err);
         });
 
-        // TODO: Poll immediate wake. This will be needed when this is a long-running program.
+        // TODO: When this is a long-running program, poll wake.
 
         Ok(())
     }
@@ -244,9 +261,9 @@ unsafe extern "C" fn compose_monitor_request(
         );
     }
 
-    // Print monitor_requests out for debugging.
-    let monitor_requests_cs: *const raw::c_char = ovsdb_sys::json_to_string(monitor_requests, 0);
-    let monitor_requests_s: &str = ffi::CStr::from_ptr(monitor_requests_cs).to_str().unwrap();
+    /* Log the monitor request. */
+    let monitor_requests_cs = ovsdb_sys::json_to_string(monitor_requests, 0);
+    let monitor_requests_s = ffi::CStr::from_ptr(monitor_requests_cs).to_str().unwrap();
     println!("\nMonitoring the following OVSDB columns: {}\n", monitor_requests_s);
 
     monitor_requests
@@ -284,7 +301,6 @@ pub fn export_input_from_ovsdb(
         prefix,
         input_relations: nerpa_rels::nerpa_input_relations(),
         state: Some(ConnectionState::Initial),
-        output_only_data: None, /* This will get filled in later. */
         db_name: database,
     };
 
@@ -295,25 +311,24 @@ pub fn export_input_from_ovsdb(
     
     let cs_ops_void = &mut ctx as *mut Context as *mut ffi::c_void;
 
-    let cs = unsafe{ovsdb_sys::ovsdb_cs_create(
-        database_cs.as_ptr(),
-        1,
-        cs_ops,
-        cs_ops_void,
-    )};
-
-    unsafe {
+    let cs = unsafe {
+        let cs = ovsdb_sys::ovsdb_cs_create(
+            database_cs.as_ptr(),
+            1,
+            cs_ops,
+            cs_ops_void,
+        );
         ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
         ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
-    }
+
+        cs
+    };
 
     loop {
-        // this loops over the logic of `run()` without pointer issues
+        let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
 
         let mut events = &mut ovs_list::OvsList::default().as_ovs_list();
         unsafe{ovsdb_sys::ovsdb_cs_run(cs, events)};
-        
-        let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
         while unsafe{!ovs_list::is_empty(events)} {
 
             /* Advance the pointer, and convert the list to an event. */
