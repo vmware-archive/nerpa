@@ -47,7 +47,7 @@ git submodule update --init
 cd ovs
 ```
 
-Within the crate's `ovs` subdirectory, build and install Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
+Within the crate's `ovs` subdirectory, build Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
 
 Build the crate:
 ```
