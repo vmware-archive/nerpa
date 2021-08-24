@@ -43,7 +43,7 @@ cargo build
 
 6. Build `ovsdb-sys`, the crate with bindings to the Open vSwitch database (ovsdb).
 
-First, within the crate's `ovs` subdirectory, build and install Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
+Within the crate's `ovs` subdirectory, build Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
 
 Then build the crate:
 ```
