@@ -18,38 +18,42 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* NSX Edge pipeline. */
-#include <core.p4>
-#include <v1model.p4>
+#ifndef __DEFINE__
+#define __DEFINE__
 
-#include "include/parser.p4"
+#ifndef _PKT_OUT_HDR_ANNOT
+#define _PKT_OUT_HDR_ANNOT
+#endif
 
-control EdgeVerifyChecksum(inout parsed_headers_t hdr,
-                           inout edge_metadata_t meta) {
-    apply {}
-}
+#ifndef IP_VER_LENGTH
+#define IP_VER_LENGTH 4
+#endif
 
-control EdgeIngress(inout parsed_headers_t hdr,
-                    inout edge_metadata_t meta,
-                    inout standard_metadata_t standard_metadata) {
-    apply {}
-}
+#ifndef IP_VERSION_4
+#define IP_VERSION_4 4
+#endif
 
-control EdgeEgress(inout parsed_headers_t hdr,
-                   inout edge_metadata_t meta,
-                   inout standard_metadata_t standard_metadata) {
-    apply {}
-}
+#ifndef IP_VERSION_6
+#define IP_VERSION_6 6
+#endif
 
-control EdgeComputeChecksum(inout parsed_headers_t hdr, inout edge_metadata_t meta) {
-    apply {}
-}
+#define PACKET_OUT_HDR_SIZE 2
 
-V1Switch (
-    EdgeParser(),
-    EdgeVerifyChecksum(),
-    EdgeIngress(),
-    EdgeEgress(),
-    EdgeComputeChecksum(),
-    EdgeDeparser()
-) main;
+typedef bit<9> port_t;
+typedef bit<20> mpls_label_t;
+typedef bit<9> port_num_t;
+typedef bit<12> vlan_id_t;
+
+const port_t CPU_PORT = 255;
+
+const bit<16> ETHERTYPE_QINQ = 0x88A8;
+const bit<16> ETHERTYPE_QINQ_NON_STD = 0x9100;
+const bit<16> ETHERTYPE_VLAN = 0x8100;
+const bit<16> ETHERTYPE_MPLS = 0x8847;
+const bit<16> ETHERTYPE_ARP = 0x0806;
+const bit<16> ETHERTYPE_IPV4 = 0x0800;
+const bit<16> ETHERTYPE_IPV6 = 0x86dd;
+
+const vlan_id_t DEFAULT_VLAN_ID = 12w4094;
+
+#endif
