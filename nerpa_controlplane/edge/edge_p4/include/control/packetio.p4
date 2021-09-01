@@ -18,42 +18,35 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef __DEFINE__
-#define __DEFINE__
+#include "../header.p4"
 
-#ifndef _PKT_OUT_HDR_ANNOT
-#define _PKT_OUT_HDR_ANNOT
-#endif
+control PacketIoIngress(inout parsed_headers_t hdr,
+                        inout edge_metadata_t edge_metadata,
+                        inout standard_metadata_t standard_metadata) {
+    apply {
+        if (hdr.packet_out.isValid()) {
+            standard_metadata.egress_spec = hdr.packet_out.egress_port;
+            hdr.packet_out.setInvalid();
+            edge_metadata.is_controller_packet_out = _TRUE;
+            // No need for ingress processing. Straight to egress.
+            exit;
+        }
+    }
+}
 
-#ifndef IP_VER_LENGTH
-#define IP_VER_LENGTH 4
-#endif
+control PacketIoEgress(inout parsed_headers_t hdr,
+                       inout edge_metadata_t edge_metadata,
+                       inout standard_metadata_t standard_metadata) {
+    apply {
+        if (edge_metadata.is_controller_packet_out == _TRUE) {
+            // Transmit right away.
+            exit;
+        }
 
-#ifndef IP_VERSION_4
-#define IP_VERSION_4 4
-#endif
-
-#ifndef IP_VERSION_6
-#define IP_VERSION_6 6
-#endif
-
-#define PACKET_OUT_HDR_SIZE 2
-
-typedef bit<9> port_t;
-typedef bit<20> mpls_label_t;
-typedef bit<9> port_num_t;
-typedef bit<12> vlan_id_t;
-
-const port_t CPU_PORT = 255;
-
-const bit<16> ETHERTYPE_QINQ = 0x88A8;
-const bit<16> ETHERTYPE_QINQ_NON_STD = 0x9100;
-const bit<16> ETHERTYPE_VLAN = 0x8100;
-const bit<16> ETHERTYPE_MPLS = 0x8847;
-const bit<16> ETHERTYPE_ARP = 0x0806;
-const bit<16> ETHERTYPE_IPV4 = 0x0800;
-const bit<16> ETHERTYPE_IPV6 = 0x86dd;
-
-const vlan_id_t DEFAULT_VLAN_ID = 12w4094;
-
-#endif
+        if (standard_metadata.egress_port == CPU_PORT) {
+            hdr.packet_in.setValid();
+            hdr.packet_in.ingress_port = standard_metadata.ingress_port;
+            exit;
+        }
+    }
+}

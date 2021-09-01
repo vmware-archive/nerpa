@@ -22,7 +22,11 @@ SOFTWARE.
 #include <core.p4>
 #include <v1model.p4>
 
+#include "include/header.p4"
 #include "include/parser.p4"
+
+#include "include/control/forwarding.p4"
+#include "include/control/packetio.p4"
 
 control EdgeVerifyChecksum(inout parsed_headers_t hdr,
                            inout edge_metadata_t meta) {
@@ -30,9 +34,17 @@ control EdgeVerifyChecksum(inout parsed_headers_t hdr,
 }
 
 control EdgeIngress(inout parsed_headers_t hdr,
-                    inout edge_metadata_t meta,
+                    inout edge_metadata_t edge_metadata,
                     inout standard_metadata_t standard_metadata) {
-    apply {}
+    PacketIoIngress() pkt_io_ingress;
+    Forwarding() forwarding;
+    
+    apply {
+        pkt_io_ingress.apply(hdr, edge_metadata, standard_metadata);
+        if (edge_metadata.skip_forwarding == _FALSE) {
+            forwarding.apply(hdr, edge_metadata, standard_metadata);
+        }
+    }
 }
 
 control EdgeEgress(inout parsed_headers_t hdr,

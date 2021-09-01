@@ -18,7 +18,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "defines.p4"
+#ifndef __HEADER__
+#define __HEADER__
+
+#include "define.p4"
 
 @controller_header("packet_in")
 header packet_in_header_t {
@@ -35,9 +38,8 @@ header packet_out_header_t {
 }
 
 header ethernet_t {
-    bit<48> dstAddr;
-    bit<48> srcAddr;
-    bit<16> etherType;
+    mac_addr_t dst_addr;
+    mac_addr_t src_addr;
 }
 
 header eth_type_t {
@@ -100,8 +102,12 @@ header ipv6_t {
 struct edge_metadata_t {
     bit<16> ip_eth_type;
     vlan_id_t vlan_id;
-    bit<8> mpls_ttl;
     mpls_label_t mpls_label;
+    bit<8> mpls_ttl;
+    _BOOL skip_forwarding;
+    fwd_type_t fwd_type;
+    next_id_t next_id;
+    _BOOL is_controller_packet_out;
     bit<8> ip_proto;
     bit<32> ipv4_src_addr;
     bit<32> ipv4_dst_addr;
@@ -117,4 +123,7 @@ struct parsed_headers_t {
     ipv4_t ipv4;
     ipv6_t ipv6;
     packet_out_header_t packet_out;
+    packet_in_header_t packet_in;
 }
+
+#endif

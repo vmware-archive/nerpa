@@ -21,7 +21,7 @@ SOFTWARE.
 #ifndef __PARSER__
 #define __PARSER__
 
-#include "headers.p4"
+#include "header.p4"
 
 parser EdgeParser(packet_in packet,
                   out parsed_headers_t hdr,
