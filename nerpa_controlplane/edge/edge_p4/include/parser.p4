@@ -93,15 +93,8 @@ parser EdgeParser(packet_in packet,
         packet.extract(hdr.mpls);
         edge_metadata.mpls_label = hdr.mpls.label;
         edge_metadata.mpls_ttl = hdr.mpls.ttl;
-        
-        // There seems to be only one MPLS label in an edge packet.
-        // Assume the next header is IPv4 or IPv6. We may have to move this after ARP.
-        // Lookup the first 4 bits for version.
-        transition select(packet.lookahead<bit<IP_VER_LENGTH>>()) {
-            IP_VERSION_4: parse_ipv4;
-            IP_VERSION_6: parse_ipv6;
-            default: parse_ethernet;
-        }
+
+        transition parse_arp;
     }
 
     state parse_arp {
@@ -109,7 +102,12 @@ parser EdgeParser(packet_in packet,
 
         // TODO: Assign any needed ARP metadata.
 
-        transition accept;
+        // Lookup the first 4 bits for version.
+        transition select(packet.lookahead<bit<IP_VER_LENGTH>>()) {
+            IP_VERSION_4: parse_ipv4;
+            IP_VERSION_6: parse_ipv6;
+            default: accept;
+        }
     }
 
     state parse_ipv4 {
@@ -119,7 +117,7 @@ parser EdgeParser(packet_in packet,
         edge_metadata.ipv4_src_addr = hdr.ipv4.src_addr;
         edge_metadata.ipv4_dst_addr = hdr.ipv4.dst_addr;
 
-        // TODO: Parse based on protocol.
+        // TODO: If needed, parse based on protocol (TCP, UDP, or ICMP).
 
         transition accept;
     }
@@ -129,7 +127,7 @@ parser EdgeParser(packet_in packet,
         edge_metadata.ip_proto = hdr.ipv6.next_hdr;
         edge_metadata.ip_eth_type = ETHERTYPE_IPV6;
 
-        // TODO: Parse based on protocol.
+        // TODO: If needed, parse based on protocol (TCP, UDP, or ICMP).
 
         transition accept;
     }
@@ -137,6 +135,7 @@ parser EdgeParser(packet_in packet,
 
 control EdgeDeparser(packet_out packet, in parsed_headers_t hdr) {
     apply {
+        packet.emit(hdr.packet_in);
         packet.emit(hdr.ethernet);
         packet.emit(hdr.vlan_tag);
         packet.emit(hdr.inner_vlan_tag);
