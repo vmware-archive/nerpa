@@ -22,6 +22,10 @@ SOFTWARE.
 #include <core.p4>
 #include <v1model.p4>
 
+#define TABLE_CAPACITY 4096
+#define MAC_LEARN_RCVR 1
+#define BROADCAST_GRP 1
+
 const bit<16> ETH_VLAN = 0x8100;
 
 typedef bit<48>  EthernetAddress;
@@ -29,6 +33,7 @@ typedef bit<32>  IPv4Address;
 typedef bit<12>  VlanID;
 typedef bit<9>   PortID;
 typedef bit<3>   PCP;
+typedef bit<16> MulticastGroup;
 
 // simple_switch.md suggests defining these constants for the values
 // of standard_metadata.instance_type.
@@ -75,12 +80,29 @@ header Ipv4_h {
     IPv4Address  dstAddr;
 }
 
+struct Mac_entry {
+    EthernetAddress addr;
+    VlanID vlan;
+    PortID port;
+}
+
+struct DigestMsg {
+    EthernetAddress addr;
+    PortID port;
+}
+
 struct metadata {
     // The packet's conceptual VLAN, which might not be in a VLAN header.
     VlanID vlan;
 
     // Whether to flood this packet.
     bool flood;
+
+    // Whether to send a digest message for MAC learning.
+    bool send_mac_learn_msg;
+
+    // The digest message to send the control plane.
+    Mac_entry mac_learn_msg;
 }
 
 struct headers {
@@ -107,59 +129,6 @@ parser SnvsParser(packet_in packet,
 
 control SnvsVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply {}
-}
-
-// MAC learning table.
-//
-// Each entry is 48 bits of Ethernet address, 12 bits of VLAN,
-// and 9 bits of port number.  There's no expiration currently.
-typedef bit<(48 + 12 + 9)> Mac_register_entry;
-const bit<32> N_MAC_ENTRIES = 4096;
-struct Mac_entry {
-    EthernetAddress addr;
-    VlanID vlan;
-    PortID port;
-}
-void hash_mac_entry(in EthernetAddress addr, in VlanID vlan,
-                    out bit<32> i0, out bit<32> i1)
-{
-    hash(i0, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w0 }, N_MAC_ENTRIES);
-    hash(i1, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w1 }, N_MAC_ENTRIES);
-}
-void get_mac_entry(register<Mac_register_entry> reg,
-                   in bit<32> index,
-                   out Mac_entry me)
-{
-    Mac_register_entry me_raw;
-    reg.read(me_raw, index);
-    me.addr = (EthernetAddress) (me_raw >> (12 + 9));
-    me.vlan = (VlanID) (me_raw >> 9);
-    me.port = (PortID) me_raw;
-}
-void hash_and_get_mac_entries(in EthernetAddress addr,
-    in VlanID vlan,
-    register<Mac_register_entry> mac_table,
-    out bit<32> i0,
-    out bit<32> i1,
-    out Mac_entry b0,
-    out Mac_entry b1)
-{
-    // Hash Ethernet address in two different buckets.
-    hash_mac_entry(addr, vlan, i0, i1);
-
-    // Fetch each bucket and look for the existing MAC entry.
-    get_mac_entry(mac_table, i0, b0);
-    get_mac_entry(mac_table, i1, b1);
-}
-void put_mac_entry(register<Mac_register_entry> reg,
-                   in bit<32> index,
-                   in Mac_entry me)
-{
-    Mac_register_entry me_raw
-        = ((((Mac_register_entry) me.addr) << (12 + 9))
-           | (((Mac_register_entry) me.vlan) << 9)
-           | (Mac_register_entry) me.port);
-    reg.write(index, me_raw);
 }
 
 control SnvsIngress(inout headers hdr,
@@ -209,16 +178,53 @@ control SnvsIngress(inout headers hdr,
         actions = { NoAction; }
     }
 
-    // Tracks VLANs in which all packets are flooded.
-    action set_flood() {
-        meta.flood = true;
-    }
-    table FloodVlan {
-        key = { meta.vlan: exact @name("vlan"); }
-        actions = { set_flood; }
+    // Below we implement MAC learning using the digest mechanism.
+    // Entries in LearnedSources are searched for the packet's source MAC address.
+    // Every table entry's action should be NoAction.
+    // If there is a miss in LearnedSources, we send a message to the control plane.
+    // This message contains the source MAC address and port it arrived on.
+    // The control plane can then decide if it creates an entry with the source MAC address in both tables.
+    // LearnedDestinations sends future packets out on this packet's ingress port.
+
+    /* Table source MAC. */
+    action Learn() {
+        DigestMsg msg;
+        msg.addr = hdr.eth.src;
+        msg.port = standard_metadata.ingress_port;
+        digest(MAC_LEARN_RCVR, msg);
     }
 
-    register<Mac_register_entry>(N_MAC_ENTRIES) mac_table;    
+    table LearnedSources {
+        key = { hdr.eth.src: exact @name("src"); meta.vlan: exact @name("vlan"); }
+        actions = { Learn; NoAction; }
+        default_action = Learn();
+        support_timeout = true;
+    }
+
+    /* Table destination MAC. */
+    action Broadcast() {
+        standard_metadata.mcast_grp = BROADCAST_GRP;
+    }
+
+    /* If we're flooding, we use the VLAN as the multicast group.
+     * We assume that the control plane has configured one multicast group per VLAN.
+     * The VLAN number serves as the multicast group ID. */
+    action Multicast() {
+        standard_metadata.mcast_grp = (bit<16>) meta.vlan;
+    }
+
+    action Forward(PortID port) {
+        standard_metadata.egress_spec = port;
+    }
+
+    table LearnedDestinations {
+        key = { hdr.eth.dst: exact @name("dst"); meta.vlan: exact @name("vlan"); }
+        actions = { Broadcast; Multicast; Forward; }
+        default_action = Broadcast();
+
+        size = TABLE_CAPACITY;
+        support_timeout = true;
+    }
 
     apply {
         // Drop packets received on mirror destination port.
@@ -235,61 +241,9 @@ control SnvsIngress(inout headers hdr,
             clone(CloneType.I2E, 1);
         }
 
-        // Is this a flood VLAN?
-        meta.flood = false;
-        FloodVlan.apply();
-
-        // TODO: Factor out common logic between the two if-statements.
-
-        // Learn source MAC.
-        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)) {
-            bit<32> i0;
-            bit<32> i1;
-            Mac_entry b0;
-            Mac_entry b1;
-            hash_and_get_mac_entries(hdr.eth.src, meta.vlan, mac_table, i0, i1, b0, b1);
-            if (!(b0.addr != hdr.eth.src || b0.vlan != meta.vlan) &&
-                !(b1.addr != hdr.eth.src || b1.vlan != meta.vlan)) {
-                // No match.  Replace one entry randomly.
-                bit<1> bucket;
-                random(bucket, 0, 1);
-
-                put_mac_entry(mac_table, bucket == 0 ? i0 : i1,
-                              { hdr.eth.src, meta.vlan,
-                                standard_metadata.ingress_port });
-            }
-        }
-
-        // Lookup destination MAC.
-        PortID output = FLOOD_PORT;
-        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)) {
-            bit<32> i0;
-            bit<32> i1;
-            Mac_entry b0;
-            Mac_entry b1;
-            hash_and_get_mac_entries(hdr.eth.dst, meta.vlan, mac_table, i0, i1, b0, b1);
-            if (b0.addr == hdr.eth.dst && b0.vlan == meta.vlan) {
-                output = b0.port;
-            } else if (b1.addr == hdr.eth.dst && b1.vlan == meta.vlan) {
-                output = b1.port;
-            } else {
-                /* No learned port for this MAC and VLAN. */
-            }
-        }
-
-        // If we're flooding, then use the VLAN as the multicast group
-        // (we assume that the control plane has configured one multicast
-        // group per VLAN, with the VLAN number as the multicast group ID).
-        //
-        // If we have a destination port, then it becomes the output port.
-        //
-        // We don't bother to try to drop output to the input port here
-        // because it happens in the egress pipeline.
-        if (output == FLOOD_PORT) {
-            standard_metadata.mcast_grp = (bit<16>) meta.vlan;
-        } else {
-            standard_metadata.egress_spec = output;
-        }
+        // MAC learning.
+        LearnedSources.apply();
+        LearnedDestinations.apply();
     }
 }
 
@@ -349,6 +303,23 @@ control SnvsDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr);
     }
+    /*
+    action SendDigest() {
+        digest<Mac_entry>()
+    }
+
+    table MacLearnMessage {
+        key = { meta.send_mac_learn_msg: exact; };
+    }
+
+    Digest<Mac_entry>() mac_learn_digest;
+    apply {
+        packet.emit(hdr);
+
+        if (meta.send_mac_learn_msg) {
+            mac_learn_digest.pack(meta.mac_learn_msg);
+        }
+    } */
 }
 
 V1Switch (
