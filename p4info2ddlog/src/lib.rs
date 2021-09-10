@@ -219,6 +219,60 @@ pub fn p4info_to_ddlog(
         }
     }
 
+    // Create input relations for the digest messages. 
+    
+    // Map the digest name to its type information.
+    use std::collections::HashSet;
+    let digest_names: HashSet<&str> = p4info
+        .get_digests()
+        .iter()
+        .map(|d| d.get_preamble().get_name())
+        .collect();
+
+    let mut digest_structs = p4info
+        .get_type_info()
+        .get_structs()
+        .clone();
+    digest_structs.retain(|k, _| digest_names.contains(k.as_str()));
+
+    // Format the digests as input relations.
+    // Write the formatted input relation to the output buffer.
+    for (k, ds) in digest_structs.iter() {
+        writeln!(output, "input relation {}(", k)?;
+
+        // Push each declaration for the input relation as (field_name, type) tuples.
+        let members = ds.get_members();
+        for (i, m) in members.iter().enumerate() {
+            let delimiter = if i == members.len() - 1 { "" } else { "," };
+ 
+            let name = m.get_name();
+            let type_spec = &m.get_type_spec().type_spec;
+
+            use proto::p4types::P4DataTypeSpec_oneof_type_spec as P4DataTypeSpec;
+            use proto::p4types::P4BitstringLikeTypeSpec_oneof_type_spec as P4BitstringTypeSpec;
+
+            let full_type: String = match type_spec {
+                Some(P4DataTypeSpec::bitstring(ref bs)) => {
+                    let bitwidth: i32 = match &bs.type_spec {
+                        Some(P4BitstringTypeSpec::bit(b)) => b.get_bitwidth(),
+                        Some(P4BitstringTypeSpec::int(i)) => i.get_bitwidth(),
+                        Some(P4BitstringTypeSpec::varbit(v)) => v.get_max_bitwidth(),
+                        None => 0, // should never happen 
+                    };
+
+                    format!("bit<{}>", bitwidth)
+                },
+                Some(P4DataTypeSpec::bool(_)) => format!("bool"),
+                // TODO: Translate remaining P4DataTypeSpec types to DDlog types.
+                _ => "unimplemented".to_owned(),
+            };
+
+            writeln!(output, "    {}: {}{}", name, full_type, delimiter)?;
+        }
+
+        writeln!(output, ")")?;
+    }
+
     let output_filename_os = OsStr::new(output_arg.unwrap());
     let output_filename = output_filename_os.to_string_lossy();
     File::create(output_filename_os)
