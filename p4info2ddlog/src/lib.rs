@@ -102,6 +102,85 @@ fn get_pipelines(
     Ok(pipelines)
 }
 
+
+use proto::p4types::P4DataTypeSpec_oneof_type_spec as P4DataTypeSpec;
+
+fn extract_p4data_types(
+    type_spec: &Option<proto::p4types::P4DataTypeSpec_oneof_type_spec>
+) -> Vec<String> {
+    let mut types = Vec::<String>::new();
+    match type_spec {
+        Some(P4DataTypeSpec::bitstring(_)) => {},
+        Some(P4DataTypeSpec::bool(_)) => {},
+        Some(P4DataTypeSpec::tuple(t)) => {
+            for tm in t.get_members().iter() {
+                types.append(&mut extract_p4data_types(&tm.type_spec));
+            }
+        },
+        Some(P4DataTypeSpec::field_struct(ref fs)) => types.push(fs.get_name().to_owned()),
+        Some(P4DataTypeSpec::header(ref h)) => types.push(h.get_name().to_owned()),
+        Some(P4DataTypeSpec::header_union(ref hu)) => types.push(hu.get_name().to_owned()),
+        Some(P4DataTypeSpec::header_stack(ref hs)) => types.push(hs.get_header().get_name().to_owned()),
+        Some(P4DataTypeSpec::header_union_stack(ref hus)) => types.push(hus.get_header_union().get_name().to_owned()),
+        Some(P4DataTypeSpec::field_enum(ref fe)) => types.push(fe.get_name().to_owned()),
+        Some(P4DataTypeSpec::error(ref e)) => types.push(format!("error")), // TODO: Find a cleaner method for errors.
+        Some(P4DataTypeSpec::serializable_enum(ref se)) => types.push(se.get_name().to_owned()),
+        Some(P4DataTypeSpec::new_type(ref nt)) => types.push(nt.get_name().to_owned()),
+        None => {},
+    };
+
+    types
+}
+
+fn p4data_to_ddlog_type(
+    type_spec: &Option<proto::p4types::P4DataTypeSpec_oneof_type_spec>
+) -> String {
+    use proto::p4types::P4BitstringLikeTypeSpec_oneof_type_spec as P4BitstringTypeSpec;
+
+    match type_spec {
+        Some(P4DataTypeSpec::bitstring(ref bs)) => {
+            let bitwidth: i32 = match &bs.type_spec {
+                Some(P4BitstringTypeSpec::bit(b)) => b.get_bitwidth(),
+                Some(P4BitstringTypeSpec::int(i)) => i.get_bitwidth(),
+                Some(P4BitstringTypeSpec::varbit(v)) => v.get_max_bitwidth(),
+                None => 0, // should never happen
+            };
+
+            format!("bit<{}>", bitwidth)
+        },
+        Some(P4DataTypeSpec::bool(_)) => format!("bool"),
+        Some(P4DataTypeSpec::tuple(t)) => {
+            let mut tuple_types = Vec::new();
+            for tm in t.get_members().iter() {
+                tuple_types.push(p4data_to_ddlog_type(&tm.type_spec));
+            }
+
+            format!("({})",  tuple_types.join(","))
+        },
+
+        // P4NamedType contains the name of a P4 type.
+        // For all enum variants of this type, their corresponding DDlog type is just that named type.
+        Some(P4DataTypeSpec::field_struct(ref fs)) => fs.get_name().to_owned(),
+        Some(P4DataTypeSpec::header(ref h)) => h.get_name().to_owned(),
+        Some(P4DataTypeSpec::header_union(ref hu)) => hu.get_name().to_owned(),
+
+        // P4HeaderStackTypeSpec is a (header, size) pair.
+        // `header` is a named P4 type, size is an int32.
+        Some(P4DataTypeSpec::header_stack(ref hs)) => format!("({}, bigint)", hs.get_header().get_name()),
+
+        // P4HeaderUnionStackTypeSpec consists of a (header_union, size) pair.
+        // `header_union` is a named type, size is an int32.
+        Some(P4DataTypeSpec::header_union_stack(ref hus)) => format!("({}, bigint)", hus.get_header_union().get_name()),
+        Some(P4DataTypeSpec::field_enum(ref fe)) => fe.get_name().to_owned(),
+
+        // TODO: Create P4 error type in DDlog.
+        Some(P4DataTypeSpec::error(ref _e)) => format!("error"),
+        Some(P4DataTypeSpec::serializable_enum(ref se)) => se.get_name().to_owned(),
+        Some(P4DataTypeSpec::new_type(ref nt)) => nt.get_name().to_owned(),
+        None => format!(""), // should never happen
+    }
+}
+
 pub fn p4info_to_ddlog(
     p4info_arg: Option<&str>,
     output_arg: Option<&str>,
@@ -229,47 +308,66 @@ pub fn p4info_to_ddlog(
         .map(|d| d.get_preamble().get_name())
         .collect();
 
-    let mut digest_structs = p4info
+    let all_structs = p4info
         .get_type_info()
         .get_structs()
         .clone();
+
+    let mut digest_structs = all_structs.clone();
     digest_structs.retain(|k, _| digest_names.contains(k.as_str()));
+
+    // Define all custom types needed for the input relations.
+    let mut typedefs_vec = Vec::new();
+    for (k, ds) in digest_structs.iter() {
+        let members = ds.get_members();
+
+        for m in members.iter() {
+            typedefs_vec.append(&mut extract_p4data_types(&m.get_type_spec().type_spec));
+        }
+    }
+
+    use std::iter::FromIterator;
+    let typedefs_set = HashSet::<String>::from_iter(typedefs_vec);
+    for (k, s) in all_structs.iter() {
+        if !typedefs_set.contains(k) {
+            continue;
+        }
+
+        write!(output, "typedef {} = {}{{", k, k)?;
+        let members = s.get_members();
+        for (i, m) in members.iter().enumerate() {
+            let delimiter = if i == members.len() - 1 { "" } else { "," };
+
+            let name = m.get_name();
+            let type_spec = &m.get_type_spec().type_spec;
+            let full_type = p4data_to_ddlog_type(type_spec);
+
+            write!(output, "{}: {}{}", name, full_type, delimiter);
+        }
+        writeln!(output, "}}")?;
+    }
 
     // Format the digests as input relations.
     // Write the formatted input relation to the output buffer.
     for (k, ds) in digest_structs.iter() {
-        writeln!(output, "input relation {}(", k)?;
-
-        // Push each declaration for the input relation as (field_name, type) tuples.
         let members = ds.get_members();
-        for (i, m) in members.iter().enumerate() {
-            let delimiter = if i == members.len() - 1 { "" } else { "," };
- 
+
+        // Store each member as a field for the input relation using (field_name, type).
+        let mut fields = Vec::new();
+        for m in members.iter() {
             let name = m.get_name();
             let type_spec = &m.get_type_spec().type_spec;
+            let full_type = p4data_to_ddlog_type(type_spec);
 
-            use proto::p4types::P4DataTypeSpec_oneof_type_spec as P4DataTypeSpec;
-            use proto::p4types::P4BitstringLikeTypeSpec_oneof_type_spec as P4BitstringTypeSpec;
-
-            let full_type: String = match type_spec {
-                Some(P4DataTypeSpec::bitstring(ref bs)) => {
-                    let bitwidth: i32 = match &bs.type_spec {
-                        Some(P4BitstringTypeSpec::bit(b)) => b.get_bitwidth(),
-                        Some(P4BitstringTypeSpec::int(i)) => i.get_bitwidth(),
-                        Some(P4BitstringTypeSpec::varbit(v)) => v.get_max_bitwidth(),
-                        None => 0, // should never happen 
-                    };
-
-                    format!("bit<{}>", bitwidth)
-                },
-                Some(P4DataTypeSpec::bool(_)) => format!("bool"),
-                // TODO: Translate remaining P4DataTypeSpec types to DDlog types.
-                _ => "unimplemented".to_owned(),
-            };
-
-            writeln!(output, "    {}: {}{}", name, full_type, delimiter)?;
+            fields.push((name, full_type));
         }
 
+        // Write the input relation to the output file.
+        writeln!(output, "input relation {}(", k)?;
+        for (i, (name, full_type)) in fields.iter().enumerate() {
+            let delimiter = if i == fields.len() - 1 { "" } else { "," };
+            writeln!(output, "    {}: {}{}", name, full_type, delimiter)?;
+        }
         writeln!(output, ")")?;
     }
 
