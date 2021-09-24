@@ -41,27 +41,49 @@ use proto::p4runtime_grpc::P4RuntimeClient;
 
 use std::collections::HashMap;
 
-// Controller
-// It contains a handle to the DDlog program, so we can use it to determine the form of packets.
+
+// Controller serves as a handle for the Tokio tasks.
+// The Tokio task can either process DDlog inputs or push outputs to the switch.
+#[derive(Clone)]
 pub struct Controller {
-    actor_handle: ControllerActorHandle,
+    sender: mpsc::Sender<ControllerActorMessage>,
 }
 
 impl Controller {
-    pub fn new(switch_client: SwitchClient) -> Result<Controller, String> {
+    pub fn new(
+        switch_client: SwitchClient,
+    ) -> Result<Controller, String> {
+        let (sender, receiver) = mpsc::channel(8); // TODO: change channel capacity.
+
         let (hddlog, _) = snvs_ddlog::run(1, false)?;
-        let controller_program = ControllerProgram{hddlog};
-        let actor_handle = ControllerActorHandle::new(switch_client, controller_program);
+        let program = ControllerProgram::new(hddlog);
 
-        Ok(Self{actor_handle})
+        let mut actor = ControllerActor::new(receiver, switch_client, program);
+        tokio::spawn(async move { actor.run().await });
+
+        Ok(Self{sender})
     }
 
-    pub async fn add_input(&mut self, updates: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
-        self.actor_handle.add_input(updates).await
+    pub async fn add_input(&self, input: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::InputMessage {
+            respond_to: send,
+            input: input,
+        };
+
+        self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn push_output_to_switch(&self, delta: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
-        self.actor_handle.push_output_to_switch(delta).await
+    pub async fn push_output_to_switch(&self, output: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::OutputMessage {
+            respond_to: send,
+            output: output,
+        };
+
+        self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
     }
 }
 
@@ -272,7 +294,6 @@ struct ControllerActor {
     receiver: mpsc::Receiver<ControllerActorMessage>,
     switch_client: SwitchClient,
     program: ControllerProgram,
-    // TODO: Add more necessary Actor fields.
 }
 
 enum ControllerActorMessage {
@@ -284,7 +305,6 @@ enum ControllerActorMessage {
         respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
         output: DeltaMap<DDValue>,
     },
-    // TODO: Add enum that converts the message to a DDlog input.
 }
 
 impl ControllerActor {
@@ -315,45 +335,5 @@ impl ControllerActor {
                 respond_to.send(self.switch_client.push_outputs(&output));
             }
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct ControllerActorHandle {
-    sender: mpsc::Sender<ControllerActorMessage>,
-}
-
-impl ControllerActorHandle {
-    pub fn new(
-        switch_client: SwitchClient,
-        program: ControllerProgram,
-    ) -> Self {
-        let (sender, receiver) = mpsc::channel(8); // TODO: Change channel capacity.
-        let mut actor = ControllerActor::new(receiver, switch_client, program);
-        tokio::spawn(async move { actor.run().await });
-
-        Self{sender}
-    }
-
-    pub async fn add_input(&self, input: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::InputMessage {
-            respond_to: send,
-            input: input,
-        };
-
-        self.sender.send(msg).await;
-        recv.await.expect("Actor task has been killed")
-    }
-
-    pub async fn push_output_to_switch(&self, output: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::OutputMessage {
-            respond_to: send,
-            output: output,
-        };
-
-        self.sender.send(msg).await;
-        recv.await.expect("Actor task has been killed")
     }
 }
