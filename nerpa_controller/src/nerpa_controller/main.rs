@@ -82,11 +82,7 @@ pub async fn main() {
         },
     ];
 
-    // Compute and print output relation.
-    let output = nerpa.add_input(updates).await.unwrap();
-    // Controller::dump_delta(&delta);
-
-    nerpa.push_output_to_switch(output).await.unwrap_or_else(
+    nerpa.input_to_switch(updates).await.unwrap_or_else(
         |err| panic!("could not push outputs to switch: {}", err)
     );
 }

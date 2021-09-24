@@ -64,6 +64,20 @@ impl Controller {
         Ok(Self{sender})
     }
 
+    pub async fn input_to_switch(
+        &self,
+        input: Vec<Update<DDValue>>
+    ) -> Result<(), p4ext::P4Error> {
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::InputOutputMessage {
+            respond_to: send,
+            input: input,
+        };
+
+        self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
+    }
+
     pub async fn add_input(&self, input: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
         let (send, recv) = oneshot::channel();
         let msg = ControllerActorMessage::InputMessage {
@@ -305,6 +319,10 @@ enum ControllerActorMessage {
         respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
         output: DeltaMap<DDValue>,
     },
+    InputOutputMessage {
+        respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
+        input: Vec<Update<DDValue>>,
+    },
 }
 
 impl ControllerActor {
@@ -332,6 +350,10 @@ impl ControllerActor {
                 respond_to.send(self.program.add_input(input));
             },
             ControllerActorMessage::OutputMessage {respond_to, output} => {
+                respond_to.send(self.switch_client.push_outputs(&output));
+            },
+            ControllerActorMessage::InputOutputMessage {respond_to, input} => {
+                let output = self.program.add_input(input).unwrap();
                 respond_to.send(self.switch_client.push_outputs(&output));
             }
         }
