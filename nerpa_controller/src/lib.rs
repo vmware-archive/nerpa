@@ -44,28 +44,45 @@ use std::collections::HashMap;
 // Controller
 // It contains a handle to the DDlog program, so we can use it to determine the form of packets.
 pub struct Controller {
-    hddlog: HDDlog,
     actor_handle: ControllerActorHandle,
 }
 
 impl Controller {
     pub fn new(switch_client: SwitchClient) -> Result<Controller, String> {
         let (hddlog, _) = snvs_ddlog::run(1, false)?;
-        let actor_handle = ControllerActorHandle::new(switch_client);
-        Ok(Self{hddlog, actor_handle})
+        let controller_program = ControllerProgram{hddlog};
+        let actor_handle = ControllerActorHandle::new(switch_client, controller_program);
+
+        Ok(Self{actor_handle})
     }
 
-    pub fn stop(&mut self) {
-        self.hddlog.stop().unwrap();
+    pub async fn add_input(&mut self, updates: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
+        self.actor_handle.add_input(updates).await
     }
 
-    pub fn add_input(&mut self, updates: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
+    pub async fn push_output_to_switch(&self, delta: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+        self.actor_handle.push_output_to_switch(delta).await
+    }
+}
+
+pub struct ControllerProgram {
+    hddlog: HDDlog,
+}
+
+impl ControllerProgram {
+    pub fn new(hddlog: HDDlog) -> Self {
+        Self{hddlog}
+    }
+
+    pub fn add_input(
+        &mut self,
+        updates:Vec<Update<DDValue>>
+    ) -> Result<DeltaMap<DDValue>, String> {
         self.hddlog.transaction_start()?;
-        
-        let update_result = self.hddlog.apply_updates(&mut updates.into_iter());
-        match update_result {
+
+        match self.hddlog.apply_updates(&mut updates.into_iter()) {
             Ok(_) => {},
-            Err(_) => { self.hddlog.transaction_rollback()? }
+            Err(_) => self.hddlog.transaction_rollback()?
         };
 
         self.hddlog.transaction_commit_dump_changes()
@@ -80,8 +97,8 @@ impl Controller {
         }
     }
 
-    pub async fn push_outputs_to_switch(&self, delta: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
-        self.actor_handle.push_outputs_to_switch(delta).await
+    pub fn stop(&mut self) {
+        self.hddlog.stop().unwrap();
     }
 }
 
@@ -254,14 +271,19 @@ use tokio::sync::{oneshot, mpsc};
 struct ControllerActor {
     receiver: mpsc::Receiver<ControllerActorMessage>,
     switch_client: SwitchClient,
+    program: ControllerProgram,
     // TODO: Add more necessary Actor fields.
 }
 
 enum ControllerActorMessage {
-    UpdateMessage {
+    InputMessage {
+        respond_to: oneshot::Sender<Result<DeltaMap<DDValue>, String>>,
+        input: Vec<Update<DDValue>>,
+    },
+    OutputMessage {
         respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
-        delta: DeltaMap<DDValue>,
-    }
+        output: DeltaMap<DDValue>,
+    },
     // TODO: Add enum that converts the message to a DDlog input.
 }
 
@@ -269,10 +291,12 @@ impl ControllerActor {
     fn new(
         receiver: mpsc::Receiver<ControllerActorMessage>,
         switch_client: SwitchClient,
+        program: ControllerProgram,
     ) -> Self {
         ControllerActor {
             receiver,
             switch_client,
+            program,
         }
     }
 
@@ -284,8 +308,11 @@ impl ControllerActor {
 
     fn handle_message(&mut self, msg: ControllerActorMessage) {
         match msg {
-            ControllerActorMessage::UpdateMessage {respond_to, delta} => {
-                respond_to.send(self.switch_client.push_outputs(&delta));
+            ControllerActorMessage::InputMessage {respond_to, input} => {
+                respond_to.send(self.program.add_input(input));
+            },
+            ControllerActorMessage::OutputMessage {respond_to, output} => {
+                respond_to.send(self.switch_client.push_outputs(&output));
             }
         }
     }
@@ -297,19 +324,33 @@ pub struct ControllerActorHandle {
 }
 
 impl ControllerActorHandle {
-    pub fn new(switch_client: SwitchClient) -> Self {
+    pub fn new(
+        switch_client: SwitchClient,
+        program: ControllerProgram,
+    ) -> Self {
         let (sender, receiver) = mpsc::channel(8); // TODO: Change channel capacity.
-        let mut actor = ControllerActor::new(receiver, switch_client);
+        let mut actor = ControllerActor::new(receiver, switch_client, program);
         tokio::spawn(async move { actor.run().await });
 
         Self{sender}
     }
 
-    pub async fn push_outputs_to_switch(&self, delta: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+    pub async fn add_input(&self, input: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
         let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::UpdateMessage {
+        let msg = ControllerActorMessage::InputMessage {
             respond_to: send,
-            delta: delta,
+            input: input,
+        };
+
+        self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
+    }
+
+    pub async fn push_output_to_switch(&self, output: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::OutputMessage {
+            respond_to: send,
+            output: output,
         };
 
         self.sender.send(msg).await;
