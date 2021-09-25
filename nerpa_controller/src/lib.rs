@@ -69,31 +69,9 @@ impl Controller {
         input: Vec<Update<DDValue>>
     ) -> Result<(), p4ext::P4Error> {
         let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::InputOutputMessage {
+        let msg = ControllerActorMessage::UpdateMessage {
             respond_to: send,
             input: input,
-        };
-
-        self.sender.send(msg).await;
-        recv.await.expect("Actor task has been killed")
-    }
-
-    pub async fn add_input(&self, input: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::InputMessage {
-            respond_to: send,
-            input: input,
-        };
-
-        self.sender.send(msg).await;
-        recv.await.expect("Actor task has been killed")
-    }
-
-    pub async fn push_output_to_switch(&self, output: DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::OutputMessage {
-            respond_to: send,
-            output: output,
         };
 
         self.sender.send(msg).await;
@@ -311,15 +289,7 @@ struct ControllerActor {
 }
 
 enum ControllerActorMessage {
-    InputMessage {
-        respond_to: oneshot::Sender<Result<DeltaMap<DDValue>, String>>,
-        input: Vec<Update<DDValue>>,
-    },
-    OutputMessage {
-        respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
-        output: DeltaMap<DDValue>,
-    },
-    InputOutputMessage {
+    UpdateMessage {
         respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
         input: Vec<Update<DDValue>>,
     },
@@ -346,13 +316,7 @@ impl ControllerActor {
 
     fn handle_message(&mut self, msg: ControllerActorMessage) {
         match msg {
-            ControllerActorMessage::InputMessage {respond_to, input} => {
-                respond_to.send(self.program.add_input(input));
-            },
-            ControllerActorMessage::OutputMessage {respond_to, output} => {
-                respond_to.send(self.switch_client.push_outputs(&output));
-            },
-            ControllerActorMessage::InputOutputMessage {respond_to, input} => {
+            ControllerActorMessage::UpdateMessage {respond_to, input} => {
                 let output = self.program.add_input(input).unwrap();
                 respond_to.send(self.switch_client.push_outputs(&output));
             }
