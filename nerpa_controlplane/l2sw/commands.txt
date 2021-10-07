@@ -1,0 +1,10 @@
+mc_mgrp_create 1
+mc_node_create 1 0 1 2 3
+mc_node_associate 1 0
+table_add IngressImpl.dst_mac forward 00:00:00:00:00:03 => 3
+table_add IngressImpl.dst_mac forward 00:00:00:00:00:02 => 2
+table_add IngressImpl.dst_mac forward 00:00:00:00:00:01 => 1
+mc_mgrp_create 2
+mc_node_create 2 1 2
+mc_node_associate 2 1
+table_add IngressImpl.dst_mac multicast 01:00:5e:00:01:01 => 2

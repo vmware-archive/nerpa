@@ -184,6 +184,7 @@ fn p4data_to_ddlog_type(
 pub fn p4info_to_ddlog(
     p4info_arg: Option<&str>,
     output_arg: Option<&str>,
+    rs_output_arg: Option<&str>,
     pipeline_arg: Option<&str>,
 ) -> Result<()> {
     let p4info = read_p4info(OsStr::new(&p4info_arg.unwrap().clone()))?;
@@ -377,6 +378,29 @@ pub fn p4info_to_ddlog(
         .with_context(|| format!("{}: create failed", output_filename))?
         .write_all(output.as_bytes())
         .with_context(|| format!("{}: write failed", output_filename))?;
+    
+    // If the Rust file was not passed, early return.
+    // TODO: Alter the first output argument.
+    if rs_output_arg.is_none() {
+        return Ok(());
+    }
+
+    let mut rs_output = String::new();
+
+    // Map digest to type.
+    writeln!(rs_output, "pub fn map_digest_to_type() {{");
+    writeln!(rs_output, "   println!(\"Hello world!\");");
+    writeln!(rs_output, "}}");
+
+    // Write the `.rs` output file.
+    let rs_output_filename_os = OsStr::new(rs_output_arg.unwrap());
+    let rs_output_filename = rs_output_filename_os.to_string_lossy();
+    File::create(rs_output_filename_os)
+        .with_context(|| format!("{}: create failed", rs_output_filename))?
+        .write_all(rs_output.as_bytes())
+        .with_context(|| format!("{}: write failed", rs_output_filename))?;
+    
+    // Add a `.toml` file with the dependencies.
     
     Ok(())
 }

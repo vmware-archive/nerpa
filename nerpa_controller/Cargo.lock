@@ -852,6 +852,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "l2sw"
+version = "0.1.0"
+dependencies = [
+ "abomonation",
+ "cmd_parser",
+ "crossbeam-channel",
+ "ddlog_bigint",
+ "ddlog_log",
+ "ddlog_rt",
+ "ddlog_std",
+ "debug",
+ "differential-dataflow",
+ "differential_datalog",
+ "enum-primitive-derive",
+ "erased-serde",
+ "fnv",
+ "internment 0.1.0",
+ "libc",
+ "libtool",
+ "num",
+ "num-traits",
+ "once_cell",
+ "ordered-float",
+ "rustop",
+ "serde",
+ "timely",
+ "triomphe",
+ "types",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -971,17 +1002,15 @@ dependencies = [
  "futures",
  "grpcio",
  "itertools 0.10.0",
+ "l2sw",
  "num-traits",
  "p4ext",
  "proto",
  "protobuf",
  "protobuf-codegen",
  "protoc-grpcio",
- "snvs",
  "tokio",
  "types",
- "types__snvs_dp",
- "types__snvs_mp",
 ]
 
 [[package]]
@@ -1626,42 +1655,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
-name = "snvs"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "cmd_parser",
- "crossbeam-channel",
- "ddlog_bigint",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "enum-primitive-derive",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "libtool",
- "num",
- "num-traits",
- "once_cell",
- "ordered-float",
- "rustop",
- "serde",
- "timely",
- "triomphe",
- "types",
- "types__ovsdb",
- "types__set",
- "types__snvs_dp",
- "types__snvs_mp",
- "types__uuid",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1952,145 +1945,6 @@ dependencies = [
  "serde_json",
  "time",
  "timely",
- "types__ovsdb",
- "types__set",
- "types__snvs_dp",
- "types__snvs_mp",
- "types__uuid",
-]
-
-[[package]]
-name = "types__ovsdb"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "ddlog_bigint",
- "ddlog_derive",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "num",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
- "time",
- "timely",
- "types__uuid",
-]
-
-[[package]]
-name = "types__set"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "ddlog_bigint",
- "ddlog_derive",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "num",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
- "time",
- "timely",
-]
-
-[[package]]
-name = "types__snvs_dp"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "ddlog_bigint",
- "ddlog_derive",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "num",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
- "time",
- "timely",
-]
-
-[[package]]
-name = "types__snvs_mp"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "ddlog_bigint",
- "ddlog_derive",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "num",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
- "time",
- "timely",
- "types__ovsdb",
- "types__uuid",
-]
-
-[[package]]
-name = "types__uuid"
-version = "0.1.0"
-dependencies = [
- "abomonation",
- "ddlog_bigint",
- "ddlog_derive",
- "ddlog_log",
- "ddlog_rt",
- "ddlog_std",
- "debug",
- "differential-dataflow",
- "differential_datalog",
- "erased-serde",
- "fnv",
- "internment 0.1.0",
- "libc",
- "num",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
- "time",
- "timely",
- "uuid",
 ]
 
 [[package]]
@@ -2104,15 +1958,6 @@ name = "unicode-xid"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
-
-[[package]]
-name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "sha1",
-]
 
 [[package]]
 name = "vcpkg"

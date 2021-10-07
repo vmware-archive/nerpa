@@ -1,0 +1,10 @@
+mc_mgrp_create 1
+mc_node_create 1 0 1 2 3
+mc_node_associate 1 0
+table_add SnvsIngress.LearnedDestinations Forward 00:00:00:00:00:03 0 => 3
+table_add SnvsIngress.LearnedDestinations Forward 00:00:00:00:00:02 0 => 2
+table_add SnvsIngress.LearnedDestinations Forward 00:00:00:00:00:01 0 => 1
+table_add SnvsIngress.LearnedDestinations Forward 00:00:00:00:99:99 0 => 1
+mc_mgrp_create 2
+mc_node_create 2 1 2
+mc_node_associate 2 1

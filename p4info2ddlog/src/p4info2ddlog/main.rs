@@ -29,6 +29,7 @@ use std::env;
 fn main() -> Result<()> {
     const P4INFO_ARG: &str = "INPUT.P4INFO.BIN";
     const OUTPUT_ARG: &str = "OUTPUT.DL";
+    const RS_OUTPUT_ARG: &str = "OUTPUT.RS";
     const PIPELINE_ARG: &str = "pipeline";
     let matches = App::new("p4info2ddlog")
         .version(env!("CARGO_PKG_VERSION"))
@@ -46,6 +47,12 @@ fn main() -> Result<()> {
                 .index(2),
         )
         .arg(
+            Arg::with_name(RS_OUTPUT_ARG)
+                .help(".rs output file for additional generated code")
+                .required(false)
+                .index(3),
+        )
+        .arg(
             Arg::with_name(PIPELINE_ARG)
                 .help("name of P4 pipeline to convert (all pipelines, by default)")
                 .value_name("PIPELINE")
@@ -57,6 +64,7 @@ fn main() -> Result<()> {
     p4info_to_ddlog(
         matches.value_of(P4INFO_ARG),
         matches.value_of(OUTPUT_ARG),
+        matches.value_of(RS_OUTPUT_ARG),
         matches.value_of(PIPELINE_ARG),
     )
 }

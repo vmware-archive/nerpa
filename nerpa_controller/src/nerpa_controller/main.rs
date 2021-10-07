@@ -31,8 +31,8 @@ use nerpa_controller::{
     SwitchClient
 };
 use proto::p4runtime_grpc::P4RuntimeClient;
-use snvs_ddlog::Relations;
-use snvs_ddlog::typedefs::ddlog_std;
+use l2sw_ddlog::Relations;
+use l2sw_ddlog::typedefs::ddlog_std;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -46,8 +46,10 @@ pub async fn main() {
     let ch = ChannelBuilder::new(env).connect(target.as_str());
     let client = P4RuntimeClient::new(ch);
 
-    let p4info = String::from("../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin");
-    let opaque = String::from("../nerpa_controlplane/snvs_exp/snvs_p4/snvs.json");
+    // let p4info = String::from("../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin");
+    // let opaque = String::from("../nerpa_controlplane/snvs_exp/snvs_p4/snvs.json");
+    let p4info = String::from("../nerpa_controlplane/l2sw/l2sw.p4info.bin");
+    let opaque = String::from("../nerpa_controlplane/l2sw/l2sw.json");
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
 
@@ -68,12 +70,13 @@ pub async fn main() {
 
     // TODO: Connect the OVS database management plane to the controller.
     // Add input to DDlog program.
+    /*
     let updates = vec![
         Update::Insert{
             relid: Relations::snvs_mp_Port as RelId,
             v: types__snvs_mp::Port {
                 _uuid: 0,
-                id: 11,
+                id: 1,
                 vlan_mode: ddlog_std::Option::Some{x: "".to_string()},
                 tag: ddlog_std::Option::Some{x: 1},
                 trunks: ddlog_std::Set::new(),
@@ -84,5 +87,7 @@ pub async fn main() {
 
     nerpa.input_to_switch(updates).await.unwrap_or_else(
         |err| panic!("could not push outputs to switch: {}", err)
-    );
+    ); */
+
+    nerpa.stream_digests().await;
 }
