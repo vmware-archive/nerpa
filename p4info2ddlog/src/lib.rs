@@ -181,6 +181,111 @@ fn p4data_to_ddlog_type(
     }
 }
 
+use proto::p4info::Digest;
+use proto::p4types::P4TypeInfo;
+
+fn write_digest_to_ddlog_fn(digests: &[Digest], type_info: &P4TypeInfo) -> Result<String> {
+    println!("{:#?}", type_info);
+
+    for d in digests.iter() {
+        println!("{:#?}", d);
+    }
+
+    let mut d2d_out = String::new();
+    writeln!(d2d_out, "use proto::p4data::P4Data;")?;
+    writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
+    writeln!(d2d_out)?;
+    writeln!(d2d_out, "fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
+    writeln!(d2d_out, "  match digest_id {{")?;
+
+    for (i, d) in digests.iter().enumerate() {
+        let digest_name = d.get_preamble().get_name();
+        let digest_structs = type_info.get_structs().get(digest_name).unwrap();
+
+        writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
+
+        writeln!(d2d_out, "      let update = Update::Insert {{")?;
+        writeln!(d2d_out, "        relid: Relations::{} as RelId,", digest_name)?;
+        writeln!(d2d_out, "        v: types::{} {{", digest_name)?;
+
+        // Write Update value fields using digest struct members.
+        // TODO: This does not work if the digest is unnested.
+        for (mi, m) in digest_structs.get_members().iter().enumerate() {
+            let member_type_spec = m.get_type_spec();
+
+            let field_name = m.get_name();
+
+            // TODO: Make the variable name (`digest_data`) substitutable.
+            // That enables nested structs.
+            let member_str = format!("digest_data.get_field_struct().get_members()[{}]", mi);
+
+            // TODO: Figure out general procedure for other type_spec types.
+            let field_value = {
+                if member_type_spec.has_bitstring() {
+                    let bitstring = member_type_spec.get_bitstring();
+
+                    let bitwidth = {
+                        if bitstring.has_bit() {
+                            bitstring.get_bit().get_bitwidth()
+                        } else if bitstring.has_int() {
+                            bitstring.get_int().get_bitwidth()
+                        } else { // Only other choice is `varbit`.
+                            bitstring.get_varbit().get_max_bitwidth()
+                        }
+                    };
+
+                    let num_bits = match bitwidth {
+                        0..=8 => 8,
+                        9..=16 => 16,
+                        17..=32 => 32,
+                        33..=64 => 64,
+                        _ => panic!("unsupported bitwidth: {}", bitwidth),
+                    };
+
+                    // Get the bitstring, pad it with zeros, and convert it to the correct uint.
+                    format!("NetworkEndian::read_u{}(&pad_left_zeros({}.get_bitstring(), {}))", num_bits, member_str, num_bits / 8)
+
+                } else {
+                    panic!("unhandled member type spec: {}", )
+                }
+            };
+
+            writeln!(d2d_out, "          {}: {},", field_name, field_value);
+        }
+
+        writeln!(d2d_out, "        }}.into_ddvalue(),")?; // close brace for Update.v
+        writeln!(d2d_out, "      }};")?; // close brace for Update
+        writeln!(d2d_out)?;
+        writeln!(d2d_out, "      return update;")?;
+        writeln!(d2d_out, "    }},")?; // close brace for match arm
+    }
+    writeln!(d2d_out, "    _ => panic!(\"Invalid digest ID: {{}}\", digest_id)")?;
+
+    writeln!(d2d_out, "  }}")?; // close brace for `match`
+    writeln!(d2d_out, "}}")?; // close brace for `fn`
+
+    Ok(d2d_out)
+}
+
+fn write_ddlog_helpers() -> String {
+    let string = "
+fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
+    if inp.len() > size {
+        panic!(\"input buffer exceeded provided length\");
+    }
+
+    let mut buf = vec![0; size];
+    let offset = size - inp.len();
+    for i in 0..inp.len() {
+        buf[i + offset] = inp[i];
+    }
+
+    buf
+}";
+
+    String::from(string)
+}
+
 pub fn p4info_to_ddlog(
     p4info_arg: Option<&str>,
     output_arg: Option<&str>,
@@ -387,10 +492,14 @@ pub fn p4info_to_ddlog(
 
     let mut rs_output = String::new();
 
-    // Map digest to type.
-    writeln!(rs_output, "pub fn map_digest_to_type() {{");
-    writeln!(rs_output, "   println!(\"Hello world!\");");
-    writeln!(rs_output, "}}");
+    // Write type conversion function.
+    let digests = p4info.get_digests();
+    let types = p4info.get_type_info();
+    writeln!(rs_output, "{}", write_digest_to_ddlog_fn(digests, types)?);
+
+    // Write helper functions to the Rust file.
+    // let helpers = write_ddlog_helpers();
+    writeln!(rs_output, "{}", write_ddlog_helpers());
 
     // Write the `.rs` output file.
     let rs_output_filename_os = OsStr::new(rs_output_arg.unwrap());
@@ -401,7 +510,7 @@ pub fn p4info_to_ddlog(
         .with_context(|| format!("{}: write failed", rs_output_filename))?;
     
     // Add a `.toml` file with the dependencies.
-    
+
     Ok(())
 }
 

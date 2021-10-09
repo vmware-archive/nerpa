@@ -460,27 +460,15 @@ impl DigestActor {
                     println!("received empty update in stream response");
                 }
 
-                // unwrap is safe because of none check
-    
-                use proto::p4runtime::StreamMessageResponse_oneof_update::*;
+                // unwrap() is safe because of none check
                 match update_opt.unwrap() {
+                    use proto::p4runtime::StreamMessageResponse_oneof_update::*;
+
                     arbitration(_) => println!("arbitration update"),
                     packet(_) => println!("packet update"),
                     digest(d) => {
                         for data in d.get_data().iter() {
-                            let members = data.get_field_struct().get_members();
-    
-                            let member_port = &pad_left_zeros(members[0].get_bitstring(), 2);
-    
-                            let member_src_mac = &pad_left_zeros(members[1].get_bitstring(), 8);
-    
-                            let update = Update::Insert {
-                                relid: Relations::LearnDigest as RelId,
-                                v: types::LearnDigest {
-                                    port: NetworkEndian::read_u16(member_port),
-                                    src_mac: NetworkEndian::read_u64(member_src_mac),
-                                }.into_ddvalue(),
-                            };
+                            let update = digest_to_ddlog(d.get_digest_id(), data);
 
                             println!("DDlog update: {:#?}", update);
                             self.respond_to.send(update).await;
@@ -494,6 +482,30 @@ impl DigestActor {
         }
     }
 }
+
+use proto::p4data::P4Data;
+
+// TODO: Delete this once the function from p4info2ddlog works.
+fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {
+    match digest_id {
+        399590470 => {
+            let members = digest_data.get_field_struct().get_members();
+            let port = &pad_left_zeros(members[0].get_bitstring(), 2);
+            let src_mac = &pad_left_zeros(members[1].get_bitstring(), 8);
+            let update = Update::Insert {
+                relid: Relations::LearnDigest as RelId,
+                v: types::LearnDigest {
+                    port: NetworkEndian::read_u16(port),
+                    src_mac: NetworkEndian::read_u64(src_mac),
+                }.into_ddvalue(),
+            };
+
+            return update;
+        },
+        _ => panic!("unexpected digest id: {:#?}", digest_id),
+    }
+}
+
 
 fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
     if inp.len() > size {
