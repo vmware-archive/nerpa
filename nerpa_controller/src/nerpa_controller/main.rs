@@ -31,8 +31,6 @@ use nerpa_controller::{
     SwitchClient
 };
 use proto::p4runtime_grpc::P4RuntimeClient;
-use l2sw_ddlog::Relations;
-use l2sw_ddlog::typedefs::ddlog_std;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -66,7 +64,7 @@ pub async fn main() {
     );
     
     // Instantiate DDlog program.
-    let mut nerpa = Controller::new(switch_client).unwrap();
+    let nerpa = Controller::new(switch_client).unwrap();
 
     // TODO: Connect the OVS database management plane to the controller.
     // Add input to DDlog program.

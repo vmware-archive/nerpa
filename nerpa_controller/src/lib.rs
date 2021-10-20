@@ -31,11 +31,11 @@ use differential_datalog::api::HDDlog;
 use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
 use differential_datalog::DDlogDynamic;
 use differential_datalog::DeltaMap; // Represents a set of changes to DDlog relations.
-use differential_datalog::ddval::{DDValConvert, DDValue}; // Generic type wrapping all DDlog values.
-use differential_datalog::program::{RelId, Update};
+use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog values.
+use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
-use byteorder::{NetworkEndian, ByteOrder};
+use digest2ddlog::digest_to_ddlog;
 
 use futures::{
     SinkExt,
@@ -46,8 +46,6 @@ use grpcio::{
     StreamingCallSink,
     WriteFlags,
 };
-
-use l2sw_ddlog::Relations;
 
 use p4ext::{ActionRef, Table};
 
@@ -393,7 +391,7 @@ impl ControllerActor {
 
                 let (send, mut rx) = mpsc::channel::<Update<DDValue>>(10);
 
-                let (mut sink, mut receiver) = self.switch_client.client.stream_channel().unwrap();
+                let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
 
                 let mut digest_actor = DigestActor::new(sink, receiver, send);
                 tokio::spawn(async move { digest_actor.run().await });
@@ -460,10 +458,10 @@ impl DigestActor {
                     println!("received empty update in stream response");
                 }
 
+                use proto::p4runtime::StreamMessageResponse_oneof_update::*;
+
                 // unwrap() is safe because of none check
                 match update_opt.unwrap() {
-                    use proto::p4runtime::StreamMessageResponse_oneof_update::*;
-
                     arbitration(_) => println!("arbitration update"),
                     packet(_) => println!("packet update"),
                     digest(d) => {
@@ -481,42 +479,4 @@ impl DigestActor {
             }
         }
     }
-}
-
-use proto::p4data::P4Data;
-
-// TODO: Delete this once the function from p4info2ddlog works.
-fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {
-    match digest_id {
-        399590470 => {
-            let members = digest_data.get_field_struct().get_members();
-            let port = &pad_left_zeros(members[0].get_bitstring(), 2);
-            let src_mac = &pad_left_zeros(members[1].get_bitstring(), 8);
-            let update = Update::Insert {
-                relid: Relations::LearnDigest as RelId,
-                v: types::LearnDigest {
-                    port: NetworkEndian::read_u16(port),
-                    src_mac: NetworkEndian::read_u64(src_mac),
-                }.into_ddvalue(),
-            };
-
-            return update;
-        },
-        _ => panic!("unexpected digest id: {:#?}", digest_id),
-    }
-}
-
-
-fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
-    if inp.len() > size {
-        panic!("input buffer exceeded provided length");
-    }
-
-    let mut buf = vec![0; size];
-    let offset = size - inp.len();
-    for i in 0..inp.len() {
-        buf[i + offset] = inp[i];
-    }
-
-    buf
 }

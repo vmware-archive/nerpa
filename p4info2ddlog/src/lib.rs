@@ -29,6 +29,7 @@ use protobuf::{Message, RepeatedField};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::Write;
+use std::fs;
 use std::fs::File;
 use std::io::Write as IoWrite;
 
@@ -123,7 +124,7 @@ fn extract_p4data_types(
         Some(P4DataTypeSpec::header_stack(ref hs)) => types.push(hs.get_header().get_name().to_owned()),
         Some(P4DataTypeSpec::header_union_stack(ref hus)) => types.push(hus.get_header_union().get_name().to_owned()),
         Some(P4DataTypeSpec::field_enum(ref fe)) => types.push(fe.get_name().to_owned()),
-        Some(P4DataTypeSpec::error(ref e)) => types.push(format!("error")), // TODO: Find a cleaner method for errors.
+        Some(P4DataTypeSpec::error(ref e)) => types.push(format!("error when extracting type: {}", e)), // TODO: Find a cleaner method for errors.
         Some(P4DataTypeSpec::serializable_enum(ref se)) => types.push(se.get_name().to_owned()),
         Some(P4DataTypeSpec::new_type(ref nt)) => types.push(nt.get_name().to_owned()),
         None => {},
@@ -184,27 +185,33 @@ fn p4data_to_ddlog_type(
 use proto::p4info::Digest;
 use proto::p4types::P4TypeInfo;
 
-fn write_digest_to_ddlog_fn(digests: &[Digest], type_info: &P4TypeInfo) -> Result<String> {
-    println!("{:#?}", type_info);
-
-    for d in digests.iter() {
-        println!("{:#?}", d);
-    }
-
+fn write_digest2ddlog_rs(
+    digests: &[Digest],
+    type_info: &P4TypeInfo,
+    prog_name: String
+) -> Result<String> {
     let mut d2d_out = String::new();
     writeln!(d2d_out, "use proto::p4data::P4Data;")?;
     writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
+    writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
+    writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
+
+    writeln!(d2d_out, "use {}::Relations;", prog_name)?;
     writeln!(d2d_out)?;
-    writeln!(d2d_out, "fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
+    writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
+
+    // TODO: Understand if nested structs are possible.
+    // If so, make the variable name (`digest_data`) substitutable.
+    writeln!(d2d_out, "  let members = digest_data.get_field_struct().get_members();")?;
     writeln!(d2d_out, "  match digest_id {{")?;
 
-    for (i, d) in digests.iter().enumerate() {
+    for d in digests.iter() {
         let digest_name = d.get_preamble().get_name();
         let digest_structs = type_info.get_structs().get(digest_name).unwrap();
 
         writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
 
-        writeln!(d2d_out, "      let update = Update::Insert {{")?;
+        writeln!(d2d_out, "      Update::Insert {{")?;
         writeln!(d2d_out, "        relid: Relations::{} as RelId,", digest_name)?;
         writeln!(d2d_out, "        v: types::{} {{", digest_name)?;
 
@@ -213,62 +220,42 @@ fn write_digest_to_ddlog_fn(digests: &[Digest], type_info: &P4TypeInfo) -> Resul
         for (mi, m) in digest_structs.get_members().iter().enumerate() {
             let member_type_spec = m.get_type_spec();
 
+            if !member_type_spec.has_bitstring() || !member_type_spec.get_bitstring().has_bit() {
+                panic!("digest struct fields can only have bitstrings of type bit");
+            }
+
             let field_name = m.get_name();
 
-            // TODO: Make the variable name (`digest_data`) substitutable.
-            // That enables nested structs.
-            let member_str = format!("digest_data.get_field_struct().get_members()[{}]", mi);
-
-            // TODO: Figure out general procedure for other type_spec types.
             let field_value = {
-                if member_type_spec.has_bitstring() {
-                    let bitstring = member_type_spec.get_bitstring();
+                let bitwidth = member_type_spec.get_bitstring().get_bit().get_bitwidth();
 
-                    let bitwidth = {
-                        if bitstring.has_bit() {
-                            bitstring.get_bit().get_bitwidth()
-                        } else if bitstring.has_int() {
-                            bitstring.get_int().get_bitwidth()
-                        } else { // Only other choice is `varbit`.
-                            bitstring.get_varbit().get_max_bitwidth()
-                        }
-                    };
+                let num_bits = match bitwidth {
+                    0..=8 => 8,
+                    9..=16 => 16,
+                    17..=32 => 32,
+                    33..=64 => 64,
+                    65..=128 => 128,
+                    _ => panic!("unsupported bitwidth: {}", bitwidth),
+                };
 
-                    let num_bits = match bitwidth {
-                        0..=8 => 8,
-                        9..=16 => 16,
-                        17..=32 => 32,
-                        33..=64 => 64,
-                        _ => panic!("unsupported bitwidth: {}", bitwidth),
-                    };
-
-                    // Get the bitstring, pad it with zeros, and convert it to the correct uint.
-                    format!("NetworkEndian::read_u{}(&pad_left_zeros({}.get_bitstring(), {}))", num_bits, member_str, num_bits / 8)
-
-                } else {
-                    panic!("unhandled member type spec: {}", )
-                }
+                // Get the bitstring, pad it with zeros, and convert it to the correct uint.
+                format!("NetworkEndian::read_u{}(&pad_left_zeros(members[{}].get_bitstring(), {}))", num_bits, mi, num_bits / 8)
             };
 
-            writeln!(d2d_out, "          {}: {},", field_name, field_value);
+            writeln!(d2d_out, "          {}: {},", field_name, field_value)?;
         }
 
         writeln!(d2d_out, "        }}.into_ddvalue(),")?; // close brace for Update.v
-        writeln!(d2d_out, "      }};")?; // close brace for Update
-        writeln!(d2d_out)?;
-        writeln!(d2d_out, "      return update;")?;
+        writeln!(d2d_out, "      }}")?; // close brace for Update
         writeln!(d2d_out, "    }},")?; // close brace for match arm
     }
     writeln!(d2d_out, "    _ => panic!(\"Invalid digest ID: {{}}\", digest_id)")?;
 
     writeln!(d2d_out, "  }}")?; // close brace for `match`
     writeln!(d2d_out, "}}")?; // close brace for `fn`
+    writeln!(d2d_out)?;
 
-    Ok(d2d_out)
-}
-
-fn write_ddlog_helpers() -> String {
-    let string = "
+    let helpers = "
 fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
     if inp.len() > size {
         panic!(\"input buffer exceeded provided length\");
@@ -282,14 +269,43 @@ fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
 
     buf
 }";
+    writeln!(d2d_out, "{}", helpers)?;
 
-    String::from(string)
+    Ok(d2d_out)
+}
+
+fn write_digest2ddlog_toml() -> String {
+    let ddlog_path = "../nerpa_controlplane/l2sw/l2sw_ddlog";
+    let prog_name = "l2sw";
+
+    format!("
+[package]
+name = \"digest2ddlog\"
+version = \"0.1.0\"
+authors = [\"Debnil Sur <dsur@vmware.com>\"]
+edition = \"2018\"
+
+[lib]
+path = \"src/lib.rs\"
+
+[dependencies]
+byteorder = \"1.4.3\"
+differential_datalog = {{path = \"{}/differential_datalog\"}}
+{} = {{path = \"{}\"}}
+proto = {{path = \"../proto\"}}
+types = {{path = \"{}/types\"}}
+",
+        ddlog_path,
+        prog_name,
+        ddlog_path,
+        ddlog_path,
+    )
 }
 
 pub fn p4info_to_ddlog(
     p4info_arg: Option<&str>,
     output_arg: Option<&str>,
-    rs_output_arg: Option<&str>,
+    crate_arg: Option<&str>,
     pipeline_arg: Option<&str>,
 ) -> Result<()> {
     let p4info = read_p4info(OsStr::new(&p4info_arg.unwrap().clone()))?;
@@ -424,7 +440,7 @@ pub fn p4info_to_ddlog(
 
     // Define all custom types needed for the input relations.
     let mut typedefs_vec = Vec::new();
-    for (k, ds) in digest_structs.iter() {
+    for (_, ds) in digest_structs.iter() {
         let members = ds.get_members();
 
         for m in members.iter() {
@@ -448,7 +464,7 @@ pub fn p4info_to_ddlog(
             let type_spec = &m.get_type_spec().type_spec;
             let full_type = p4data_to_ddlog_type(type_spec);
 
-            write!(output, "{}: {}{}", name, full_type, delimiter);
+            write!(output, "{}: {}{}", name, full_type, delimiter)?;
         }
         writeln!(output, "}}")?;
     }
@@ -483,33 +499,41 @@ pub fn p4info_to_ddlog(
         .with_context(|| format!("{}: create failed", output_filename))?
         .write_all(output.as_bytes())
         .with_context(|| format!("{}: write failed", output_filename))?;
-    
-    // If the Rust file was not passed, early return.
-    // TODO: Alter the first output argument.
-    if rs_output_arg.is_none() {
+
+    // Generate `digest2ddlog`. This external crate helps convert P4 Runtime digests to DDlog inputs.
+
+    // If the crate argument was not passed, early return.
+    if crate_arg.is_none() {
         return Ok(());
     }
 
-    let mut rs_output = String::new();
+    // TODO: Turn this into a command-line argument.
+    let prog_name = "l2sw";
 
-    // Write type conversion function.
-    let digests = p4info.get_digests();
-    let types = p4info.get_type_info();
-    writeln!(rs_output, "{}", write_digest_to_ddlog_fn(digests, types)?);
+    // Create the crate directory. 
+    let crate_str = crate_arg.unwrap();
+    let crate_src_dir = format!("{}/src", crate_str);
+    fs::create_dir_all(&crate_src_dir)?;
 
-    // Write helper functions to the Rust file.
-    // let helpers = write_ddlog_helpers();
-    writeln!(rs_output, "{}", write_ddlog_helpers());
+    // Write the crate's library file.
+    let crate_rs_fn = format!("{}/src/lib.rs", crate_str);
+    let crate_rs_os = OsStr::new(&crate_rs_fn);
+    let crate_rs_output = write_digest2ddlog_rs(p4info.get_digests(), p4info.get_type_info(), prog_name)?;
 
-    // Write the `.rs` output file.
-    let rs_output_filename_os = OsStr::new(rs_output_arg.unwrap());
-    let rs_output_filename = rs_output_filename_os.to_string_lossy();
-    File::create(rs_output_filename_os)
-        .with_context(|| format!("{}: create failed", rs_output_filename))?
-        .write_all(rs_output.as_bytes())
-        .with_context(|| format!("{}: write failed", rs_output_filename))?;
-    
-    // Add a `.toml` file with the dependencies.
+    File::create(crate_rs_os)
+        .with_context(|| format!("{}: create failed", crate_rs_fn))?
+        .write_all(crate_rs_output.as_bytes())
+        .with_context(|| format!("{}: write failed", crate_rs_fn))?;
+
+    // Write the crate `.toml`.
+    let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
+    let crate_toml_os = OsStr::new(&crate_toml_fn);
+    let crate_toml_output = write_digest2ddlog_toml(prog_name);
+
+    File::create(crate_toml_os)
+        .with_context(|| format!("{}: create failed", crate_toml_fn))?
+        .write_all(crate_toml_output.as_bytes())
+        .with_context(|| format!("{}: write failed", crate_toml_fn))?;
 
     Ok(())
 }
