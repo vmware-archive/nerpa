@@ -19,6 +19,7 @@ SOFTWARE.
 */
 
 mod digest2ddlog;
+mod controller;
 
 use anyhow::{anyhow, Context, Result};
 
@@ -185,12 +186,17 @@ fn p4data_to_ddlog_type(
 }
 
 pub fn p4info_to_ddlog(
-    p4info_arg: Option<&str>,
-    output_arg: Option<&str>,
+    io_dir_arg: Option<&str>,
+    prog_name_arg: Option<&str>,
     crate_arg: Option<&str>,
     pipeline_arg: Option<&str>,
 ) -> Result<()> {
-    let p4info = read_p4info(OsStr::new(&p4info_arg.unwrap().clone()))?;
+    let io_dir = io_dir_arg.unwrap();
+    let prog_name = prog_name_arg.unwrap();
+
+    let p4info_fn = format!("{}/{}.p4info.bin", io_dir, prog_name);
+    let p4info = read_p4info(OsStr::new(&p4info_fn))?;
+
     let pipelines = get_pipelines(p4info.clone(), pipeline_arg)?;
 
     // Actions are referenced by id, so make a map.
@@ -375,7 +381,8 @@ pub fn p4info_to_ddlog(
         writeln!(output, ")")?;
     }
 
-    let output_filename_os = OsStr::new(output_arg.unwrap());
+    let output_fn = format!("{}/{}.dl", io_dir, prog_name);
+    let output_filename_os = OsStr::new(&output_fn);
     let output_filename = output_filename_os.to_string_lossy();
     File::create(output_filename_os)
         .with_context(|| format!("{}: create failed", output_filename))?
@@ -389,9 +396,6 @@ pub fn p4info_to_ddlog(
         return Ok(());
     }
 
-    // TODO: Turn this into a command-line argument.
-    let prog_name : String = String::from("l2sw");
-
     // Create the crate directory. 
     let crate_str = crate_arg.unwrap();
     let crate_src_dir = format!("{}/src", crate_str);
@@ -403,7 +407,7 @@ pub fn p4info_to_ddlog(
     let crate_rs_output = digest2ddlog::write_rs(
         p4info.get_digests(),
         p4info.get_type_info(),
-        prog_name.clone(),
+        prog_name.to_string(),
     )?;
 
     File::create(crate_rs_os)
@@ -414,12 +418,18 @@ pub fn p4info_to_ddlog(
     // Write the crate `.toml`.
     let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
     let crate_toml_os = OsStr::new(&crate_toml_fn);
-    let crate_toml_output = digest2ddlog::write_toml(prog_name);
+    let crate_toml_output = digest2ddlog::write_toml(prog_name.to_string());
 
     File::create(crate_toml_os)
         .with_context(|| format!("{}: create failed", crate_toml_fn))?
         .write_all(crate_toml_output.as_bytes())
         .with_context(|| format!("{}: write failed", crate_toml_fn))?;
+
+    controller::write_toml(
+        io_dir.to_string(),
+        prog_name.to_string(),
+        crate_arg,
+    )?;
 
     Ok(())
 }

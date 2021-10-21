@@ -13,26 +13,20 @@ path = "src/lib.rs"
 name = "nerpa-controller"
 path = "src/nerpa_controller/main.rs"
 
+[build-dependencies]
+protoc-grpcio = "3.0.0"
+
 [dependencies]
-# differential_datalog = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/differential_datalog"}
-differential_datalog = {path = "../nerpa_controlplane/l2sw/l2sw_ddlog/differential_datalog"}
-digest2ddlog = {path = "../digest2ddlog"}
 futures = "0.3.12"
 grpcio = "0.9.0"
 itertools = "0.10.0"
-l2sw = {path = "../nerpa_controlplane/l2sw/l2sw_ddlog"}
 num-traits = "0.2.14"
 p4ext = {path = "../p4ext"}
 proto = {path = "../proto"}
 protobuf = "2.22.0"
 protobuf-codegen = "2.22.0"
-# snvs = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog"}
-tokio = { version = "1.2.0", features = ["full"] }
-# types = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types"}
+tokio = { version = "1.2.0", features = ["full"]}
+differential_datalog = {path = "../nerpa_controlplane/l2sw/l2sw_ddlog/differential_datalog"}
+l2sw = {path = "../nerpa_controlplane/l2sw/l2sw_ddlog"}
 types = {path = "../nerpa_controlplane/l2sw/l2sw_ddlog/types"}
-# types__snvs_dp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/snvs_dp"}
-# types__snvs_mp = {path = "../nerpa_controlplane/snvs_exp/snvs_ddlog/types/snvs_mp"}
-
-
-[build-dependencies]
-protoc-grpcio = "3.0.0"
+digest2ddlog = {path = "../digest2ddlog"}

@@ -36,11 +36,11 @@ pub fn write_rs(
     writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
     writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
 
-    writeln!(d2d_out, "use {}::Relations;", prog_name)?;
+    writeln!(d2d_out, "use {}_ddlog::Relations;", prog_name)?;
     writeln!(d2d_out)?;
     writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
 
-    // TODO: Understand if nested structs are possible.
+    // TODO: Properly handle nested structs.
     // If so, make the variable name (`digest_data`) substitutable.
     writeln!(d2d_out, "  let members = digest_data.get_field_struct().get_members();")?;
     writeln!(d2d_out, "  match digest_id {{")?;
@@ -56,7 +56,7 @@ pub fn write_rs(
         writeln!(d2d_out, "        v: types::{} {{", digest_name)?;
 
         // Write Update value fields using digest struct members.
-        // TODO: This does not work if the digest is unnested.
+        // TODO: This does not work if the digest is nested.
         for (mi, m) in digest_structs.get_members().iter().enumerate() {
             let member_type_spec = m.get_type_spec();
 
