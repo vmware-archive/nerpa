@@ -38,7 +38,6 @@ pub fn write_toml(
     let mut toml_out = String::new();
 
     let prog_str = prog_name.clone();
-
     let reserved_keys: HashSet<&str> = [
         "differential_datalog",
         "digest2ddlog",
@@ -59,7 +58,6 @@ pub fn write_toml(
 
         // Skip the lines with reserved inputs.
         if reserved_keys.contains(token_opt.unwrap()) {
-            // writeln!("matched reserved keyword: {}", token_opt.unwrap());
             continue;
         }
 

@@ -381,7 +381,7 @@ pub fn p4info_to_ddlog(
         writeln!(output, ")")?;
     }
 
-    let output_fn = format!("{}/{}.dl", io_dir, prog_name);
+    let output_fn = format!("{}/{}_dp.dl", io_dir, prog_name);
     let output_filename_os = OsStr::new(&output_fn);
     let output_filename = output_filename_os.to_string_lossy();
     File::create(output_filename_os)
@@ -389,7 +389,8 @@ pub fn p4info_to_ddlog(
         .write_all(output.as_bytes())
         .with_context(|| format!("{}: write failed", output_filename))?;
 
-    // Generate `digest2ddlog`. This external crate helps convert P4 Runtime digests to DDlog inputs.
+    // Generate the external crate `digest2ddlog`.
+    // This converts P4 Runtime digests to DDlog inputs.
 
     // If the crate argument was not passed, early return.
     if crate_arg.is_none() {
