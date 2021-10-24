@@ -44,3 +44,18 @@ cargo install protobuf-codegen
 cargo install grpcio-compiler
 cargo build
 cd $NERPA_DIR
+
+# Build the OVSDB bindings crate.
+cd $NERPA_DIR/ovsdb-sys
+git submodule update --init
+
+# Install OVS.
+cd ovs
+./boot.sh
+./configure
+make
+make install
+
+# Build the crate.
+cargo build
+cargo test

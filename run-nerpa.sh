@@ -1,11 +1,20 @@
 #!/bin/bash
 # Script that runs a Nerpa program
 
+# Exit when any command fails, since they are all sequential.
+set -e
+
 # Print usage if incorrectly invoked.
 if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     echo "USAGE: $0 FILE_DIR FILE_NAME" >&2
     echo "* FILE_DIR: directory containing *.p4, *.dl, and optional *.ovsschema files"
     echo "* FILE_NAME: name of the *p4, *dl, and *ovsschema files"
+    exit 1
+fi
+
+if [[ -z $NERPA_DEPS || -z $DDLOG_HOME ]]
+    echo "Missing required environment variable (NERPA_DEPS or DDLOG_HOME)"
+    echo "Run `. install-nerpa.sh` to set these variables."
     exit 1
 fi
 
