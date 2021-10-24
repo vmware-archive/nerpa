@@ -1,8 +1,7 @@
 #!/bin/bash
 # Script that runs a Nerpa program
 
-echo "Running a Nerpa program..."
-
+# Print usage if incorrectly invoked.
 if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     echo "USAGE: $0 FILE_DIR FILE_NAME" >&2
     echo "* FILE_DIR: directory containing *.p4, *.dl, and optional *.ovsschema files"
@@ -10,21 +9,11 @@ if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     exit 1
 fi
 
+echo "Running a Nerpa program..."
+
 export NERPA_DIR=$(pwd)
 export FILE_DIR=$NERPA_DIR/$1
 export FILE_NAME=$2
-
-# TODO: Once the install script is done, remove setting $DDLOG_HOME.
-cd ../../nerpa-deps/ddlog
-export DDLOG_HOME=$(pwd)
-echo $DDLOG_HOME
-
-export PATH=$PATH:$DDLOG_HOME/bin
-
-if test ! -f "$DDLOG_HOME/lib/ddlog_std.dl"; then
-    echo >&2 "$0: \$DDLOG_HOME must point to the ddlog tree"
-    exit 1
-fi
 
 cd $FILE_DIR
 
@@ -50,6 +39,11 @@ cargo run $FILE_DIR $FILE_NAME $NERPA_DIR/digest2ddlog
 cd $FILE_DIR
 
 # Compile DDlog crate.
+if test ! -f "$DDLOG_HOME/lib/ddlog_std.dl"; then
+    echo >&2 "$0: \$DDLOG_HOME must point to the ddlog tree"
+    exit 1
+fi
+
 if test ! -f "$FILE_NAME.dl"; then
     echo >&2 "$0: could not find DDlog program $FILE_NAME.dl in $1"
     exit 1
@@ -59,19 +53,21 @@ echo "Compiling DDlog crate..."
 ddlog -i $FILE_NAME.dl &&
 (cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
 
-# Set the nerpa dependencies directory.
-# TODO: Move the nerpa-deps to inside `nerpa` for self-containment.
-# TODO: Handle this in the installation script.
-NERPA_DEPS_REL_PATH=../../nerpa-deps
+# Now that the Nerpa program is built, we want to run it.
+# This requires setting up the virtual switch.
 
-cd $NERPA_DIR
-if test ! -d $NERPA_DEPS_REL_PATH; then
-    echo >&2 "$0: did not find nerpa-deps in expected location"
+# Exit if NERPA_DEPS is incorrectly set.
+if [[ -z $NERPA_DEPS ]]; then
+    echo >&2 "$0: undefined environment variable \$NERPA_DEPS"
     exit 1
 fi
-cd $NERPA_DEPS_REL_PATH 
-export NERPA_DEPS=$(pwd)
 
+if test ! -d $NERPA_DEPS; then
+    echo >&2 "$0: could not find `nerpa-deps` in expected location ($NERPA_DEPS)"
+    exit 1
+fi
+
+# Clean up and reset the P4 switch.
 # Kill any running `simple_switch_grpc` processes.
 echo "Resetting network configs..."
 sudo pkill -f simple_switch_grpc
@@ -121,6 +117,7 @@ sudo $SWITCH_GRPC_EXEC $SWITCH_FLAGS -- $GRPC_FLAGS & sleep 2
 export COMMANDS_FILE=$FILE_DIR/commands.txt
 if test ! -f $COMMANDS_FILE; then
     echo >&2 "$0: did not find simple switch config commands in expected location ($COMMANDS_FILE)"
+    sudo pkill -f simple_switch_grpc
     exit 1
 fi
 
