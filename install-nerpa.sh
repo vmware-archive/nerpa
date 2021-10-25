@@ -3,6 +3,7 @@
 
 export NERPA_DIR=$(pwd)
 
+# Make a directory for dependency installation.
 mkdir nerpa-deps
 export NERPA_DEPS=$NERPA_DIR/nerpa-deps
 cd $NERPA_DEPS
