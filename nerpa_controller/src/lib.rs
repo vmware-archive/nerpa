@@ -69,10 +69,9 @@ pub struct Controller {
 impl Controller {
     pub fn new(
         switch_client: SwitchClient,
+        hddlog: HDDlog,
     ) -> Result<Controller, String> {
-        let (sender, receiver) = mpsc::channel(1000); // TODO: change channel capacity.
-
-        let (hddlog, _) = l2sw_ddlog::run(1, false)?;
+        let (sender, receiver) = mpsc::channel(1000);
         let program = ControllerProgram::new(hddlog);
 
         let mut actor = ControllerActor::new(receiver, switch_client, program);

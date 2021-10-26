@@ -31,6 +31,11 @@ use nerpa_controller::{
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 
+// Import the function to run a DDlog program.
+// Note that the crate name changes with the Nerpa program's name.
+// The Nerpa programmer must rename this import.
+use l2sw_ddlog::run;
+
 #[tokio::main]
 pub async fn main() {
     // TODO: Stop hard-coding arguments.
@@ -47,7 +52,8 @@ pub async fn main() {
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
 
-    // Set the primary controller on P4Runtime, so we can use the StreamChannel RPC.
+    // Set the primary controller on P4Runtime.
+    // This enables use of the StreamChannel RPC.
     let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
     if mau_res.is_err() {
         panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
@@ -64,9 +70,12 @@ pub async fn main() {
         role_id,
         target,
     );
+
+    // Instantiate the running DDlog program.
+    let (hddlog, _) = run(1, false).unwrap();
     
     // Instantiate DDlog program.
-    let nerpa = Controller::new(switch_client).unwrap();
+    let nerpa = Controller::new(switch_client, hddlog).unwrap();
 
     // TODO: We want to read inputs from both the management plane and the data plane.
     // Currently, this only processes inputs from the data plane.
