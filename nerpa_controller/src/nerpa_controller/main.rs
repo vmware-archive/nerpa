@@ -23,6 +23,7 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
+use clap::{App, Arg};
 use grpcio::{ChannelBuilder, EnvBuilder};
 use nerpa_controller::{
     Controller,
@@ -38,17 +39,57 @@ use l2sw_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {
-    // TODO: Stop hard-coding arguments.
-    // TODO: Get non-empty election ID working.
-    let device_id : u64 = 0;
-    let role_id: u64 = 0;
+    const FILE_DIR_ARG: &str = "FILE_DIR";
+    const FILE_NAME_ARG: &str = "FILE_NAME";
+
+    let matches = App::new("nerpa_controller")
+        .version(env!("CARGO_PKG_VERSION"))
+        .about("Starts the controller program")
+        .arg(
+            Arg::with_name(FILE_DIR_ARG)
+                .help("path to directory with input files (*.p4info.bin, *.json, *.dl)")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name(FILE_NAME_ARG)
+                .help("file name before the extension: {program}.p4info.bin, {program}.dl")
+                .required(true)
+                .index(2),
+        )
+        .get_matches();
+
+    // Validate CLI arguments.
+    let file_dir_opt = matches.value_of(FILE_DIR_ARG);
+    if file_dir_opt.is_none() {
+        panic!("missing required argument: FILE_DIR");
+    }
+
+    let file_name_opt = matches.value_of(FILE_NAME_ARG);
+    if file_name_opt.is_none() {
+        panic!("missing required argument: FILE_NAME");
+    }
+
+    // Run controller.
+    let file_dir = String::from(file_dir_opt.unwrap());
+    let file_name = String::from(file_name_opt.unwrap());
+    run_controller(file_dir, file_name).await
+}
+
+async fn run_controller(
+    file_dir: String,
+    file_name: String,
+) {
+    // Create P4Runtime client.
     let target = String::from("localhost:50051");
     let env = Arc::new(EnvBuilder::new().build());
     let ch = ChannelBuilder::new(env).connect(target.as_str());
     let client = P4RuntimeClient::new(ch);
 
-    let p4info = String::from("../nerpa_controlplane/l2sw/l2sw.p4info.bin");
-    let opaque = String::from("../nerpa_controlplane/l2sw/l2sw.json");
+    let device_id : u64 = 0;
+    let role_id: u64 = 0;
+    let p4info = format!("{}/{}.p4info.bin", file_dir, file_name);
+    let opaque = format!("{}/{}.json", file_dir, file_name);
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
 
@@ -59,7 +100,8 @@ pub async fn main() {
         panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
     }
 
-    // Create a SwitchClient, to talk to the Switch.
+    // Create a SwitchClient.
+    // Handles communication with the switch.
     let switch_client = SwitchClient::new(
         client,
         p4info,
@@ -71,13 +113,13 @@ pub async fn main() {
         target,
     );
 
-    // Instantiate the running DDlog program.
+    // Run the DDlog program.
     let (hddlog, _) = run(1, false).unwrap();
-    
-    // Instantiate DDlog program.
-    let nerpa = Controller::new(switch_client, hddlog).unwrap();
 
-    // TODO: We want to read inputs from both the management plane and the data plane.
+    // Instantiate controller.
+    let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();
+
+    // TODO: We want to read inputs from the management and data planes.
     // Currently, this only processes inputs from the data plane.
-    nerpa.stream_digests().await;
+    nerpa_controller.stream_digests().await;
 }

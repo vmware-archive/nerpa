@@ -27,22 +27,22 @@ use p4info2ddlog::p4info_to_ddlog;
 use std::env;
 
 fn main() -> Result<()> {
-    const IO_DIR_ARG: &str = "IO_DIR_PATH";
-    const PROG_ARG: &str = "PROG{{.P4INFO.BIN/.DL}}";
-    const CRATE_ARG: &str = "OUTPUT_CRATE_DIR_PATH";
+    const FILE_DIR_ARG: &str = "FILE_DIR";
+    const FILE_NAME_ARG: &str = "FILE_NAME";
+    const CRATE_ARG: &str = "OUTPUT_CRATE_DIR";
     const PIPELINE_ARG: &str = "pipeline";
 
     let matches = App::new("p4info2ddlog")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Outputs DDlog relations corresponding to P4 tables")
         .arg(
-            Arg::with_name(IO_DIR_ARG)
+            Arg::with_name(FILE_DIR_ARG)
                 .help("path to directory with input file (*.p4info.bin) and where output (*.dl) will be written")
                 .required(true)
                 .index(1),
         )
         .arg(
-            Arg::with_name(PROG_ARG)
+            Arg::with_name(FILE_NAME_ARG)
                 .help("program name before the extension: {program}.p4info.bin, {program}.dl")
                 .required(true)
                 .index(2),
@@ -63,8 +63,8 @@ fn main() -> Result<()> {
         .get_matches();
     
     p4info_to_ddlog(
-        matches.value_of(IO_DIR_ARG),
-        matches.value_of(PROG_ARG),
+        matches.value_of(FILE_DIR_ARG),
+        matches.value_of(FILE_NAME_ARG),
         matches.value_of(CRATE_ARG),
         matches.value_of(PIPELINE_ARG),
     )
