@@ -58,8 +58,6 @@ use std::str::FromStr;
 use std::string::String;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-
 #[derive(Clone, Debug, Default)]
 pub struct SourceLocation {
     file: String,
@@ -672,7 +670,7 @@ pub fn parse_uint128(s: &str) -> Result<Uint128, <u128 as FromStr>::Err> {
 
 #[derive(Debug)]
 pub struct P4Error {
-    message: String
+    pub message: String
 }
 
 impl fmt::Display for P4Error {

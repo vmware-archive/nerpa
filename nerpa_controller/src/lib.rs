@@ -22,40 +22,42 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-// The auto-generated crate `l2sw_ddlog` declares the `HDDlog` type.
-// This serves as a reference to a running DDlog program.
-// It implements `trait differential_datalog::DDlog`.
 use differential_datalog::api::HDDlog;
 
-// `differential_datalog` contains the DDlog runtime copied to each generated workspace.
-use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
-use differential_datalog::DDlogDynamic;
-use differential_datalog::DeltaMap; // Represents a set of changes to DDlog relations.
-use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog values.
+use differential_datalog::{
+    DDlog,
+    DDlogDynamic,
+    DeltaMap
+}; 
+use differential_datalog::ddval::DDValue;
 use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
 use digest2ddlog::digest_to_ddlog;
 
 use futures::{
-    SinkExt,
     StreamExt,
 };
 use grpcio::{
     ClientDuplexReceiver,
     StreamingCallSink,
-    WriteFlags,
 };
 
-use p4ext::{ActionRef, Table};
+use p4ext::{
+    ActionRef,
+    Table
+};
 
 use proto::p4runtime::{
     StreamMessageRequest,
     StreamMessageResponse,
 };
 use proto::p4runtime_grpc::P4RuntimeClient;
+use protobuf::Message;
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::fs::File;
 
 // Controller serves as a handle for the Tokio tasks.
 // The Tokio task can either process DDlog inputs or push outputs to the switch.
@@ -68,7 +70,7 @@ impl Controller {
     pub fn new(
         switch_client: SwitchClient,
     ) -> Result<Controller, String> {
-        let (sender, receiver) = mpsc::channel(8); // TODO: change channel capacity.
+        let (sender, receiver) = mpsc::channel(1000); // TODO: change channel capacity.
 
         let (hddlog, _) = l2sw_ddlog::run(1, false)?;
         let program = ControllerProgram::new(hddlog);
@@ -89,19 +91,27 @@ impl Controller {
             input: input,
         };
 
-        self.sender.send(msg).await;
+        let message_res = self.sender.send(msg).await;
+        if message_res.is_err() {
+            println!("could not send message to controller actor: {:#?}", message_res);
+        }
+
         recv.await.expect("Actor task has been killed")
     }
 
     pub async fn stream_digests(&self) -> () {
+        // The oneshot channel keeps an Actor running that processes digests.
+        // It closes when the Actor task is killed.
         let (send, recv) = oneshot::channel();
-        // let (send, mut rx) = mpsc::channel::<DeltaMap<DDValue>>(10);
         let msg = ControllerActorMessage::DigestMessage {
-            respond_to: send,
+            _respond_to: send,
         };
 
-        self.sender.send(msg).await;
-        // rx.recv().await.expect("Actor task has been killed")
+        let message_res = self.sender.send(msg).await;
+        if message_res.is_err() {
+            println!("could not send message to controller actor: {:#?}", message_res);
+        }
+
         recv.await.expect("Actor task has been killed");
     }
 }
@@ -129,15 +139,6 @@ impl ControllerProgram {
         self.hddlog.transaction_commit_dump_changes()
     }
 
-    pub fn dump_delta(delta: &DeltaMap<DDValue>) {
-        for (rel, changes) in delta.iter() {
-            println!("Changes to relation {}", l2sw_ddlog::relid2name(*rel).unwrap());
-            for (val, weight) in changes.iter() {
-                println!("{} {:+}", val, weight);
-            }
-        }
-    }
-
     pub fn stop(&mut self) {
         self.hddlog.stop().unwrap();
     }
@@ -145,6 +146,7 @@ impl ControllerProgram {
 
 pub struct SwitchClient {
     pub client: P4RuntimeClient,
+    p4info: String,
     device_id: u64,
     role_id: u64,
     target: String,
@@ -174,10 +176,44 @@ impl SwitchClient {
 
         Self {
             client,
+            p4info,
             device_id,
             role_id,
             target,
         }
+    }
+
+    pub async fn configure_digests(
+        &mut self,
+        max_timeout_ns: i64,
+        max_list_size: i32,
+        ack_timeout_ns: i64,
+    ) -> Result<(), p4ext::P4Error> {
+        // Read P4info from file.
+        let p4info_str: &str = &self.p4info;
+        let mut p4info_file = File::open(OsStr::new(p4info_str))
+            .unwrap_or_else(|err| panic!("{}: could not open P4Info ({})", p4info_str, err));
+        let p4info: proto::p4info::P4Info = Message::parse_from_reader(&mut p4info_file)
+            .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info_str, err));
+
+        for d in p4info.get_digests().iter() {
+            let config_res = p4ext::write_digest_config(
+                d.get_preamble().get_id(),
+                max_timeout_ns,
+                max_list_size,
+                ack_timeout_ns,
+                self.device_id,
+                self.role_id,
+                &self.target,
+                &self.client,
+            ).await;
+
+            if config_res.is_err() {
+                return config_res;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
@@ -273,7 +309,7 @@ impl SwitchClient {
             Record::Bool(true) => 1,
             Record::Bool(false) => 0,
             Record::Int(i) => i.to_u16().unwrap_or(0),
-            // TODO: Handle other types.
+            // TODO: If required, handle other types.
             _ => 1,
         }
     }
@@ -315,17 +351,15 @@ struct ControllerActor {
     program: ControllerProgram,
 }
 
+#[derive(Debug)]
 enum ControllerActorMessage {
     UpdateMessage {
         respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
         input: Vec<Update<DDValue>>,
     },
     DigestMessage {
-        respond_to: oneshot::Sender<DeltaMap<DDValue>>,
-        // respond_to: mpsc::Sender<DeltaMap<DDValue>>,
+        _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
     },
-        // respond_to: mpsc::Sender<Result<StreamMessageResponse, grpcio::Error>>,
-        // respond_to: mpsc::Sender<Update<DDValue>>
 }
 
 impl ControllerActor {
@@ -342,66 +376,42 @@ impl ControllerActor {
     }
 
     async fn run(&mut self) {
-        println!("top of run in controller actor");
-
         while let Some(msg) = self.receiver.recv().await {
             self.handle_message(msg).await;
         }
     }
 
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
-        println!("top of handle_message");
         match msg {
             ControllerActorMessage::UpdateMessage {respond_to, input} => {
-                println!("match - top of update message");
-                let output = self.program.add_input(input).unwrap();
-                println!("ddlog output: {:#?}", output);
-                respond_to.send(self.switch_client.push_outputs(&output));
+                let ddlog_res = self.program.add_input(input).unwrap();
+                let message_res = respond_to.send(self.switch_client.push_outputs(&ddlog_res));
+                if message_res.is_err() {
+                    println!("could not send message from actor to controller: {:#?}", message_res.err());
+                }
             },
-            ControllerActorMessage::DigestMessage{ respond_to } => {
-                println!("match - top of digest message changing");
+            ControllerActorMessage::DigestMessage{ _respond_to } => {
+                // This configuration sends a notification per-digest.
+                let config_res = self.switch_client.configure_digests(0, 1, 1).await;
+                if config_res.is_err() {
+                    panic!("could not configure digests: {:#?}", config_res);
+                }
 
-                // Construct the configuration for a digest.
-                // TODO: Delete below.
-                let mau_result = p4ext::master_arbitration_update(self.switch_client.device_id, &self.switch_client.client).await;
-                println!("right below mau_result");
+                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1000);
 
-                match mau_result {
-                    Ok(_) => println!("master arbitration worked"),
-                    Err(_) => println!("master arbitration error"),
-                };
+                let (_sink, receiver) = self.switch_client.client.stream_channel().unwrap();
 
-                // respond_to.send(mau_result).await.unwrap();
-                // TODO: Delete above.
-
-                // Configure the specific digest to send a notification to the controller per-message.
-                // TODO: Move this higher up.
-                let digest_id: u32 = 399590470;
-                let write_response = p4ext::write_digest_config(
-                    digest_id,
-                    0, // max_timeout_ns
-                    1, // max_list_size
-                    1, // ack_timeout_ns
-                    self.switch_client.device_id,
-                    self.switch_client.role_id,
-                    &self.switch_client.target,
-                    &self.switch_client.client,
-                ).await;
-                println!("response to digest write: {:#?}", write_response);
-
-                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(10);
-
-                let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
-
-                let mut digest_actor = DigestActor::new(sink, receiver, send);
+                let mut digest_actor = DigestActor::new(_sink, receiver, send);
                 tokio::spawn(async move { digest_actor.run().await });
 
                 while let Some(inp) = rx.recv().await {
-                    println!("input relation received: {:#?}", inp);
-                    
-                    let resp = self.program.add_input(vec![inp]).unwrap();
-                    println!("hddlog program response: {:#?}", resp);
-                    // respond_to.send(resp);
+                    let ddlog_res = self.program.add_input(vec![inp]);
+                    if ddlog_res.is_ok() {
+                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap());
+                        if p4_res.is_err() {
+                            println!("could not push digest output relation to switch: {:#?}", p4_res.err())
+                        }
+                    }
                 };
             }
         }
@@ -409,72 +419,52 @@ impl ControllerActor {
 }
 
 struct DigestActor {
-    sink: StreamingCallSink<StreamMessageRequest>,
+    _sink: StreamingCallSink<StreamMessageRequest>,
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
-    // respond_to: mpsc::Sender<Result<StreamMessageResponse, grpcio::Error>>
     respond_to: mpsc::Sender<Update<DDValue>>
 }
 
 impl DigestActor {
     fn new(
-        sink: StreamingCallSink<StreamMessageRequest>,
+        _sink: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
-        // respond_to: mpsc::Sender<Result<StreamMessageResponse, grpcio::Error>>
         respond_to: mpsc::Sender<Update<DDValue>>
     ) -> Self {
-        Self { sink, receiver, respond_to }
+        Self { _sink, receiver, respond_to }
     }
 
     async fn run(&mut self) {
-        // send a master arbitration update again and see if it can go through.
-        use proto::p4runtime::MasterArbitrationUpdate;
-
-        let mut update = MasterArbitrationUpdate::new();
-        update.set_device_id(0);
-        let mut request = StreamMessageRequest::new();
-        request.set_arbitration(update);
-
-        match self.sink.send((request, WriteFlags::default())).await {
-            Ok(_) => println!("successfully sent to sink"),
-            Err(e) => println!("failed to send to sink: {:#?}", e),
-        };
-        
         while let Some(result) = self.receiver.next().await {
-            println!("digest actor received result: {:#?}", result);
             self.handle_digest(result).await;
         }
     }
 
     pub async fn handle_digest(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
         match res {
-            Err(e) => {
-                println!("found stream error: {:#?}", e);
-            },
+            Err(e) => println!("received GRPC error from p4runtime streaming channel: {:#?}", e),
             Ok(r) => {
-                println!("handling digest response: {:#?}", r);
-    
                 let update_opt = r.update;
                 if update_opt.is_none() {
-                    println!("received empty update in stream response");
+                    println!("received empty response from p4runtime streaming channel");
                 }
 
                 use proto::p4runtime::StreamMessageResponse_oneof_update::*;
 
                 // unwrap() is safe because of none check
                 match update_opt.unwrap() {
-                    arbitration(_) => println!("arbitration update"),
-                    packet(_) => println!("packet update"),
                     digest(d) => {
                         for data in d.get_data().iter() {
                             let update = digest_to_ddlog(d.get_digest_id(), data);
-
-                            println!("DDlog update: {:#?}", update);
-                            self.respond_to.send(update).await;
+                            
+                            let channel_res = self.respond_to.send(update).await;
+                            if channel_res.is_err() {
+                                println!("could not send response over channel: {:#?}", channel_res);
+                            }
                         }
                     },
-                    idle_timeout_notification(_) => println!("idle timeout update"),
-                    other(_) => println!("other"),
-                    error(_) => println!("error"), 
+                    error(e) => println!("received error from p4runtime streaming channel: {:#?}", e),
+                    // no action for arbitration, packet, idle timeout, or other
+                    _ => {},
                 };
             }
         }

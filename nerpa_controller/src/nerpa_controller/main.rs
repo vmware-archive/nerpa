@@ -23,8 +23,6 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use differential_datalog::ddval::DDValConvert;
-use differential_datalog::program::{RelId, Update};
 use grpcio::{ChannelBuilder, EnvBuilder};
 use nerpa_controller::{
     Controller,
@@ -44,12 +42,16 @@ pub async fn main() {
     let ch = ChannelBuilder::new(env).connect(target.as_str());
     let client = P4RuntimeClient::new(ch);
 
-    // let p4info = String::from("../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin");
-    // let opaque = String::from("../nerpa_controlplane/snvs_exp/snvs_p4/snvs.json");
     let p4info = String::from("../nerpa_controlplane/l2sw/l2sw.p4info.bin");
     let opaque = String::from("../nerpa_controlplane/l2sw/l2sw.json");
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
+
+    // Set the primary controller on P4Runtime, so we can use the StreamChannel RPC.
+    let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
+    if mau_res.is_err() {
+        panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
+    }
 
     // Create a SwitchClient, to talk to the Switch.
     let switch_client = SwitchClient::new(
@@ -66,26 +68,7 @@ pub async fn main() {
     // Instantiate DDlog program.
     let nerpa = Controller::new(switch_client).unwrap();
 
-    // TODO: Connect the OVS database management plane to the controller.
-    // Add input to DDlog program.
-    /*
-    let updates = vec![
-        Update::Insert{
-            relid: Relations::snvs_mp_Port as RelId,
-            v: types__snvs_mp::Port {
-                _uuid: 0,
-                id: 1,
-                vlan_mode: ddlog_std::Option::Some{x: "".to_string()},
-                tag: ddlog_std::Option::Some{x: 1},
-                trunks: ddlog_std::Set::new(),
-                priority_tagging: "no".to_string(), 
-            }.into_ddvalue(),
-        },
-    ];
-
-    nerpa.input_to_switch(updates).await.unwrap_or_else(
-        |err| panic!("could not push outputs to switch: {}", err)
-    ); */
-
+    // TODO: We want to read inputs from both the management plane and the data plane.
+    // Currently, this only processes inputs from the data plane.
     nerpa.stream_digests().await;
 }

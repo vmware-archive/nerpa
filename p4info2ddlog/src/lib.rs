@@ -58,6 +58,7 @@ fn p4_basic_type(bitwidth: i32, annotations: &Annotations) -> String {
     }
 }
 
+// TODO: Make private.
 fn read_p4info(filename_os: &OsStr) -> Result<P4Info> {
     let filename = filename_os.to_string_lossy();
     let mut file = File::open(filename_os).with_context(|| format!("{}: open failed", filename))?;
