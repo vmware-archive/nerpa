@@ -23,13 +23,18 @@ NERPA (Network Programming with Relational and Procedural Abstractions) seeks to
 ### Setup
 
 We have included a script for installation with Ubuntu. It installs all dependencies and sets the necessary environment variables for running Nerpa programs. After cloning the repository, invoke this script as follows:
-`. install-nerpa.sh`. 
+`. scripts/install-nerpa.sh`. 
 
-On a different operating system, you can individually execute the steps in the installation script.
+To install on a different operating system, you can individually execute the steps in the installation script.
 
-### Run
+### Build
 After installing necessary dependencies, you can write Nerpa programs. A Nerpa program consists of a P4 program, a DDlog program, and (optionally) an OVSDB schema.
 
 For organization, these programs should be placed in the same subdirectory of `nerpa_controlplane`, and given the same name. For example, `nerpa_controlplane/sample.p4`, `nerpa_controlplane/sample.dl`.
 
-Once these files are written, the Nerpa program can be run through the run script: `./run-nerpa.sh nerpa_controlplane/sample sample`. You can also individually execute the steps in the run script.
+Once these files are written, the Nerpa program can be built through the build script: `./scripts/build-nerpa.sh nerpa_controlplane/sample sample`. You can also individually execute the steps in the build script.
+
+### Run
+A built Nerpa program can be run using the runtime script. This script (1) configures and runs a P4 software switch and (2) runs the controller program. Configuring the software switch requires a `commands.txt` file in the same subdirectory.
+
+Its usage is the same as the build script: `./scripts/run-nerpa.sh nerpa_controlplane/sample sample`.

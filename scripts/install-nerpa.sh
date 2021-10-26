@@ -3,6 +3,10 @@
 
 export NERPA_DIR=$(pwd)
 
+# Recursively initialize git modules.
+echo "Initializing git submodules..."
+git submodule update --init --recursive
+
 # Make a directory for dependency installation.
 mkdir nerpa-deps
 export NERPA_DEPS=$NERPA_DIR/nerpa-deps
@@ -11,8 +15,10 @@ cd $NERPA_DEPS
 # Install DDlog.
 echo "Installing DDlog..."
 if [[ -z $DDLOG_HOME ]]; then
-    wget https://github.com/vmware/differential-datalog/releases/download/v0.39.0/ddlog-v0.39.0-20210411172417-linux.tar.gz
-    tar -xzvf ddlog-v0.39.0-20210411172417-linux.tar.gz
+    # wget https://github.com/vmware/differential-datalog/releases/download/v0.39.0/ddlog-v0.39.0-20210411172417-linux.tar.gz
+    # tar -xzvf ddlog-v0.39.0-20210411172417-linux.tar.gz
+    wget https://github.com/vmware/differential-datalog/releases/download/v0.50.0/ddlog-v0.50.0-20211020154401-Linux.tar.gz
+    tar -xzvf ddlog-v0.50.0-20211020154401-Linux.tar.gz
     export PATH=$PATH:$NERPA_DEPS/ddlog/bin
     export DDLOG_HOME=$NERPA_DEPS/ddlog
 fi
@@ -48,9 +54,9 @@ cd $NERPA_DIR
 
 # Build the OVSDB bindings crate.
 cd $NERPA_DIR/ovsdb-sys
-git submodule update --init
 
 # Install OVS.
+echo "Installing OVS..."
 cd ovs
 ./boot.sh
 ./configure
@@ -58,5 +64,6 @@ make
 make install
 
 # Build the crate.
+echo "Building the OVSDB bindings crate..."
 cargo build
 cargo test

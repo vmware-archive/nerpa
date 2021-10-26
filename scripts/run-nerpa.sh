@@ -18,65 +18,19 @@ if [[ -z $NERPA_DEPS || -z $DDLOG_HOME ]]
     exit 1
 fi
 
+if test ! -d $NERPA_DEPS; then
+    echo >&2 "$0: could not find `nerpa-deps` in expected location ($NERPA_DEPS)"
+    exit 1
+fi
+
 echo "Running a Nerpa program..."
 
 export NERPA_DIR=$(pwd)
 export FILE_DIR=$NERPA_DIR/$1
 export FILE_NAME=$2
 
-cd $FILE_DIR
+# Set up the virtual switch.
 
-# Optionally, generate DDlog input relations from the OVSDB schema.
-if test -f $FILE_NAME.ovsschema; then
-    echo "Generating DDlog input relations from OVSDB schema..."
-    ovsdb2ddlog -f $FILE_NAME.ovsschema --output-file=$2_mp.dl
-fi
-
-# Compile P4 program.
-if test ! -f "$FILE_NAME.p4"; then
-    echo >&2 "$0: could not find P4 program $FILE_NAME.p4 in $1"
-    exit 1
-fi
-
-echo "Compiling P4 program..."
-p4c --target bmv2 --arch v1model --p4runtime-files $FILE_NAME.p4info.bin,$FILE_NAME.p4info.txt $FILE_NAME.p4
-
-# Generate DDlog dataplane relations from P4info, using p4info2ddlog.
-echo "Generating DDlog relations for dataplane using P4 info..."
-cd $NERPA_DIR/p4info2ddlog
-cargo run $FILE_DIR $FILE_NAME $NERPA_DIR/digest2ddlog
-cd $FILE_DIR
-
-# Compile DDlog crate.
-if test ! -f "$DDLOG_HOME/lib/ddlog_std.dl"; then
-    echo >&2 "$0: \$DDLOG_HOME must point to the ddlog tree"
-    exit 1
-fi
-
-if test ! -f "$FILE_NAME.dl"; then
-    echo >&2 "$0: could not find DDlog program $FILE_NAME.dl in $1"
-    exit 1
-fi
-
-echo "Compiling DDlog crate..."
-ddlog -i $FILE_NAME.dl &&
-(cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
-
-# Now that the Nerpa program is built, we want to run it.
-# This requires setting up the virtual switch.
-
-# Exit if NERPA_DEPS is incorrectly set.
-if [[ -z $NERPA_DEPS ]]; then
-    echo >&2 "$0: undefined environment variable \$NERPA_DEPS"
-    exit 1
-fi
-
-if test ! -d $NERPA_DEPS; then
-    echo >&2 "$0: could not find `nerpa-deps` in expected location ($NERPA_DEPS)"
-    exit 1
-fi
-
-# Clean up and reset the P4 switch.
 # Kill any running `simple_switch_grpc` processes.
 echo "Resetting network configs..."
 sudo pkill -f simple_switch_grpc
@@ -136,6 +90,5 @@ chmod +x $CLI_EXEC
 
 PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC < $COMMANDS_FILE
 
-# Build and run the controller.
-cd $NERPA_DIR/nerpa_controller
-cargo run
+# Run the controller.
+(cd $NERPA_DIR/nerpa_controller && cargo run && cd $NERPA_DIR)
