@@ -12,9 +12,9 @@ if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     exit 1
 fi
 
-if [[ -z $NERPA_DEPS || -z $DDLOG_HOME ]]
+if [[ -z $NERPA_DEPS || -z $DDLOG_HOME ]]; then
     echo "Missing required environment variable (NERPA_DEPS or DDLOG_HOME)"
-    echo "Run `. install-nerpa.sh` to set these variables."
+    echo "Run '. install-nerpa.sh' to set these variables."
     exit 1
 fi
 
