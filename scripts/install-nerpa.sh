@@ -12,18 +12,20 @@ mkdir nerpa-deps
 export NERPA_DEPS=$NERPA_DIR/nerpa-deps
 cd $NERPA_DEPS
 
+# Install Rust.
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
 # Install DDlog.
 echo "Installing DDlog..."
 if [[ -z $DDLOG_HOME ]]; then
-    # wget https://github.com/vmware/differential-datalog/releases/download/v0.39.0/ddlog-v0.39.0-20210411172417-linux.tar.gz
-    # tar -xzvf ddlog-v0.39.0-20210411172417-linux.tar.gz
     wget https://github.com/vmware/differential-datalog/releases/download/v0.50.0/ddlog-v0.50.0-20211020154401-Linux.tar.gz
     tar -xzvf ddlog-v0.50.0-20211020154401-Linux.tar.gz
     export PATH=$PATH:$NERPA_DEPS/ddlog/bin
     export DDLOG_HOME=$NERPA_DEPS/ddlog
 fi
 
-# Install P4 with dependency software.
+# Install P4 with dependencies.
 echo "Installing P4 software..."
 git clone https://github.com/jafingerhut/p4-guide
 ./p4-guide/bin/install-p4dev-v2.sh |& tee log.txt
@@ -50,20 +52,16 @@ cd $NERPA_DIR/proto
 cargo install protobuf-codegen
 cargo install grpcio-compiler
 cargo build
-cd $NERPA_DIR
-
-# Build the OVSDB bindings crate.
-cd $NERPA_DIR/ovsdb-sys
 
 # Install OVS.
 echo "Installing OVS..."
-cd ovs
+cd $NERPA_DIR/ovsdb-sys/ovs
 ./boot.sh
 ./configure
 make
 make install
 
-# Build the crate.
+# Build the OVSDB bindings crate.
 echo "Building the OVSDB bindings crate..."
-cargo build
-cargo test
+(cd $NERPA_DIR/ovsdb-sys && cargo build && cargo test)
+cd $NERPA_DIR
