@@ -45,6 +45,8 @@ For organization, place these programs in the same subdirectory of `nerpa_contro
 
 Once these files are written, the Nerpa program can be built through the build script: `./scripts/build-nerpa.sh nerpa_controlplane/sample sample`. You can also individually execute the steps in the build script.
 
+Building the controller program fails at first. This is due to importing the `*_ddlog::run` function in `nerpa_controller/src/main.rs`. That import must change with the Nerpa program's name.
+
 ### Run
 A built Nerpa program can be run using the runtime script. This script (1) configures and runs a P4 software switch and (2) runs the controller program. Configuring the software switch requires a `commands.txt` file in the same subdirectory.
 
