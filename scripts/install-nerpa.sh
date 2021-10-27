@@ -12,28 +12,6 @@ mkdir nerpa-deps
 export NERPA_DEPS=$NERPA_DIR/nerpa-deps
 cd $NERPA_DEPS
 
-# Install Rust.
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-
-# Install the latest version of cmake, for grpcio compatibility.
-# Install GCC tools.
-sudo apt update && sudo apt install build-essential libtool autoconf unzip wget
-# Uninstall the default version.
-sudo apt remove --purge --auto-remove cmake
-# Download and extract a sufficiently recent version.
-cmake_version=3.21
-cmake_build=2
-mkdir cmake-temp
-cd cmake-temp
-wget https://cmake.org/files/v$cmake_version/cmake-$cmake_version.$cmake_build.tar.gz
-tar -xzvf cmake-$cmake_version.$cmake_build.tar.gz
-cd cmake-$cmake_version.$cmake_build/
-# Install the extracted source.
-./bootstrap
-make -j$(nproc)
-sudo make install
-
 # Install DDlog.
 echo "Installing DDlog..."
 if [[ -z $DDLOG_HOME ]]; then
