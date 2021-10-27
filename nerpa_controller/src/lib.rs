@@ -238,13 +238,6 @@ impl SwitchClient {
                             table = t;
                             table_name = table.preamble.name;
                         }
-                        // match self.get_matching_table(name.to_string(), switch.tables.clone()) {
-                        //     Some(t) => {
-                        //         table = t;
-                        //         table_name = table.preamble.name;
-                        //     },
-                        //     None => {},
-                        // };
 
                         // Iterate through fields in the record.
                         // Map all match keys to values.
