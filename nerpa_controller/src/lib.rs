@@ -87,7 +87,7 @@ impl Controller {
         let (send, recv) = oneshot::channel();
         let msg = ControllerActorMessage::UpdateMessage {
             respond_to: send,
-            input: input,
+            input,
         };
 
         let message_res = self.sender.send(msg).await;
@@ -98,7 +98,7 @@ impl Controller {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn stream_digests(&self) -> () {
+    pub async fn stream_digests(&self) {
         // The oneshot channel keeps an Actor running that processes digests.
         // It closes when the Actor task is killed.
         let (send, recv) = oneshot::channel();
@@ -231,13 +231,20 @@ impl SwitchClient {
                         let mut table: Table = Table::default();
                         let mut table_name: String = "".to_string();
 
-                        match self.get_matching_table(name.to_string(), switch.tables.clone()) {
-                            Some(t) => {
-                                table = t;
-                                table_name = table.preamble.name;
-                            },
-                            None => {},
-                        };
+                        if let Some(t) = self.get_matching_table(
+                            name.to_string(),
+                            switch.tables.clone()
+                        ) {
+                            table = t;
+                            table_name = table.preamble.name;
+                        }
+                        // match self.get_matching_table(name.to_string(), switch.tables.clone()) {
+                        //     Some(t) => {
+                        //         table = t;
+                        //         table_name = table.preamble.name;
+                        //     },
+                        //     None => {},
+                        // };
 
                         // Iterate through fields in the record.
                         // Map all match keys to values.
@@ -261,17 +268,17 @@ impl SwitchClient {
     
                                             // Extract param values from action's records.
                                             for (_, (afname, aval)) in arecs.iter().enumerate() {
-                                                params.insert(afname.to_string(), self.extract_record_value(&aval));
+                                                params.insert(afname.to_string(), self.extract_record_value(aval));
                                             }
                                         },
                                         _ => println!("action was incorrectly formed!")
                                     }
                                 },
                                 "priority" => {
-                                    priority = self.extract_record_value(&v).into();
+                                    priority = self.extract_record_value(v).into();
                                 },
                                 _ => {
-                                    matches.insert(match_name, self.extract_record_value(&v));
+                                    matches.insert(match_name, self.extract_record_value(v));
                                 }
                             }
                         }
@@ -334,7 +341,7 @@ impl SwitchClient {
             let asub = av.last().unwrap();
 
             if record_name.contains(asub) {
-                return Some(an.to_string());
+                return Some(an);
             }
         }
 
