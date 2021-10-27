@@ -91,4 +91,4 @@ chmod +x $CLI_EXEC
 PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC < $COMMANDS_FILE
 
 # Run the controller.
-(cd $NERPA_DIR/nerpa_controller && cargo run && cd $NERPA_DIR)
+(cd $NERPA_DIR/nerpa_controller && cargo run $FILE_DIR $FILE_NAME && cd $NERPA_DIR)
