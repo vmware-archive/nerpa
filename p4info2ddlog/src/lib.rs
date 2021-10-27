@@ -389,6 +389,13 @@ pub fn p4info_to_ddlog(
         .write_all(output.as_bytes())
         .with_context(|| format!("{}: write failed", output_filename))?;
 
+    // Update dependencies in the `nerpa_controller` crate.
+    controller::write_toml(
+        io_dir,
+        prog_name,
+        crate_arg,
+    )?;
+
     // Generate the external crate `digest2ddlog`.
     // This converts P4 Runtime digests to DDlog inputs.
 
@@ -425,12 +432,6 @@ pub fn p4info_to_ddlog(
         .with_context(|| format!("{}: create failed", crate_toml_fn))?
         .write_all(crate_toml_output.as_bytes())
         .with_context(|| format!("{}: write failed", crate_toml_fn))?;
-
-    controller::write_toml(
-        io_dir.to_string(),
-        prog_name.to_string(),
-        crate_arg,
-    )?;
 
     Ok(())
 }
