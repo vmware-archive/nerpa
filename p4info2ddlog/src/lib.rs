@@ -58,7 +58,6 @@ fn p4_basic_type(bitwidth: i32, annotations: &Annotations) -> String {
     }
 }
 
-// TODO: Make private.
 fn read_p4info(filename_os: &OsStr) -> Result<P4Info> {
     let filename = filename_os.to_string_lossy();
     let mut file = File::open(filename_os).with_context(|| format!("{}: open failed", filename))?;
@@ -178,7 +177,7 @@ fn p4data_to_ddlog_type(
         Some(P4DataTypeSpec::header_union_stack(ref hus)) => format!("({}, bigint)", hus.get_header_union().get_name()),
         Some(P4DataTypeSpec::field_enum(ref fe)) => fe.get_name().to_owned(),
 
-        // TODO: Create P4 error type in DDlog.
+        // TODO: Potentially create P4 error type in DDlog.
         Some(P4DataTypeSpec::error(ref _e)) => format!("error"),
         Some(P4DataTypeSpec::serializable_enum(ref se)) => se.get_name().to_owned(),
         Some(P4DataTypeSpec::new_type(ref nt)) => nt.get_name().to_owned(),

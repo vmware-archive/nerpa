@@ -995,12 +995,6 @@ pub async fn stream_channel_request(
         Err(e) => return Err(e),
     };
 
-    /* let close_result = sink.close().await;
-    match close_result {
-        Ok(_) => {},
-        Err(e) => return Err(e),
-    } */
-
     receiver.next().await.unwrap()
 }
 
