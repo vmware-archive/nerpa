@@ -223,7 +223,7 @@ impl SwitchClient {
         let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
-        for (_rel_id, output_map) in self.delta.iter() {
+        for (_rel_id, output_map) in (*delta).clone().into_iter() {
             for (value, _weight) in output_map {
                 let record = value.clone().into_record();
                 
