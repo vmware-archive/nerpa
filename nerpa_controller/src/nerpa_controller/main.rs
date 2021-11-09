@@ -130,18 +130,3 @@ async fn run_controller(
     // Currently, this only processes inputs from the data plane.
     nerpa_controller.stream_digests().await;
 }
-
-pub fn ovsdb_to_p4(
-    server: String,
-    database: String,
-    target: String,
-    p4info_fn: String,
-    json_fn: String,
-) {
-    // Connect the OVS database management plane to the controller.
-    let delta = ovsdb_client::export_input_from_ovsdb(server, database).unwrap();
-
-    println!("\n\nProcessed input from OVSDB! Got the following output...");
-    
-    // TODO: Factor this logic into a Tokio actor.
-}
