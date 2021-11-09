@@ -22,10 +22,6 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-<<<<<<< HEAD
-use differential_datalog::DeltaMap; // Represents a set of changes to DDlog relations.
-use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog values.
-=======
 use differential_datalog::api::HDDlog;
 
 use differential_datalog::{
@@ -35,7 +31,6 @@ use differential_datalog::{
 }; 
 use differential_datalog::ddval::DDValue;
 use differential_datalog::program::Update;
->>>>>>> main
 use differential_datalog::record::{Record, IntoRecord};
 
 use digest2ddlog::digest_to_ddlog;
@@ -68,23 +63,6 @@ use std::fs::File;
 // The Tokio task can either process DDlog inputs or push outputs to the switch.
 #[derive(Clone)]
 pub struct Controller {
-<<<<<<< HEAD
-    delta: DeltaMap<DDValue>
-}
-
-impl Controller {
-    pub fn new(delta: DeltaMap<DDValue>) -> Controller {
-        Controller{delta}
-    }
-
-    pub fn dump_delta(&mut self) {
-        for (rel, changes) in self.delta.iter() {
-            println!("Changes to relation {}", snvs_ddlog::relid2name(*rel).unwrap());
-            for (val, weight) in changes.iter() {
-                println!("{} {:+}", val, weight);
-            }
-        }
-=======
     sender: mpsc::Sender<ControllerActorMessage>,
 }
 
@@ -162,7 +140,6 @@ impl ControllerProgram {
 
     pub fn stop(&mut self) {
         self.hddlog.stop().unwrap();
->>>>>>> main
     }
 }
 
@@ -174,10 +151,6 @@ pub struct SwitchClient {
     target: String,
 }
 
-<<<<<<< HEAD
-    pub fn push_outputs_to_switch(
-        &mut self,
-=======
 impl SwitchClient {
     pub fn new(
         client: P4RuntimeClient,
@@ -185,7 +158,6 @@ impl SwitchClient {
         opaque: String,
         cookie: String,
         action: String,
->>>>>>> main
         device_id: u64,
         role_id: u64,
         target: String,
