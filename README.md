@@ -35,13 +35,13 @@ git clone --recursive git@github.com:vmware/nerpa.git
 
 4. We have included an installation script for Ubuntu. This installs all other dependencies and sets necessary environment variables. On a different operating system, you can individually execute the steps.
 ```
-. scripts/install.sh
+. scripts/install-nerpa.sh
 ```
 
 ### Build
 After installing necessary dependencies, you can write Nerpa programs. A Nerpa program consists of a P4 program, a DDlog program, and (optionally) an OVSDB schema.
 
-For organization, place these programs in the same subdirectory of `nerpa_controlplane`, and give them the same name. Ex., `nerpa_controlplane/sample.p4`, `nerpa_controlplane/sample.dl`.
+For organization, place these programs in the same subdirectory of `nerpa_controlplane`, and give them the same name. Ex., `nerpa_controlplane/sample/sample.p4`, `nerpa_controlplane/sample/sample.dl`.
 
 Once these files are written, the Nerpa program can be built through the build script: `./scripts/build-nerpa.sh nerpa_controlplane/sample sample`. You can also individually execute the steps in the build script.
 
