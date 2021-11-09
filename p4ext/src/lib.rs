@@ -20,6 +20,11 @@ SOFTWARE.
 
 use byteorder::{BigEndian, WriteBytesExt};
 
+use futures::{
+    SinkExt,
+    StreamExt,
+};
+
 use grpcio::{ChannelBuilder, EnvBuilder, WriteFlags};
 
 use itertools::Itertools;
@@ -29,6 +34,7 @@ use proto::p4info;
 use proto::p4runtime::ForwardingPipelineConfig;
 use proto::p4runtime::ForwardingPipelineConfig_Cookie;
 use proto::p4runtime::GetForwardingPipelineConfigRequest;
+use proto::p4runtime::MasterArbitrationUpdate;
 use proto::p4runtime::ReadRequest;
 use proto::p4runtime::SetForwardingPipelineConfigRequest;
 use proto::p4runtime::SetForwardingPipelineConfigRequest_Action;
@@ -664,7 +670,7 @@ pub fn parse_uint128(s: &str) -> Result<Uint128, <u128 as FromStr>::Err> {
 
 #[derive(Debug)]
 pub struct P4Error {
-    message: String
+    pub message: String
 }
 
 impl fmt::Display for P4Error {
@@ -965,7 +971,6 @@ pub async fn read(
     read_request.set_device_id(device_id);
     read_request.set_entities(RepeatedField::from_vec(entities));
 
-    use futures::StreamExt;
     let mut stream = match client.read(&read_request) {
         Ok(r) => r.enumerate(),
         Err(e) => return Err(P4Error {message: format!("{}: failed to read request({})", device_id, e)}),
@@ -978,62 +983,65 @@ pub async fn read(
     }
 }
 
-pub async fn stream_channel(
+pub async fn stream_channel_request(
     request: StreamMessageRequest,
     client: &P4RuntimeClient,
-) -> Result<StreamMessageResponse, P4Error> {
-    let (mut sink, receiver) = client.stream_channel().unwrap();
+) -> Result<StreamMessageResponse, grpcio::Error> {
+    let (mut sink, mut receiver) = client.stream_channel().unwrap();
 
-    use futures::SinkExt;
     let send_result = sink.send((request, WriteFlags::default())).await;
     match send_result {
-        Err(err) => return Err(P4Error{
-            message: format!("could not send stream message to sink: ({})", err)
-        }),
         Ok(_) => {},
+        Err(e) => return Err(e),
     };
 
-    let close_result = sink.close().await;
-    match close_result {
-        Err(err) => return Err(P4Error{
-            message: format!("could not close sink: ({})", err)
-        }),
-        Ok(_) => {},
-    };
-
-    use futures::StreamExt;
-    let (_, receive_result) = receiver.enumerate().next().await.unwrap();
-    match receive_result {
-        Err(e) => Err(P4Error{
-            message: format!("received invalid response ({})", e)
-        }),
-        Ok(r) => Ok(r)
-    }
+    receiver.next().await.unwrap()
 }
 
 pub async fn master_arbitration_update(
     device_id: u64,
-    client: &P4RuntimeClient,
-) -> Result<(), P4Error> {
-    let mut update = proto::p4runtime::MasterArbitrationUpdate::new();
+    client: &P4RuntimeClient
+) -> Result<StreamMessageResponse, grpcio::Error> {
+    let mut update = MasterArbitrationUpdate::new();
     update.set_device_id(device_id);
 
-    let mut request = proto::p4runtime::StreamMessageRequest::new();
+    let mut request = StreamMessageRequest::new();
     request.set_arbitration(update);
 
-    match stream_channel(request, client).await {
-        Err(e) => Err(P4Error{
-            message: format!("could not stream master arbitration update ({})", e)
-        }),
-        Ok(r) => {
-            let status = r.get_arbitration().get_status();
-            let code = status.get_code();
-            match code {
-                0 => Ok(()),
-                _ => Err(P4Error{
-                    message: format!("{}: received error from stream channel rpc: message {}, code {}", device_id, status.get_message(), code)
-                }),
-            }
-        }
-    }
+    stream_channel_request(request, client).await
+}
+
+pub async fn write_digest_config(
+    digest_id: u32, 
+    max_timeout_ns: i64,
+    max_list_size: i32,
+    ack_timeout_ns: i64,
+    device_id: u64,
+    role_id: u64,
+    target: &str,
+    client: &P4RuntimeClient,
+) -> Result<(), P4Error> {
+    let mut digest_config = proto::p4runtime::DigestEntry_Config::new();
+    digest_config.set_max_timeout_ns(max_timeout_ns);
+    digest_config.set_max_list_size(max_list_size);
+    digest_config.set_ack_timeout_ns(ack_timeout_ns);
+
+    let mut digest_entry = proto::p4runtime::DigestEntry::new();
+    digest_entry.set_digest_id(digest_id);
+    digest_entry.set_config(digest_config);
+
+    let mut entity = proto::p4runtime::Entity::new();
+    entity.set_digest_entry(digest_entry);
+
+    let mut update = proto::p4runtime::Update::new();
+    update.set_entity(entity);
+    update.set_field_type(proto::p4runtime::Update_Type::INSERT);
+
+    write(
+        vec![update],
+        device_id,
+        role_id,
+        target,
+        client,
+    )
 }

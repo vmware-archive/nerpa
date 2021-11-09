@@ -11,12 +11,15 @@ fi
 ovsdb2ddlog -f snvs.ovsschema --output-file=Snvs_mp.dl
 
 # Compile P4 program,
-cd snvs_p4 && ./run-p4c.sh && cd ..
+# cd snvs_p4 && ./run-p4c.sh && cd ..
+./run-p4c.sh 
 
 # Generate DDlog output relations from P4info.
 cd ../../p4info2ddlog
-cargo run ../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin ../nerpa_controlplane/snvs_exp/snvs_dp.dl
-cd ../nerpa_controlplane/snvs_exp
+# cargo run ../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin ../nerpa_controlplane/snvs_exp/snvs_dp.dl
+cargo run ../nerpa_controlplane/snvs snvs ../digest2ddlog
+# cd ../nerpa_controlplane/snvs_exp
+cd ../nerpa_controlplane/snvs
 
 # Generate DDlog crate.
 ddlog -i snvs.dl &&

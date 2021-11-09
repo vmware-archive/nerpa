@@ -1,0 +1,9 @@
+import l2sw_dp as l2sw_dp
+
+relation LearnDigest(
+    port: bit<9>,
+    src_mac: bit<48>
+)
+
+LearnDigest(port, src_mac) :-
+    l2sw_dp::LearnDigest(.port = port, .src_mac = src_mac).

@@ -18,34 +18,35 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-extern crate bindgen;
+#include "../header.p4"
 
-use std::env;
-use std::path::PathBuf;
+control PacketIoIngress(inout parsed_headers_t hdr,
+                        inout edge_metadata_t edge_metadata,
+                        inout standard_metadata_t standard_metadata) {
+    apply {
+        if (hdr.packet_out.isValid()) {
+            standard_metadata.egress_spec = hdr.packet_out.egress_port;
+            hdr.packet_out.setInvalid();
+            edge_metadata.is_controller_packet_out = _TRUE;
+            // No need for ingress processing. Straight to egress.
+            exit;
+        }
+    }
+}
 
-fn main() {
-    println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-changed=build.rs");
+control PacketIoEgress(inout parsed_headers_t hdr,
+                       inout edge_metadata_t edge_metadata,
+                       inout standard_metadata_t standard_metadata) {
+    apply {
+        if (edge_metadata.is_controller_packet_out == _TRUE) {
+            // Transmit right away.
+            exit;
+        }
 
-    let bindings = bindgen::Builder::default()
-        .clang_arg("-Iovs/include")
-        .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .generate()
-        .expect("Unable to generate bindings!");
-    
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
-    
-    println!("cargo:rustc-link-search=."); 
-    println!("cargo:rustc-link-search=./ovs/lib/");
-    println!("cargo:rustc-link-search=/usr/local/lib/");
-
-    println!("cargo:rustc-link-lib=openvswitch");
-    println!("cargo:rustc-link-lib=unbound");
-    println!("cargo:rustc-link-lib=unwind");
-    println!("cargo:rustc-link-lib=ssl");
-    println!("cargo:rustc-link-lib=crypto");
+        if (standard_metadata.egress_port == CPU_PORT) {
+            hdr.packet_in.setValid();
+            hdr.packet_in.ingress_port = standard_metadata.ingress_port;
+            exit;
+        }
+    }
 }

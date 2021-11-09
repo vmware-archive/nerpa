@@ -1,5 +1,7 @@
-# Generated DDlog crate
-nerpa_ddlog/
+# Generated files
+*_ddlog/
+*_dp.dl
+*_mp.dl
 
 # Generated P4 files
 *.json

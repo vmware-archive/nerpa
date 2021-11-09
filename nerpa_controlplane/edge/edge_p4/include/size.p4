@@ -18,34 +18,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-extern crate bindgen;
+#ifndef __TABLE_SIZE__
+#define __TABLE_SIZE__
 
-use std::env;
-use std::path::PathBuf;
+#define BRIDGING_TABLE_SIZE 1024
+#define MPLS_TABLE_SIZE 1024
+#define ROUTING_V4_TABLE_SIZE 1024
+#define ROUTING_V6_TABLE_SIZE 1024
 
-fn main() {
-    println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-changed=build.rs");
-
-    let bindings = bindgen::Builder::default()
-        .clang_arg("-Iovs/include")
-        .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .generate()
-        .expect("Unable to generate bindings!");
-    
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
-    
-    println!("cargo:rustc-link-search=."); 
-    println!("cargo:rustc-link-search=./ovs/lib/");
-    println!("cargo:rustc-link-search=/usr/local/lib/");
-
-    println!("cargo:rustc-link-lib=openvswitch");
-    println!("cargo:rustc-link-lib=unbound");
-    println!("cargo:rustc-link-lib=unwind");
-    println!("cargo:rustc-link-lib=ssl");
-    println!("cargo:rustc-link-lib=crypto");
-}
+#endif

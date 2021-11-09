@@ -25,75 +25,110 @@ extern crate protobuf;
 
 use clap::{
     App,
-    Arg,
+    Arg
 };
 use grpcio::{
     ChannelBuilder,
     EnvBuilder
 };
-use nerpa_controller::Controller;
+use nerpa_controller::{
+    Controller,
+    SwitchClient
+};
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 
+// Import the function to run a DDlog program.
+// Note that the crate name changes with the Nerpa program's name.
+// The Nerpa programmer must rename this import.
+use l2sw_ddlog::run;
+
 #[tokio::main]
 pub async fn main() {
-    const SERVER_ARG: &str = "OVSDB SERVER FILEPATH";
-    const SERVER_DEFAULT: &str = "unix:/usr/local/var/run/openvswitch/db.sock";
-
-    const DATABASE_ARG: &str = "OVSDB DB";
-    const DATABASE_DEFAULT: &str = "snvs";
-
-    const TARGET_ARG: &str = "P4 TARGET";
-    const TARGET_DEFAULT: &str = "localhost:50051";
-
-    const P4INFO_ARG: &str = "P4INFO FILE";
-    const P4INFO_DEFAULT: &str = "../nerpa_controlplane/snvs_exp/snvs_p4/snvs.p4info.bin";
-
-    const JSON_ARG: &str = "P4 JSON";
-    const JSON_DEFAULT: &str = "../nerpa_controlplane/snvs_exp/snvs_p4/snvs.json";
+    const FILE_DIR_ARG: &str = "FILE_DIR";
+    const FILE_NAME_ARG: &str = "FILE_NAME";
 
     let matches = App::new("nerpa_controller")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Read input DDlog relations from OVSDB and push outputs to the P4 dataplane")
+        .about("Starts the controller program")
         .arg(
-            Arg::with_name(SERVER_ARG)
-                .help("OVSDB server sockfile path")
-                .default_value(SERVER_DEFAULT)
+            Arg::with_name(FILE_DIR_ARG)
+                .help("path to directory with input files (*.p4info.bin, *.json, *.dl)")
+                .required(true)
                 .index(1),
         )
         .arg(
-            Arg::with_name(DATABASE_ARG)
-                .help("OVSDB database name")
-                .default_value(DATABASE_DEFAULT)
+            Arg::with_name(FILE_NAME_ARG)
+                .help("file name before the extension: {program}.p4info.bin, {program}.dl")
+                .required(true)
                 .index(2),
-        )
-        .arg(
-            Arg::with_name(TARGET_ARG)
-                .help("P4 target server address")
-                .default_value(TARGET_DEFAULT)
-                .index(3),
-        )
-        .arg(
-            Arg::with_name(P4INFO_ARG)
-                .help("P4info filepath")
-                .default_value(P4INFO_DEFAULT)
-                .index(4),
-        )
-        .arg(
-            Arg::with_name(JSON_ARG)
-                .help("P4 JSON filepath")
-                .default_value(JSON_DEFAULT)
-                .index(5),
         )
         .get_matches();
 
-    ovsdb_to_p4(
-        matches.value_of(SERVER_ARG).unwrap().to_string(),
-        matches.value_of(DATABASE_ARG).unwrap().to_string(),
-        matches.value_of(TARGET_ARG).unwrap().to_string(),
-        matches.value_of(P4INFO_ARG).unwrap().to_string(),
-        matches.value_of(JSON_ARG).unwrap().to_string(),
+    // Validate CLI arguments.
+    let file_dir_opt = matches.value_of(FILE_DIR_ARG);
+    if file_dir_opt.is_none() {
+        panic!("missing required argument: FILE_DIR");
+    }
+
+    let file_name_opt = matches.value_of(FILE_NAME_ARG);
+    if file_name_opt.is_none() {
+        panic!("missing required argument: FILE_NAME");
+    }
+
+    // Run controller.
+    let file_dir = String::from(file_dir_opt.unwrap());
+    let file_name = String::from(file_name_opt.unwrap());
+    run_controller(file_dir, file_name).await
+}
+
+
+async fn run_controller(
+    file_dir: String,
+    file_name: String,
+) {
+    // Create P4Runtime client.
+    let target = String::from("localhost:50051");
+    let env = Arc::new(EnvBuilder::new().build());
+    let ch = ChannelBuilder::new(env).connect(target.as_str());
+    let client = P4RuntimeClient::new(ch);
+
+    let device_id : u64 = 0;
+    let role_id: u64 = 0;
+    let p4info = format!("{}/{}.p4info.bin", file_dir, file_name);
+    let opaque = format!("{}/{}.json", file_dir, file_name);
+    let cookie = String::from("");
+    let action = String::from("verify-and-commit");
+
+    // Set the primary controller on P4Runtime.
+    // This enables use of the StreamChannel RPC.
+    let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
+    if mau_res.is_err() {
+        panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
+    }
+
+    // Create a SwitchClient.
+    // Handles communication with the switch.
+    let switch_client = SwitchClient::new(
+        client,
+        p4info,
+        opaque,
+        cookie,
+        action,
+        device_id,
+        role_id,
+        target,
     );
+
+    // Run the DDlog program.
+    let (hddlog, _) = run(1, false).unwrap();
+
+    // Instantiate controller.
+    let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();
+
+    // TODO: We want to read inputs from the management and data planes.
+    // Currently, this only processes inputs from the data plane.
+    nerpa_controller.stream_digests().await;
 }
 
 pub fn ovsdb_to_p4(
@@ -107,36 +142,6 @@ pub fn ovsdb_to_p4(
     let delta = ovsdb_client::export_input_from_ovsdb(server, database).unwrap();
 
     println!("\n\nProcessed input from OVSDB! Got the following output...");
-    let mut controller = Controller::new(delta);
-    controller.dump_delta();
-
-    // TODO: Get non-empty election ID working.
-    let device_id : u64 = 0;
-    let role_id: u64 = 0;
-    let env = Arc::new(EnvBuilder::new().build());
-    let ch = ChannelBuilder::new(env).connect(target.as_str());
-    let client = P4RuntimeClient::new(ch);
     
-    let cookie_str: &str = "";
-    let action_str: &str = "verify-and-commit";
-
-    p4ext::set_pipeline(
-        p4info_fn.as_str(),
-        json_fn.as_str(),
-        cookie_str,
-        action_str,
-        device_id,
-        role_id,
-        target.as_str(),
-        &client,
-    );
-
-    controller.push_outputs_to_switch(
-        device_id,
-        role_id,
-        target.as_str(),
-        &client
-    ).unwrap_or_else(
-        |err| panic!("could not push outputs to switch: {}", err)
-    );
+    // TODO: Factor this logic into a Tokio actor.
 }

@@ -2,113 +2,52 @@
 
 # NERPA
 
-NERPA (Network Programming with Relational and Procedural Abstractions) seeks to enable co-development of the control plane and data plane. This document details the project's direction and organization. As of writing, the following parts are mostly unimplemented.
+NERPA (Network Programming with Relational and Procedural Abstractions) seeks to enable co-development of the control plane and data plane. This details the project's direction and organization.
 
-1. [nerpa_controlplane](nerpa_controlplane): A [DDlog program](nerpa_controlplane/nerpa.dl) serves as the control plane. Its input relations are fed from the management plane, and its output relations feed the data plane. After initial setup, this directory will include a generated DDlog crate used by the controller.
+1. [nerpa_controlplane](nerpa_controlplane): Each subdirectory corresponds with a Nerpa program, with its input files.
+- [DDlog program](nerpa_controlplane/snvs/snvs.dl): Serves as the control plane. 
+- [P4 program](nerpa_controlplane/snvs/snvs.p4): Serves as the dataplane program. Used by `p4info2ddlog` to generate DDlog output relations.
+- [OVSDB schema](nerpa_controlplane/snvs/snvs.ovsschema): Optionally used to set up an OVSDB management plane. The `ovsdb2ddlog` tool uses this to generate input relations.
+
 2. [nerpa_controller](nerpa_controller): An intermediate Rust [program](nerpa_controller/src/main.rs) runs the DDlog program using the generated crate.  It uses the management plane to adapt the DDlog program's input relations. It also pushes the output relations' rows into tables in the P4 switch using [P4runtime](https://p4.org/p4runtime/spec/master/P4Runtime-Spec.html).
-3. nerpa_dataplane: We plan to implement the data plane in [P4](https://p4.org/p4-spec/docs/P4-16-working-spec.html) using the [table format](https://p4.org/p4-spec/docs/P4-16-working-spec.html#sec-tables). Note that this may require cross-language work, as it is unclear if this involves any Rust.
+Notice that the controller's `Cargo.toml` is uncommitted. This is generated using the `p4info2ddlog` tool, to import the correct crate dependencies.
+
+3. [ovsdb-sys](ovsdb-sys): Bindings to OVSDB, enabling its use as a management plane.
+
+4. [p4ext](p4ext): API above P4Runtime for convenience.
+
+5. [p4info2ddlog](p4info2ddlog): Script that reads a P4 program's P4info and generates DDlog relations for the dataplane program.
+
+6. [proto](proto): Protobufs for P4 and P4Runtime, used to generate Rust code.
+
 
 ## Installation
-### Build
-0. Clone this repository and its submodules, e.g:
+### Setup
+
+1. Clone the repository and its submodules.
 ```
 git clone --recursive git@github.com:vmware/nerpa.git
 ```
-We will call its top-level directory  `$NERPA_DIR`. I would recommend using a fresh Ubuntu 18.04 VM for painless P4 installation.
-1. Install DDlog using the provided [installation instructions](https://github.com/vmware/differential-datalog/blob/master/README.md#installation). This codebase used version [v0.39.0](https://github.com/vmware/differential-datalog/releases/tag/v0.39.0).
-2. Install P4 using these [installation instructions](https://github.com/jafingerhut/p4-guide/blob/master/bin/README-install-troubleshooting.md#quick-instructions-for-successful-install-script-run). We used the install script `install-p4dev-v2.sh`. It is much more usable than the P4 README installation, and clones all necessary repositories and installs dependencies.
 
-For better organization, create a dedicated directory for these dependencies, outside your clone of this repository. Run the installation script within this directory. Set `$NERPA_DEPS` equal to this directory's path.
+2. Install Rust using the [appropriate instructions](https://www.rust-lang.org/tools/install), if uninstalled.
 
-3. Install Open vSwitch using the appropriate [instructions](https://docs.openvswitch.org/en/latest/intro/install/).
+3. The required version of `grpcio` requires CMake >= 3.12. The Ubuntu default is 3.10. [Here](https://askubuntu.com/a/865294) are  installation instructions for Ubuntu.
 
-4. Build the `proto` crate containing P4 Runtime structures. Install necessary dependencies (the protobuf and gRPC compilers).
-
+4. We have included an installation script for Ubuntu. This installs all other dependencies and sets necessary environment variables. On a different operating system, you can individually execute the steps.
 ```
-cd $NERPA_DIR/proto
-cargo install protobuf-codegen
-cargo install grpcio-compiler
+. scripts/install-nerpa.sh
 ```
 
-5. Generate the DDlog crate for our example program, `snvs`, using the [setup script](nerpa_controlplane/snvs_exp/generate-snvs.sh). We do not commit this crate so that small differences in developer toolchains do not create significant hassle. This script also compiles the P4 program and generates intermediate DDlog programs for the data plane and management plane.
+### Build
+After installing necessary dependencies, you can write Nerpa programs. A Nerpa program consists of a P4 program, a DDlog program, and (optionally) an OVSDB schema.
 
-```
-cd $NERPA_DIR/nerpa_controlplane/snvs_exp
-./generate-snvs.sh
-``` 
+For organization, place these programs in the same subdirectory of `nerpa_controlplane`, and give them the same name. Ex., `nerpa_controlplane/sample/sample.p4`, `nerpa_controlplane/sample/sample.dl`.
 
-6. Build the intermediate controller program's crate.
-```
-cd $NERPA_DIR/nerpa_controller
-cargo build
-```
+Once these files are written, the Nerpa program can be built through the build script: `./scripts/build-nerpa.sh nerpa_controlplane/sample sample`. You can also individually execute the steps in the build script.
 
-7. Build `ovsdb-sys`, the crate with bindings to the Open vSwitch database (ovsdb).
-
-First, within the crate's `ovs` subdirectory, build and install Open vSwitch following these [instructions](https://github.com/openvswitch/ovs/blob/master/Documentation/intro/install/general.rst).
-
-Then build the crate:
-```
-cargo build
-```
-
-Confirm the bindings built correctly by running the tests:
-```
-cargo test
-```
-
-8. Build `ovsdb_client`. This requires generating the DDlog relations in Rust using `ovsdb2ddlog2rust`.
-```
-cd $NERPA_DIR/ovsdb_client
-pip3 install -r requirements.txt
-python3 ovsdb2ddlog2rust --schema-file=../nerpa_controlplane/snvs_exp/snvs.ovsschema -p nerpa_ --output-file src/nerpa_rels.rs
-cargo build
-```
-
-### Test
-1. Set the environmental variable `NERPA_DEPS` to the directory containing Nerpa dependencies, including `behavioral-model`. In other words, the `simple_switch_grpc` binary should have the following path: `$NERPA_DEPS/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc`.
-
-2. Run the P4 Runtime library tests.
-```
-cd $NERPA_DIR/p4ext
-cargo test
-```
+Building the controller program fails at first. This is due to importing the `*_ddlog::run` function in `nerpa_controller/src/main.rs`. That import must change with the Nerpa program's name.
 
 ### Run
-1. Start `simple_switch_grpc` from its build directory (`$NERPA_DEPS/behavioral-model/targets/simple_switch_grpc`).
-```
-./simple_switch_grpc --log-console --no-p4 -- --grpc-server-addr 0.0.0.0:50051 --cpu-port 1010
-```
-2. Set up OVSDB. These example commmands are for Linux and include sample data.
+A built Nerpa program can be run using the runtime script. This script (1) configures and runs a P4 software switch; (2) configures and runs the OVSDB management plane; and (3) runs the controller program. Configuring the software switch requires a `commands.txt` file in the same subdirectory. Configuring the OVSDB management plane requires an OVSDB schema file in the same subdirectory, e.g. `nerpa_controlplane/sample/sample.ovsschema`.
 
-Create a database from the provided OVS schema:
-```
-ovsdb-tool create /usr/local/etc/openvswitch/snvs.db punix:/usr/local/var/run/openvswitch/db.sock /usr/local/etc/openvswitch/snvs.db
-```
-Run the OVSDB server:
-```
-ovsdb-server --pidfile --detach --log-file --remote punix:/usr/local/var/run/openvswitch/db.sock /usr/local/etc/openvswitch/snvs.db
-```
-Listen for connections:
-```
-ovs-appctl -t ovsdb-server ovsdb-server/add-remote ptcp:6640
-```
-In a new terminal, insert a row in the Port table:
-```
-ovsdb-client transact tcp:localhost:6640 '["snvs",{"op":"insert","table":"Port","row":{"id":11,"priority_tagging":"no","tag":[1]}}]'
-```
-
-3. Run the intermediate controller program.
-```
-cd $NERPA_DIR/nerpa_controller
-cargo run
-```
-
-Running this program will print OVSDB logs and should end with the following output:
-```
-Changes to relation MulticastGroup
-MulticastGroup{.mcast_id = 1, .ports = [11, 22]} +1
-Changes to relation snvs_dp::InputVlan
-snvs_dp::InputVlan{.port = 11, .has_vlan = false, .vid = ddlog_std::None{}, .priority = 1, .action = snvs_dp::InputVlanActionSetVlan{.vid = 1}} +1
-snvs_dp::InputVlan{.port = 22, .has_vlan = false, .vid = ddlog_std::None{}, .priority = 1, .action = snvs_dp::InputVlanActionSetVlan{.vid = 1}} +1
-```
+The runtime script's usage is the same as the build script: `./scripts/run-nerpa.sh nerpa_controlplane/sample sample`.

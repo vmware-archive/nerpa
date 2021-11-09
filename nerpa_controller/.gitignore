@@ -1,2 +1,4 @@
 # Generated files
 target/
+Cargo.lock
+Cargo.toml
