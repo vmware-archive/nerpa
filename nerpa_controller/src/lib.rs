@@ -182,6 +182,7 @@ impl SwitchClient {
         }
     }
 
+    // Configures the level of digest notification on the switch, using the P4 Runtime API.
     pub async fn configure_digests(
         &mut self,
         max_timeout_ns: i64,
@@ -215,6 +216,7 @@ impl SwitchClient {
         Ok(())
     }
 
+    // Pushes DDlog outputs as table entries in the P4-enabled switch.
     pub fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
 
@@ -374,12 +376,14 @@ impl ControllerActor {
         }
     }
 
+    // Runs the actor indefinitely and handles each received message.
     async fn run(&mut self) {
         while let Some(msg) = self.receiver.recv().await {
             self.handle_message(msg).await;
         }
     }
 
+    // Handle messages to the ControllerActor, calling the appropriate logic based on its branch.
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
         match msg {
             ControllerActorMessage::UpdateMessage {respond_to, input} => {
@@ -432,12 +436,14 @@ impl DigestActor {
         Self { _sink, receiver, respond_to }
     }
 
+    // Runs the actor indefinitely and handles each received message.
     async fn run(&mut self) {
         while let Some(result) = self.receiver.next().await {
             self.handle_digest(result).await;
         }
     }
 
+    // Handles digest messages by converting each digest into the appropriate DDlog input relation.
     pub async fn handle_digest(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
         match res {
             Err(e) => println!("received GRPC error from p4runtime streaming channel: {:#?}", e),
