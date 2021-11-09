@@ -22,73 +22,205 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-// The auto-generated crate `snvs_ddlog` declares the `HDDlog` type.
-// This serves as a reference to a running DDlog program.
-// It implements `trait differential_datalog::DDlog`.
-use snvs_ddlog::api::HDDlog;
+use differential_datalog::api::HDDlog;
 
-// `differential_datalog` contains the DDlog runtime copied to each generated workspace.
-use differential_datalog::DDlog; // Trait that must be implemented by DDlog program.
-use differential_datalog::DDlogDynamic;
-use differential_datalog::DeltaMap; // Represents a set of changes to DDlog relations.
-use differential_datalog::ddval::DDValue; // Generic type wrapping all DDlog values.
+use differential_datalog::{
+    DDlog,
+    DDlogDynamic,
+    DeltaMap
+}; 
+use differential_datalog::ddval::DDValue;
 use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
-use p4ext::{ActionRef, Table};
+use digest2ddlog::digest_to_ddlog;
 
+use futures::{
+    StreamExt,
+};
+use grpcio::{
+    ClientDuplexReceiver,
+    StreamingCallSink,
+};
+
+use p4ext::{
+    ActionRef,
+    Table
+};
+
+use proto::p4runtime::{
+    StreamMessageRequest,
+    StreamMessageResponse,
+};
 use proto::p4runtime_grpc::P4RuntimeClient;
+use protobuf::Message;
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::fs::File;
 
-// Controller
-// It contains a handle to the DDlog program, so we can use it to determine the form of packets.
+// Controller serves as a handle for the Tokio tasks.
+// The Tokio task can either process DDlog inputs or push outputs to the switch.
+#[derive(Clone)]
 pub struct Controller {
-    hddlog: HDDlog,
+    sender: mpsc::Sender<ControllerActorMessage>,
 }
 
 impl Controller {
-    pub fn new() -> Result<Controller, String> {
-        let (hddlog, _init_state) = HDDlog::run(1, false)?;
-        
-        Ok(Self{hddlog})
+    pub fn new(
+        switch_client: SwitchClient,
+        hddlog: HDDlog,
+    ) -> Result<Controller, String> {
+        let (sender, receiver) = mpsc::channel(1000);
+        let program = ControllerProgram::new(hddlog);
+
+        let mut actor = ControllerActor::new(receiver, switch_client, program);
+        tokio::spawn(async move { actor.run().await });
+
+        Ok(Self{sender})
     }
 
-    pub fn stop(&mut self) {
-        self.hddlog.stop().unwrap();
+    pub async fn input_to_switch(
+        &self,
+        input: Vec<Update<DDValue>>
+    ) -> Result<(), p4ext::P4Error> {
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::UpdateMessage {
+            respond_to: send,
+            input,
+        };
+
+        let message_res = self.sender.send(msg).await;
+        if message_res.is_err() {
+            println!("could not send message to controller actor: {:#?}", message_res);
+        }
+
+        recv.await.expect("Actor task has been killed")
     }
 
-    pub fn add_input(&mut self, updates: Vec<Update<DDValue>>) -> Result<DeltaMap<DDValue>, String> {
+    pub async fn stream_digests(&self) {
+        // The oneshot channel keeps an Actor running that processes digests.
+        // It closes when the Actor task is killed.
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::DigestMessage {
+            _respond_to: send,
+        };
+
+        let message_res = self.sender.send(msg).await;
+        if message_res.is_err() {
+            println!("could not send message to controller actor: {:#?}", message_res);
+        }
+
+        recv.await.expect("Actor task has been killed");
+    }
+}
+
+pub struct ControllerProgram {
+    hddlog: HDDlog,
+}
+
+impl ControllerProgram {
+    pub fn new(hddlog: HDDlog) -> Self {
+        Self{hddlog}
+    }
+
+    pub fn add_input(
+        &mut self,
+        updates:Vec<Update<DDValue>>
+    ) -> Result<DeltaMap<DDValue>, String> {
         self.hddlog.transaction_start()?;
-        
-        let update_result = self.hddlog.apply_updates(&mut updates.into_iter());
-        match update_result {
+
+        match self.hddlog.apply_updates(&mut updates.into_iter()) {
             Ok(_) => {},
-            Err(_) => { self.hddlog.transaction_rollback()? }
+            Err(_) => self.hddlog.transaction_rollback()?
         };
 
         self.hddlog.transaction_commit_dump_changes()
     }
 
-    pub fn dump_delta(delta: &DeltaMap<DDValue>) {
-        for (rel, changes) in delta.iter() {
-            println!("Changes to relation {}", snvs_ddlog::relid2name(*rel).unwrap());
-            for (val, weight) in changes.iter() {
-                println!("{} {:+}", val, weight);
-            }
+    pub fn stop(&mut self) {
+        self.hddlog.stop().unwrap();
+    }
+}
+
+pub struct SwitchClient {
+    pub client: P4RuntimeClient,
+    p4info: String,
+    device_id: u64,
+    role_id: u64,
+    target: String,
+}
+
+impl SwitchClient {
+    pub fn new(
+        client: P4RuntimeClient,
+        p4info: String,
+        opaque: String,
+        cookie: String,
+        action: String,
+        device_id: u64,
+        role_id: u64,
+        target: String,
+    ) -> Self {
+        p4ext::set_pipeline(
+            &p4info,
+            &opaque,
+            &cookie,
+            &action,
+            device_id,
+            role_id,
+            &target,
+            &client
+        );
+
+        Self {
+            client,
+            p4info,
+            device_id,
+            role_id,
+            target,
         }
     }
 
-    pub fn push_outputs_to_switch(
-        delta: &DeltaMap<DDValue>,
-        device_id: u64,
-        role_id: u64,
-        target: &str,
-        client: &P4RuntimeClient,
+    // Configures the level of digest notification on the switch, using the P4 Runtime API.
+    pub async fn configure_digests(
+        &mut self,
+        max_timeout_ns: i64,
+        max_list_size: i32,
+        ack_timeout_ns: i64,
     ) -> Result<(), p4ext::P4Error> {
+        // Read P4info from file.
+        let p4info_str: &str = &self.p4info;
+        let mut p4info_file = File::open(OsStr::new(p4info_str))
+            .unwrap_or_else(|err| panic!("{}: could not open P4Info ({})", p4info_str, err));
+        let p4info: proto::p4info::P4Info = Message::parse_from_reader(&mut p4info_file)
+            .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info_str, err));
+
+        for d in p4info.get_digests().iter() {
+            let config_res = p4ext::write_digest_config(
+                d.get_preamble().get_id(),
+                max_timeout_ns,
+                max_list_size,
+                ack_timeout_ns,
+                self.device_id,
+                self.role_id,
+                &self.target,
+                &self.client,
+            ).await;
+
+            if config_res.is_err() {
+                return config_res;
+            }
+        }
+
+        Ok(())
+    }
+
+    // Pushes DDlog outputs as table entries in the P4-enabled switch.
+    pub fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
 
-        let pipeline = p4ext::get_pipeline_config(device_id, target, client);
+        let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
         for (_rel_id, output_map) in (*delta).clone().into_iter() {
@@ -101,13 +233,13 @@ impl Controller {
                         let mut table: Table = Table::default();
                         let mut table_name: String = "".to_string();
 
-                        match Self::get_matching_table(name.to_string(), switch.tables.clone()) {
-                            Some(t) => {
-                                table = t;
-                                table_name = table.preamble.name;
-                            },
-                            None => {},
-                        };
+                        if let Some(t) = self.get_matching_table(
+                            name.to_string(),
+                            switch.tables.clone()
+                        ) {
+                            table = t;
+                            table_name = table.preamble.name;
+                        }
 
                         // Iterate through fields in the record.
                         // Map all match keys to values.
@@ -124,24 +256,24 @@ impl Controller {
                                     match v {
                                         Record::NamedStruct(name, arecs) => {
                                             // Find matching action name from P4 table.
-                                            action_name = match Self::get_matching_action_name(name.to_string(), table.actions.clone()) {
+                                            action_name = match self.get_matching_action_name(name.to_string(), table.actions.clone()) {
                                                 Some(an) => an,
                                                 None => "".to_string()
                                             };
     
                                             // Extract param values from action's records.
                                             for (_, (afname, aval)) in arecs.iter().enumerate() {
-                                                params.insert(afname.to_string(), Self::extract_record_value(&aval));
+                                                params.insert(afname.to_string(), self.extract_record_value(aval));
                                             }
                                         },
                                         _ => println!("action was incorrectly formed!")
                                     }
                                 },
                                 "priority" => {
-                                    priority = Self::extract_record_value(&v).into();
+                                    priority = self.extract_record_value(v).into();
                                 },
                                 _ => {
-                                    matches.insert(match_name, Self::extract_record_value(&v));
+                                    matches.insert(match_name, self.extract_record_value(v));
                                 }
                             }
                         }
@@ -155,9 +287,9 @@ impl Controller {
                                 params,
                                 matches,
                                 priority,
-                                device_id,
-                                target,
-                                client,
+                                self.device_id,
+                                &self.target,
+                                &self.client,
                             ).unwrap_or_else(|err| panic!("could not build table update: {}", err));
                             updates.push(update);
                         }
@@ -169,21 +301,21 @@ impl Controller {
             }
         }
 
-        p4ext::write(updates, device_id, role_id, target, client)
+        p4ext::write(updates, self.device_id, self.role_id, &self.target, &self.client)
     }
 
-    fn extract_record_value(r: &Record) -> u16 {
+    fn extract_record_value(&mut self, r: &Record) -> u16 {
         use num_traits::cast::ToPrimitive;
         match r {
             Record::Bool(true) => 1,
             Record::Bool(false) => 0,
             Record::Int(i) => i.to_u16().unwrap_or(0),
-            // TODO: Handle other types.
+            // TODO: If required, handle other types.
             _ => 1,
         }
     }
 
-    fn get_matching_table(record_name: String, tables: Vec<Table>) -> Option<Table> {
+    fn get_matching_table(&mut self, record_name: String, tables: Vec<Table>) -> Option<Table> {
         for t in tables {
             let tn = &t.preamble.name;
             let tv: Vec<String> = tn.split('.').map(|s| s.to_string()).collect();
@@ -197,17 +329,149 @@ impl Controller {
         None
     }
 
-    fn get_matching_action_name(record_name: String, actions: Vec<ActionRef>) -> Option<String> {
+    fn get_matching_action_name(&mut self, record_name: String, actions: Vec<ActionRef>) -> Option<String> {
         for action_ref in actions {
             let an = action_ref.action.preamble.name;
             let av: Vec<String> = an.split('.').map(|s| s.to_string()).collect();
             let asub = av.last().unwrap();
 
             if record_name.contains(asub) {
-                return Some(an.to_string());
+                return Some(an);
             }
         }
 
         None
+    }
+}
+
+use tokio::sync::{oneshot, mpsc};
+
+struct ControllerActor {
+    receiver: mpsc::Receiver<ControllerActorMessage>,
+    switch_client: SwitchClient,
+    program: ControllerProgram,
+}
+
+#[derive(Debug)]
+enum ControllerActorMessage {
+    UpdateMessage {
+        respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
+        input: Vec<Update<DDValue>>,
+    },
+    DigestMessage {
+        _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
+    },
+}
+
+impl ControllerActor {
+    fn new(
+        receiver: mpsc::Receiver<ControllerActorMessage>,
+        switch_client: SwitchClient,
+        program: ControllerProgram,
+    ) -> Self {
+        ControllerActor {
+            receiver,
+            switch_client,
+            program,
+        }
+    }
+
+    // Runs the actor indefinitely and handles each received message.
+    async fn run(&mut self) {
+        while let Some(msg) = self.receiver.recv().await {
+            self.handle_message(msg).await;
+        }
+    }
+
+    // Handle messages to the ControllerActor, calling the appropriate logic based on its branch.
+    async fn handle_message(&mut self, msg: ControllerActorMessage) {        
+        match msg {
+            ControllerActorMessage::UpdateMessage {respond_to, input} => {
+                let ddlog_res = self.program.add_input(input).unwrap();
+                let message_res = respond_to.send(self.switch_client.push_outputs(&ddlog_res));
+                if message_res.is_err() {
+                    println!("could not send message from actor to controller: {:#?}", message_res.err());
+                }
+            },
+            ControllerActorMessage::DigestMessage{ _respond_to } => {
+                // This configuration sends a notification per-digest.
+                let config_res = self.switch_client.configure_digests(0, 1, 1).await;
+                if config_res.is_err() {
+                    panic!("could not configure digests: {:#?}", config_res);
+                }
+
+                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1000);
+
+                let (_sink, receiver) = self.switch_client.client.stream_channel().unwrap();
+
+                let mut digest_actor = DigestActor::new(_sink, receiver, send);
+                tokio::spawn(async move { digest_actor.run().await });
+
+                while let Some(inp) = rx.recv().await {
+                    let ddlog_res = self.program.add_input(vec![inp]);
+                    if ddlog_res.is_ok() {
+                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap());
+                        if p4_res.is_err() {
+                            println!("could not push digest output relation to switch: {:#?}", p4_res.err())
+                        }
+                    }
+                };
+            }
+        }
+    }
+}
+
+struct DigestActor {
+    _sink: StreamingCallSink<StreamMessageRequest>,
+    receiver: ClientDuplexReceiver<StreamMessageResponse>,
+    respond_to: mpsc::Sender<Update<DDValue>>
+}
+
+impl DigestActor {
+    fn new(
+        _sink: StreamingCallSink<StreamMessageRequest>,
+        receiver: ClientDuplexReceiver<StreamMessageResponse>,
+        respond_to: mpsc::Sender<Update<DDValue>>
+    ) -> Self {
+        Self { _sink, receiver, respond_to }
+    }
+
+    // Runs the actor indefinitely and handles each received message.
+    async fn run(&mut self) {
+        while let Some(result) = self.receiver.next().await {
+            self.handle_digest(result).await;
+        }
+    }
+
+    // Handles digest messages by converting each digest into the appropriate DDlog input relation.
+    pub async fn handle_digest(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
+        match res {
+            Err(e) => println!("received GRPC error from p4runtime streaming channel: {:#?}", e),
+            Ok(r) => {
+                let update_opt = r.update;
+                if update_opt.is_none() {
+                    println!("received empty response from p4runtime streaming channel");
+                }
+
+                use proto::p4runtime::StreamMessageResponse_oneof_update::*;
+
+                // unwrap() is safe because of none check
+                match update_opt.unwrap() {
+                    digest(d) => {
+                        for data in d.get_data().iter() {
+                            let update = digest_to_ddlog(d.get_digest_id(), data);
+                            
+                            let channel_res = self.respond_to.send(update).await;
+                            if channel_res.is_err() {
+                                println!("could not send response over channel: {:#?}", channel_res);
+                            }
+                        }
+                    },
+                    error(e) => println!("received error from p4runtime streaming channel: {:#?}", e),
+                    // no action for arbitration, packet, idle timeout, or other
+                    _ => {},
+                };
+            }
+        }
     }
 }
