@@ -28,7 +28,7 @@ use std::fmt::Write;
 pub fn write_rs(
     digests: &[Digest],
     type_info: &P4TypeInfo,
-    prog_name: String
+    prog_name: &str
 ) -> Result<String> {
     let mut d2d_out = String::new();
     writeln!(d2d_out, "use proto::p4data::P4Data;")?;
@@ -40,8 +40,7 @@ pub fn write_rs(
     writeln!(d2d_out)?;
     writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
 
-    // TODO: Properly handle nested structs.
-    // If so, make the variable name (`digest_data`) substitutable.
+    // This function works because P4 Runtime only allows a digest to be a struct with bitstring fields.
     writeln!(d2d_out, "  let members = digest_data.get_field_struct().get_members();")?;
     writeln!(d2d_out, "  match digest_id {{")?;
 
@@ -56,7 +55,6 @@ pub fn write_rs(
         writeln!(d2d_out, "        v: types::{} {{", digest_name)?;
 
         // Write Update value fields using digest struct members.
-        // TODO: This does not work if the digest is nested.
         for (mi, m) in digest_structs.get_members().iter().enumerate() {
             let member_type_spec = m.get_type_spec();
 
@@ -70,7 +68,7 @@ pub fn write_rs(
                 let bitwidth = member_type_spec.get_bitstring().get_bit().get_bitwidth();
 
                 let num_bits = match bitwidth {
-                    0..=8 => 8,
+                    1..=8 => 8,
                     9..=16 => 16,
                     17..=32 => 32,
                     33..=64 => 64,
@@ -114,8 +112,11 @@ fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
     Ok(d2d_out)
 }
 
-pub fn write_toml(prog_name: String) -> String {
-    let ddlog_path = "../nerpa_controlplane/l2sw/l2sw_ddlog";
+pub fn write_toml(
+    io_dir: &str,
+    prog_name: &str,
+) -> String {
+    let ddlog_path = format!("{}/{}_ddlog", io_dir, prog_name);
 
     format!("
 [package]

@@ -26,6 +26,7 @@ use anyhow::{anyhow, Context, Result};
 use multimap::MultiMap;
 
 use proto::p4info::{self, Action, P4Info, Table};
+use proto::p4types::P4BitstringLikeTypeSpec_oneof_type_spec as P4BitstringTypeSpec;
 
 use protobuf::{Message, RepeatedField};
 
@@ -139,27 +140,30 @@ fn extract_p4data_types(
 fn p4data_to_ddlog_type(
     type_spec: &Option<proto::p4types::P4DataTypeSpec_oneof_type_spec>
 ) -> String {
-    use proto::p4types::P4BitstringLikeTypeSpec_oneof_type_spec as P4BitstringTypeSpec;
-
     match type_spec {
         Some(P4DataTypeSpec::bitstring(ref bs)) => {
-            let bitwidth: i32 = match &bs.type_spec {
-                Some(P4BitstringTypeSpec::bit(b)) => b.get_bitwidth(),
-                Some(P4BitstringTypeSpec::int(i)) => i.get_bitwidth(),
-                Some(P4BitstringTypeSpec::varbit(v)) => v.get_max_bitwidth(),
-                None => 0, // should never happen
-            };
-
-            format!("bit<{}>", bitwidth)
+            match &bs.type_spec {
+                Some(P4BitstringTypeSpec::bit(b)) => format!("bit<{}>", b.get_bitwidth()),
+                Some(P4BitstringTypeSpec::varbit(v)) => format!("bit<{}>", v.get_max_bitwidth()),
+                Some(P4BitstringTypeSpec::int(i)) => format!("signed<{}>", i.get_bitwidth()),
+                None => String::new(), // should never happen
+            }
         },
         Some(P4DataTypeSpec::bool(_)) => format!("bool"),
         Some(P4DataTypeSpec::tuple(t)) => {
+            let members = t.get_members();
             let mut tuple_types = Vec::new();
-            for tm in t.get_members().iter() {
+            for tm in members.iter() {
                 tuple_types.push(p4data_to_ddlog_type(&tm.type_spec));
             }
 
-            format!("({})",  tuple_types.join(","))
+            // P4 has 1-element tuples, while DDlog does not.
+            // We translate 1-element tuples to the type of the first element.
+            // Note that both DDlog and P4 allow 0-element tuples.
+            match members.len() {
+                1 => format!("{}", tuple_types.get(0).unwrap()),
+                _ => format!("({})",  tuple_types.join(",")),
+            }
         },
 
         // P4NamedType contains the name of a P4 type.
@@ -170,11 +174,13 @@ fn p4data_to_ddlog_type(
 
         // P4HeaderStackTypeSpec is a (header, size) pair.
         // `header` is a named P4 type, size is an int32.
-        Some(P4DataTypeSpec::header_stack(ref hs)) => format!("({}, bigint)", hs.get_header().get_name()),
+        // The header stack is an array of type `header` and length `size`.
+        Some(P4DataTypeSpec::header_stack(ref hs)) => format!("Vec<{}>", hs.get_header().get_name()),
 
         // P4HeaderUnionStackTypeSpec consists of a (header_union, size) pair.
         // `header_union` is a named type, size is an int32.
-        Some(P4DataTypeSpec::header_union_stack(ref hus)) => format!("({}, bigint)", hus.get_header_union().get_name()),
+        // The header union stack is an array of type `header union` and length `size`.
+        Some(P4DataTypeSpec::header_union_stack(ref hus)) => format!("Vec<{}>", hus.get_header_union().get_name()),
         Some(P4DataTypeSpec::field_enum(ref fe)) => fe.get_name().to_owned(),
 
         // TODO: Potentially create P4 error type in DDlog.
@@ -207,6 +213,11 @@ pub fn p4info_to_ddlog(
         .collect();
 
     let mut output = String::new();
+
+    // TODO: Create types corresponding to headers and header unions.
+    // It's possible that we need to do this for fields in output relations.
+    // Input relations are only generated from digests, and digests can only have bitstrings.
+
     for (_, tables) in pipelines {
         for table in tables {
             let table_name = &table.get_preamble().name;
@@ -365,9 +376,14 @@ pub fn p4info_to_ddlog(
         // Store each member as a field for the input relation using (field_name, type).
         let mut fields = Vec::new();
         for m in members.iter() {
+            let type_spec = m.get_type_spec();
+            // P4Runtime only allows digest structs to have bitstring members.
+            if !type_spec.has_bitstring() || !type_spec.get_bitstring().has_bit() {
+                panic!("digest struct fields can only have bitstrings of type bit");
+            }
+
             let name = m.get_name();
-            let type_spec = &m.get_type_spec().type_spec;
-            let full_type = p4data_to_ddlog_type(type_spec);
+            let full_type = p4data_to_ddlog_type(&type_spec.type_spec);
 
             fields.push((name, full_type));
         }
@@ -415,7 +431,7 @@ pub fn p4info_to_ddlog(
     let crate_rs_output = digest2ddlog::write_rs(
         p4info.get_digests(),
         p4info.get_type_info(),
-        prog_name.to_string(),
+        prog_name
     )?;
 
     File::create(crate_rs_os)
@@ -426,7 +442,8 @@ pub fn p4info_to_ddlog(
     // Write the crate `.toml`.
     let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
     let crate_toml_os = OsStr::new(&crate_toml_fn);
-    let crate_toml_output = digest2ddlog::write_toml(prog_name.to_string());
+    // let crate_toml_output = digest2ddlog::write_toml(prog_name.to_string());
+    let crate_toml_output = digest2ddlog::write_toml(io_dir, prog_name);
 
     File::create(crate_toml_os)
         .with_context(|| format!("{}: create failed", crate_toml_fn))?
