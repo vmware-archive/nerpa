@@ -238,7 +238,7 @@ impl SwitchClient {
                         let mut table: Table = Table::default();
                         let mut table_name: String = "".to_string();
 
-                        if let Some(t) = self.get_matching_table(
+                        if let Some(t) = Self::get_matching_table(
                             name.to_string(),
                             switch.tables.clone()
                         ) {
@@ -261,24 +261,24 @@ impl SwitchClient {
                                     match v {
                                         Record::NamedStruct(name, arecs) => {
                                             // Find matching action name from P4 table.
-                                            action_name = match self.get_matching_action_name(name.to_string(), table.actions.clone()) {
+                                            action_name = match Self::get_matching_action_name(name.to_string(), table.actions.clone()) {
                                                 Some(an) => an,
                                                 None => "".to_string()
                                             };
     
                                             // Extract param values from action's records.
                                             for (_, (afname, aval)) in arecs.iter().enumerate() {
-                                                params.insert(afname.to_string(), self.extract_record_value(aval));
+                                                params.insert(afname.to_string(), Self::extract_record_value(aval));
                                             }
                                         },
                                         _ => println!("action was incorrectly formed!")
                                     }
                                 },
                                 "priority" => {
-                                    priority = self.extract_record_value(v) as i32;
+                                    priority = Self::extract_record_value(v) as i32;
                                 },
                                 _ => {
-                                    matches.insert(match_name, self.extract_record_value(v));
+                                    matches.insert(match_name, Self::extract_record_value(v));
                                 }
                             }
                         }
@@ -309,7 +309,7 @@ impl SwitchClient {
         p4ext::write(updates, self.device_id, self.role_id, &self.target, &self.client)
     }
 
-    fn extract_record_value(&mut self, r: &Record) -> u64 {
+    fn extract_record_value(r: &Record) -> u64 {
         use num_traits::cast::ToPrimitive;
         match r {
             Record::Bool(true) => 1,
@@ -320,7 +320,7 @@ impl SwitchClient {
         }
     }
 
-    fn get_matching_table(&mut self, record_name: String, tables: Vec<Table>) -> Option<Table> {
+    fn get_matching_table(record_name: String, tables: Vec<Table>) -> Option<Table> {
         for t in tables {
             let tn = &t.preamble.name;
             let tv: Vec<String> = tn.split('.').map(|s| s.to_string()).collect();
@@ -334,7 +334,7 @@ impl SwitchClient {
         None
     }
 
-    fn get_matching_action_name(&mut self, record_name: String, actions: Vec<ActionRef>) -> Option<String> {
+    fn get_matching_action_name(record_name: String, actions: Vec<ActionRef>) -> Option<String> {
         for action_ref in actions {
             let an = action_ref.action.preamble.name;
             let av: Vec<String> = an.split('.').map(|s| s.to_string()).collect();
