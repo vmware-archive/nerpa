@@ -35,10 +35,12 @@ pub fn write_toml(
     digest_path_opt: Option<&str>,
 ) -> Result<()> {
     // let prog_str = prog_name.clone();
+    let types_dp_name = format!("types__{}_dp", prog_name);
     let reserved_keys: HashSet<&str> = [
         "differential_datalog",
         "digest2ddlog",
         "types",
+        types_dp_name.as_str(),
         prog_name,
     ].iter().cloned().collect();
 
@@ -51,6 +53,7 @@ pub fn write_toml(
     writeln!(toml_out, "differential_datalog = {{path = \"{}/{}_ddlog/differential_datalog\"}}", io_dir, prog_name)?;
     writeln!(toml_out, "{} = {{path = \"{}/{}_ddlog\"}}", prog_name, io_dir, prog_name)?;
     writeln!(toml_out, "types = {{path = \"{}/{}_ddlog/types\"}}", io_dir, prog_name)?;
+    writeln!(toml_out, "types__{}_dp = {{path = \"{}/{}_ddlog/types/{}_dp\"}}", prog_name, io_dir, prog_name, prog_name)?;
 
     if !digest_path_opt.is_none() {
         writeln!(toml_out, "digest2ddlog = {{path = \"{}\"}}", digest_path_opt.unwrap())?;
@@ -88,6 +91,13 @@ fn edit_toml(
 
         // Skip the lines with reserved inputs.
         if reserved_keys.contains(token_opt.unwrap()) {
+            continue;
+        }
+
+        // Exclude any dependencies that include `nerpa_controlplane`.
+        // Since Nerpa programs are included in this subdirectory, this should remove
+        // any dependencies associated with old programs.
+        if line.contains("nerpa_controlplane") {
             continue;
         }
 

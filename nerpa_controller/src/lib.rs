@@ -49,6 +49,7 @@ use p4ext::{
 };
 
 use proto::p4runtime::{
+    MasterArbitrationUpdate,
     StreamMessageRequest,
     StreamMessageResponse,
 };
@@ -132,7 +133,11 @@ impl ControllerProgram {
 
         match self.hddlog.apply_updates(&mut updates.into_iter()) {
             Ok(_) => {},
-            Err(_) => self.hddlog.transaction_rollback()?
+            Err(e) => {
+                println!("applying updates had following error: {:#?}", e);
+                self.hddlog.transaction_rollback()?;
+                return Err(e);
+            }
         };
 
         self.hddlog.transaction_commit_dump_changes()
@@ -402,9 +407,8 @@ impl ControllerActor {
 
                 let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1000);
 
-                let (_sink, receiver) = self.switch_client.client.stream_channel().unwrap();
-
-                let mut digest_actor = DigestActor::new(_sink, receiver, send);
+                let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
+                let mut digest_actor = DigestActor::new(sink, receiver, send);
                 tokio::spawn(async move { digest_actor.run().await });
 
                 while let Some(inp) = rx.recv().await {
@@ -422,22 +426,34 @@ impl ControllerActor {
 }
 
 struct DigestActor {
-    _sink: StreamingCallSink<StreamMessageRequest>,
+    sink: StreamingCallSink<StreamMessageRequest>,
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
     respond_to: mpsc::Sender<Update<DDValue>>
 }
 
 impl DigestActor {
     fn new(
-        _sink: StreamingCallSink<StreamMessageRequest>,
+        sink: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
         respond_to: mpsc::Sender<Update<DDValue>>
     ) -> Self {
-        Self { _sink, receiver, respond_to }
+        Self { sink, receiver, respond_to }
     }
 
     // Runs the actor indefinitely and handles each received message.
     async fn run(&mut self) {
+        // Send a master arbitration update. This lets the actor properly stream digests.
+        use futures::SinkExt;
+
+        let mut update = MasterArbitrationUpdate::new();
+        update.set_device_id(0);
+        let mut smr = StreamMessageRequest::new();
+        smr.set_arbitration(update);
+        let req_result = self.sink.send((smr, grpcio::WriteFlags::default())).await;
+        if req_result.is_err() {
+            panic!("failed to configure stream channel with master arbitration update: {:#?}", req_result.err());
+        }
+
         while let Some(result) = self.receiver.next().await {
             self.handle_digest(result).await;
         }

@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# Remove any existing client toml.
+OVSDB_TOML=ovsdb_client/Cargo.toml
+rm OVSDB_TOML
+
 echo "[package]
 name = \"ovsdb_client\"
 version = \"0.1.0\"
@@ -12,4 +17,4 @@ ovsdb-sys = {path = \"../ovsdb-sys\"}
 $2 = {path = \"../$1/$2_ddlog\", features = [\"ovsdb\"]}
 memoffset = \"0.6.4\"
 serde = \"1.0.126\"
-serde_json = \"1.0.65\"" > ovsdb_client/Cargo.toml
+serde_json = \"1.0.65\"" > OVSDB_TOML
