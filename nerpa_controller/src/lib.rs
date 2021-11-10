@@ -236,20 +236,20 @@ impl SwitchClient {
                     Record::NamedStruct(name, recs) => {
                         // Translate the record table name to the P4 table name.
                         let mut table: Table = Table::default();
-                        let mut table_name: String = "".to_string();
+                        let mut table_name: Option<String> = None;
 
                         if let Some(t) = Self::get_matching_table(
                             name.to_string(),
                             switch.tables.clone()
                         ) {
                             table = t;
-                            table_name = table.preamble.name;
+                            table_name = Some(table.preamble.name);
                         }
 
                         // Iterate through fields in the record.
                         // Map all match keys to values.
                         // If the field is the action, extract the action, name, and parameters.
-                        let mut action_name: String = "".to_string();
+                        let mut action_name: Option<String> = Self::get_default_entry_action(&table.actions);
                         let matches = &mut HashMap::<std::string::String, u64>::new();
                         let params = &mut HashMap::<std::string::String, u64>::new();
                         let mut priority: i32 = 0;
@@ -261,10 +261,7 @@ impl SwitchClient {
                                     match v {
                                         Record::NamedStruct(name, arecs) => {
                                             // Find matching action name from P4 table.
-                                            action_name = match Self::get_matching_action_name(name.to_string(), table.actions.clone()) {
-                                                Some(an) => an,
-                                                None => "".to_string()
-                                            };
+                                            action_name = Self::get_matching_action_name(name.to_string(), table.actions.clone());
     
                                             // Extract param values from action's records.
                                             for (_, (afname, aval)) in arecs.iter().enumerate() {
@@ -284,7 +281,7 @@ impl SwitchClient {
                         }
 
                         // If we found a table and action, construct a P4 table entry update.
-                        if !(table_name.is_empty() || action_name.is_empty()) {
+                        if let (Some(table_name), Some(action_name)) = (table_name, action_name) {
                             let update = p4ext::build_table_entry_update(
                                 proto::p4runtime::Update_Type::INSERT,
                                 table_name.as_str(),
@@ -334,6 +331,9 @@ impl SwitchClient {
         None
     }
 
+    // Finds and returns the name of the Action in 'actions' whose
+    // name's final component is 'record_name', or None if no such
+    // action exists.
     fn get_matching_action_name(record_name: String, actions: Vec<ActionRef>) -> Option<String> {
         for action_ref in actions {
             let an = action_ref.action.preamble.name;
@@ -346,6 +346,25 @@ impl SwitchClient {
         }
 
         None
+    }
+
+    // If 'actions' has exactly one action that may appear in table
+    // entries, and that action has no parameters, returns its name.
+    // Otherwise, returns None.
+    //
+    // This is useful because there's no reason to make the programmer
+    // specify the action explicitly in this case.
+    fn get_default_entry_action(actions: &Vec<ActionRef>) -> Option<String> {
+        let mut best = None;
+        for ar in actions {
+            if ar.may_be_entry {
+                if best.is_some() || !ar.action.params.is_empty() {
+                    return None
+                }
+                best = Some(ar);
+            }
+        }
+        best.map(|ar| ar.action.preamble.name.clone())
     }
 }
 

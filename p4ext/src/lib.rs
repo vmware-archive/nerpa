@@ -542,9 +542,9 @@ impl Display for Action {
 #[derive(Clone, Debug, Default)]
 pub struct ActionRef {
     pub action: Action,
-    may_be_default: bool, // Allowed as the default action?
-    may_be_entry: bool,   // Allowed as an entry's action?
-    annotations: Annotations,
+    pub may_be_default: bool, // Allowed as the default action?
+    pub may_be_entry: bool,   // Allowed as an entry's action?
+    pub annotations: Annotations,
 }
 
 impl ActionRef {
