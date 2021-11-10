@@ -250,8 +250,8 @@ impl SwitchClient {
                         // Map all match keys to values.
                         // If the field is the action, extract the action, name, and parameters.
                         let mut action_name: String = "".to_string();
-                        let matches = &mut HashMap::<std::string::String, u16>::new();
-                        let params = &mut HashMap::<std::string::String, u16>::new();
+                        let matches = &mut HashMap::<std::string::String, u64>::new();
+                        let params = &mut HashMap::<std::string::String, u64>::new();
                         let mut priority: i32 = 0;
                         for (_, (fname, v)) in recs.iter().enumerate() {
                             let match_name: String = fname.to_string();
@@ -275,7 +275,7 @@ impl SwitchClient {
                                     }
                                 },
                                 "priority" => {
-                                    priority = self.extract_record_value(v).into();
+                                    priority = self.extract_record_value(v) as i32;
                                 },
                                 _ => {
                                     matches.insert(match_name, self.extract_record_value(v));
@@ -309,14 +309,14 @@ impl SwitchClient {
         p4ext::write(updates, self.device_id, self.role_id, &self.target, &self.client)
     }
 
-    fn extract_record_value(&mut self, r: &Record) -> u16 {
+    fn extract_record_value(&mut self, r: &Record) -> u64 {
         use num_traits::cast::ToPrimitive;
         match r {
             Record::Bool(true) => 1,
             Record::Bool(false) => 0,
-            Record::Int(i) => i.to_u16().unwrap_or(0),
+            Record::Int(i) => i.to_u64().unwrap(),
             // TODO: If required, handle other types.
-            _ => 1,
+            _ => panic!(),
         }
     }
 
