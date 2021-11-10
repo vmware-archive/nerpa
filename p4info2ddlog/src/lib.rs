@@ -442,7 +442,6 @@ pub fn p4info_to_ddlog(
     // Write the crate `.toml`.
     let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
     let crate_toml_os = OsStr::new(&crate_toml_fn);
-    // let crate_toml_output = digest2ddlog::write_toml(prog_name.to_string());
     let crate_toml_output = digest2ddlog::write_toml(io_dir, prog_name);
 
     File::create(crate_toml_os)
