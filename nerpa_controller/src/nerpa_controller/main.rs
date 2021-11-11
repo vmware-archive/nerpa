@@ -119,7 +119,7 @@ async fn run_controller(
 
     // Create a SwitchClient.
     // Handles communication with the switch.
-    let switch_client = SwitchClient::new(
+    let mut switch_client = SwitchClient::new(
         client,
         p4info,
         opaque,
@@ -131,8 +131,9 @@ async fn run_controller(
     );
 
     // Run the DDlog program.
-    let (mut hddlog, _) = run(1, false).unwrap();
+    let (mut hddlog, initial_contents) = run(1, false).unwrap();
     hddlog.record_commands(record_file);
+    switch_client.push_outputs(&initial_contents).unwrap();
 
     // Instantiate controller.
     let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();
