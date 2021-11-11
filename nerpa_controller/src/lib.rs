@@ -235,16 +235,11 @@ impl SwitchClient {
                 match record {
                     Record::NamedStruct(name, recs) => {
                         // Translate the record table name to the P4 table name.
-                        let mut table: Table = Table::default();
-                        let mut table_name: Option<String> = None;
-
-                        if let Some(t) = Self::get_matching_table(
-                            name.to_string(),
-                            switch.tables.clone()
-                        ) {
-                            table = t;
-                            table_name = Some(table.preamble.name);
-                        }
+                        let table = match Self::get_matching_table(name.to_string(), switch.tables.clone()) {
+                            Some(t) => t,
+                            None => continue,
+                        };
+                        let table_name = table.preamble.name;
 
                         // Iterate through fields in the record.
                         // Map all match keys to values.
@@ -287,7 +282,7 @@ impl SwitchClient {
                         }
 
                         // If we found a table and action, construct a P4 table entry update.
-                        if let (Some(table_name), Some(action_name)) = (table_name, action_name) {
+                        if let Some(action_name) = action_name {
                             let update = p4ext::build_table_entry_update(
                                 proto::p4runtime::Update_Type::INSERT,
                                 table_name.as_str(),
