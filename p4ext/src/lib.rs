@@ -298,7 +298,7 @@ impl From<&p4info::Preamble> for Preamble {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 enum MatchType {
     Unspecified,
     Exact,
@@ -895,7 +895,9 @@ pub fn build_table_entry(
         let name : &str = &field.preamble.name;
         match match_fields_map.get(name) {
             Some(v) => field_matches.push(field.to_proto_runtime((*v).into())),
-            None => return Err(P4Error { message: format!("no field matching name {}", name)})
+            None => if field.match_type == MatchType::Exact {
+                return Err(P4Error { message: format!("no field matching name {}", name)})
+            },
         }
     }
 
