@@ -274,9 +274,15 @@ impl SwitchClient {
                                 "priority" => {
                                     priority = Self::extract_record_value(v) as i32;
                                 },
-                                _ => {
-                                    matches.insert(match_name, Self::extract_record_value(v));
-                                }
+                                _ => match v {
+                                    Record::NamedStruct(name, _) if name == "ddlog_std::None" => (),
+                                    Record::NamedStruct(name, vec) if name == "ddlog_std::Some" => {
+                                        matches.insert(match_name, Self::extract_record_value(&vec[0].1));
+                                    },
+                                    _ => {
+                                        matches.insert(match_name, Self::extract_record_value(v));
+                                    },
+                                },
                             }
                         }
 
