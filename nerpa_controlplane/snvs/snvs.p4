@@ -43,7 +43,7 @@ const bit<32> PKT_INSTANCE_TYPE_RESUBMIT = 6;
 bool eth_addr_is_multicast(in EthernetAddress a) {
     return (a & (1 << 40)) != 0;
 }
-    
+
 const PortID DROP_PORT = 511;   // This is meaningful to simple_switch.
 const PortID FLOOD_PORT = 510;  // Just an internal constant.
 
@@ -56,7 +56,7 @@ header Ethernet_h {
 header Vlan_h {
   PCP     pcp;
   bit<1>  dei;
-  VlanID  vid;  
+  VlanID  vid;
   bit<16> type;
 }
 
@@ -109,57 +109,12 @@ control SnvsVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply {}
 }
 
-// MAC learning table.
-//
-// Each entry is 48 bits of Ethernet address, 12 bits of VLAN,
-// and 9 bits of port number.  There's no expiration currently.
-typedef bit<(48 + 12 + 9)> Mac_register_entry;
-const bit<32> N_MAC_ENTRIES = 4096;
-struct Mac_entry {
-    EthernetAddress addr;
-    VlanID vlan;
+const bit<32> MAC_LEARN_RCVR = 1;
+struct LearnDigest {
     PortID port;
-}
-void hash_mac_entry(in EthernetAddress addr, in VlanID vlan,
-                    out bit<32> i0, out bit<32> i1)
-{
-    hash(i0, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w0 }, N_MAC_ENTRIES);
-    hash(i1, HashAlgorithm.crc32, 32w0, { addr, vlan, 1w1 }, N_MAC_ENTRIES);
-}
-void get_mac_entry(register<Mac_register_entry> reg,
-                   in bit<32> index,
-                   out Mac_entry me)
-{
-    Mac_register_entry me_raw;
-    reg.read(me_raw, index);
-    me.addr = (EthernetAddress) (me_raw >> (12 + 9));
-    me.vlan = (VlanID) (me_raw >> 9);
-    me.port = (PortID) me_raw;
-}
-void hash_and_get_mac_entries(in EthernetAddress addr,
-    in VlanID vlan,
-    register<Mac_register_entry> mac_table,
-    out bit<32> i0,
-    out bit<32> i1,
-    out Mac_entry b0,
-    out Mac_entry b1)
-{
-    // Hash Ethernet address in two different buckets.
-    hash_mac_entry(addr, vlan, i0, i1);
-
-    // Fetch each bucket and look for the existing MAC entry.
-    get_mac_entry(mac_table, i0, b0);
-    get_mac_entry(mac_table, i1, b1);
-}
-void put_mac_entry(register<Mac_register_entry> reg,
-                   in bit<32> index,
-                   in Mac_entry me)
-{
-    Mac_register_entry me_raw
-        = ((((Mac_register_entry) me.addr) << (12 + 9))
-           | (((Mac_register_entry) me.vlan) << 9)
-           | (Mac_register_entry) me.port);
-    reg.write(index, me_raw);
+    VlanID vlan;
+    EthernetAddress mac;
+    bit<48> timestamp;
 }
 
 control SnvsIngress(inout headers hdr,
@@ -218,7 +173,31 @@ control SnvsIngress(inout headers hdr,
         actions = { set_flood; }
     }
 
-    register<Mac_register_entry>(N_MAC_ENTRIES) mac_table;    
+    // Known VLAN+MAC -> port mappings.
+    //
+    // We should only need one table for this, with one lookup for the source
+    // MAC and one for the destination MAC per packet, but hardware and BMv2
+    // don't support that.  So we need two different tables.
+    table LearnedSrc {
+        key = {
+	    meta.vlan: exact @name("vlan");
+	    hdr.eth.src: exact @name("mac");
+	    standard_metadata.ingress_port: exact @name("port");
+	}
+	actions = { NoAction; }
+    }
+
+    PortID output;
+    action KnownDst(PortID port) {
+        output = port;
+    }
+    table LearnedDst {
+        key = {
+	    meta.vlan: exact @name("vlan");
+	    hdr.eth.dst: exact @name("mac");
+	}
+	actions = { KnownDst; }
+    }
 
     apply {
         // Drop packets received on mirror destination port.
@@ -239,43 +218,23 @@ control SnvsIngress(inout headers hdr,
         meta.flood = false;
         FloodVlan.apply();
 
-        // TODO: Factor out common logic between the two if-statements.
+        // If the source MAC isn't known, send it to the control plane to
+	// be learned.
+        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)
+	    && !LearnedSrc.apply().hit) {
+	    LearnDigest d;
+	    d.port = standard_metadata.ingress_port;
+	    d.vlan = meta.vlan;
+	    d.mac = hdr.eth.src;
+	    d.timestamp = standard_metadata.ingress_global_timestamp;
+	    digest<LearnDigest>(MAC_LEARN_RCVR, d);
+	}
 
-        // Learn source MAC.
-        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)) {
-            bit<32> i0;
-            bit<32> i1;
-            Mac_entry b0;
-            Mac_entry b1;
-            hash_and_get_mac_entries(hdr.eth.src, meta.vlan, mac_table, i0, i1, b0, b1);
-            if (!(b0.addr != hdr.eth.src || b0.vlan != meta.vlan) &&
-                !(b1.addr != hdr.eth.src || b1.vlan != meta.vlan)) {
-                // No match.  Replace one entry randomly.
-                bit<1> bucket;
-                random(bucket, 0, 1);
-
-                put_mac_entry(mac_table, bucket == 0 ? i0 : i1,
-                              { hdr.eth.src, meta.vlan,
-                                standard_metadata.ingress_port });
-            }
-        }
-
-        // Lookup destination MAC.
-        PortID output = FLOOD_PORT;
+        // Look up destination MAC.
+        output = FLOOD_PORT;
         if (!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)) {
-            bit<32> i0;
-            bit<32> i1;
-            Mac_entry b0;
-            Mac_entry b1;
-            hash_and_get_mac_entries(hdr.eth.dst, meta.vlan, mac_table, i0, i1, b0, b1);
-            if (b0.addr == hdr.eth.dst && b0.vlan == meta.vlan) {
-                output = b0.port;
-            } else if (b1.addr == hdr.eth.dst && b1.vlan == meta.vlan) {
-                output = b1.port;
-            } else {
-                /* No learned port for this MAC and VLAN. */
-            }
-        }
+            LearnedDst.apply();
+	}
 
         // If we're flooding, then use the VLAN as the multicast group
         // (we assume that the control plane has configured one multicast
@@ -326,7 +285,7 @@ control SnvsEgress(inout headers hdr,
           mark_to_drop(standard_metadata);
           exit;
       }
-      
+
       // Output VLAN processing, including priority tagging.
       bool tag_vlan = OutputVlan.apply().hit;
       VlanID vid = tag_vlan ? meta.vlan : 0;

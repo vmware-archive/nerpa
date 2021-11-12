@@ -1,0 +1,4 @@
+# Hard-code the multicast group because the controller can't set it yet.
+mc_mgrp_create 1
+mc_node_create 1 0 1 2 3
+mc_node_associate 1 0
