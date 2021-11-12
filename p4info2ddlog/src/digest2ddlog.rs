@@ -51,8 +51,8 @@ pub fn write_rs(
         writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
 
         writeln!(d2d_out, "      Update::Insert {{")?;
-        writeln!(d2d_out, "        relid: Relations::{} as RelId,", digest_name)?;
-        writeln!(d2d_out, "        v: types::{} {{", digest_name)?;
+        writeln!(d2d_out, "        relid: Relations::{}_dp_{} as RelId,", prog_name, digest_name)?;
+        writeln!(d2d_out, "        v: types__{}_dp::{} {{", prog_name, digest_name)?;
 
         // Write Update value fields using digest struct members.
         for (mi, m) in digest_structs.get_members().iter().enumerate() {
@@ -134,10 +134,14 @@ differential_datalog = {{path = \"{}/differential_datalog\"}}
 {} = {{path = \"{}\"}}
 proto = {{path = \"../proto\"}}
 types = {{path = \"{}/types\"}}
+types__{}_dp = {{path = \"{}/types/{}_dp\"}}
 ",
         ddlog_path,
         prog_name,
         ddlog_path,
         ddlog_path,
+        prog_name,
+        ddlog_path,
+        prog_name,
     )
 }

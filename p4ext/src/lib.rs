@@ -298,7 +298,7 @@ impl From<&p4info::Preamble> for Preamble {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 enum MatchType {
     Unspecified,
     Exact,
@@ -381,7 +381,7 @@ impl From<&p4info::MatchField> for MatchField {
 }
 
 impl MatchField {
-    fn to_proto_runtime(&self, val: u16) -> proto::p4runtime::FieldMatch {
+    fn to_proto_runtime(&self, val: u64) -> proto::p4runtime::FieldMatch {
         let mut field_match = proto::p4runtime::FieldMatch::new();
         field_match.set_field_id(self.preamble.id);
         let v = encode_value(val.into(), self.bit_width);
@@ -483,10 +483,10 @@ impl Display for Param {
 }
 
 impl Param {
-    fn to_proto_runtime(&self, val: u16) -> proto::p4runtime::Action_Param {
+    fn to_proto_runtime(&self, val: u64) -> proto::p4runtime::Action_Param {
         let mut runtime_param = proto::p4runtime::Action_Param::new();
         runtime_param.set_param_id(self.preamble.id);
-        runtime_param.set_value(encode_value(val.into(), self.bit_width));
+        runtime_param.set_value(encode_value(val, self.bit_width));
         
         runtime_param
     }
@@ -510,7 +510,7 @@ impl From<&p4info::Action> for Action {
 impl Action {
     fn to_proto_runtime(
         &self,
-        params_values: &HashMap<String, u16>
+        params_values: &HashMap<String, u64>
     ) -> proto::p4runtime::Action {
         let mut runtime_action = proto::p4runtime::Action::new();
         runtime_action.set_action_id(self.preamble.id);
@@ -542,9 +542,9 @@ impl Display for Action {
 #[derive(Clone, Debug, Default)]
 pub struct ActionRef {
     pub action: Action,
-    may_be_default: bool, // Allowed as the default action?
-    may_be_entry: bool,   // Allowed as an entry's action?
-    annotations: Annotations,
+    pub may_be_default: bool, // Allowed as the default action?
+    pub may_be_entry: bool,   // Allowed as an entry's action?
+    pub annotations: Annotations,
 }
 
 impl ActionRef {
@@ -833,16 +833,16 @@ pub fn list_tables(device_id: u64, target: &str, client: &P4RuntimeClient) {
     }
 }
 
-fn encode_value(value: u32, bit_width: i32) -> Vec<u8> {
+fn encode_value(value: u64, bit_width: i32) -> Vec<u8> {
     // P4Runtime expects a byte-vector (u8) in big-endian order.
     // Its length must be the following number of bytes: (bit_width + 7) / 8.
     // Since we are passed a 32-bit value, we must return a subvector of this value's byte vector, with the required number of bytes.
     // The used fields have bit-width of at most 12, so the indexing scheme below works safely.
 
-    // TODO: Extend function to take larger values (64 or 128-bit), and redesign indexing approach.
+    // TODO: Extend function to take larger values (e.g. 128-bit), and redesign indexing approach.
 
     let mut enc_val: Vec<u8> = vec![];
-    enc_val.write_u32::<BigEndian>(value).unwrap();
+    enc_val.write_u64::<BigEndian>(value).unwrap();
 
     let num_bytes : usize = ((bit_width + 7) / 8) as usize;
     let start_idx : usize = enc_val.len() - num_bytes;
@@ -853,8 +853,8 @@ fn encode_value(value: u32, bit_width: i32) -> Vec<u8> {
 pub fn build_table_entry(
     table_name: &str,
     action_name: &str,
-    params_values: &HashMap<String, u16>,
-    match_fields_map: &HashMap<String, u16>,
+    params_values: &HashMap<String, u64>,
+    match_fields_map: &HashMap<String, u64>,
     priority: i32,
     device_id: u64,
     target: &str,
@@ -895,7 +895,9 @@ pub fn build_table_entry(
         let name : &str = &field.preamble.name;
         match match_fields_map.get(name) {
             Some(v) => field_matches.push(field.to_proto_runtime((*v).into())),
-            None => return Err(P4Error { message: format!("no field matching name {}", name)})
+            None => if field.match_type == MatchType::Exact {
+                return Err(P4Error { message: format!("no field matching name {}", name)})
+            },
         }
     }
 
@@ -912,8 +914,8 @@ pub fn build_table_entry_update(
     update_type: proto::p4runtime::Update_Type,
     table_name: &str,
     action_name: &str,
-    params_values: &HashMap<String, u16>,
-    match_fields_map: &HashMap<String, u16>,
+    params_values: &HashMap<String, u64>,
+    match_fields_map: &HashMap<String, u64>,
     priority: i32,
     device_id: u64,
     target: &str,
