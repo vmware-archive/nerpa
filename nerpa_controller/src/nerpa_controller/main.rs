@@ -23,8 +23,14 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use clap::{App, Arg};
-use grpcio::{ChannelBuilder, EnvBuilder};
+use clap::{
+    App,
+    Arg
+};
+use grpcio::{
+    ChannelBuilder,
+    EnvBuilder
+};
 use nerpa_controller::{
     Controller,
     SwitchClient
@@ -91,6 +97,7 @@ pub async fn main() {
     let file_name = String::from(file_name_opt.unwrap());
     run_controller(file_dir, file_name, &mut record_file).await
 }
+
 
 async fn run_controller(
     file_dir: String,

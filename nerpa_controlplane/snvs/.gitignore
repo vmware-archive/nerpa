@@ -1,4 +1,10 @@
 # Generated files
-snvs_ddlog/
-snvs_dp.dl
-snvs_mp.dl
+*_ddlog/
+*_dp.dl
+*_mp.dl
+
+# Generated P4 files
+*.json
+*.p4i
+*.p4info.bin
+*.p4info.txt

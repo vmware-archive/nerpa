@@ -1,3 +1,4 @@
 # Generated files
 target/
-ovsdbsys.a
+src/nerpa_rels.rs
+Cargo.*

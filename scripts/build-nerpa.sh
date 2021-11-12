@@ -26,10 +26,11 @@ export FILE_NAME=$2
 
 cd $FILE_DIR
 
-# Optionally, generate DDlog input relations from the OVSDB schema.
+# Optionally, create a management plane.
+# Generate DDlog input relations from the OVSDB schema
 if test -f $FILE_NAME.ovsschema; then
     echo "Generating DDlog input relations from OVSDB schema..."
-    ovsdb2ddlog -f $FILE_NAME.ovsschema --output-file=$2_mp.dl
+    ovsdb2ddlog -f $FILE_NAME.ovsschema --output-file=${2^}_mp.dl
 fi
 
 # Compile P4 program.
@@ -61,6 +62,23 @@ fi
 echo "Compiling DDlog crate..."
 ddlog -i $FILE_NAME.dl &&
 (cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
+
+# Optionally, generate necessary code for the management plane.
+# Build the OVSDB client crate. This depends on the DDlog crate.
+if test -f $FILE_NAME.ovsschema; then
+    echo "Building the OVSDB client crate..."
+
+    # Generate a `.toml` for the OVSDB client crate.
+    cd $NERPA_DIR
+    ./scripts/ovsdb-client-toml.sh $1 $2
+
+    # Build the ovsdb client crate.
+    cd $NERPA_DIR/ovsdb_client
+    pip3 install -r requirements.txt
+    python3 ovsdb2ddlog2rust --schema-file=$FILE_DIR/$FILE_NAME.ovsschema -p nerpa_ --output-file src/nerpa_rels.rs
+    cargo build
+    cd $FILE_DIR
+fi
 
 echo "Building controller crate..."
 (cd $NERPA_DIR/nerpa_controller && cargo build && cd $NERPA_DIR)

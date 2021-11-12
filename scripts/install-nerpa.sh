@@ -55,7 +55,7 @@ cd $NERPA_DIR/ovsdb-sys/ovs
 ./boot.sh
 ./configure
 make
-make install
+sudo make install
 
 # Build the OVSDB bindings crate.
 echo "Building the OVSDB bindings crate..."

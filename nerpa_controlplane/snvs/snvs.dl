@@ -26,7 +26,7 @@ This DDlog program serves as a control plane for the program in snvs.p4.
 */
 
 import snvs_dp as snvs_dp
-import snvs_mp as snvs_mp
+import Snvs_mp as snvs_mp
 import set
 
 typedef port_id_t = bit<9>
