@@ -34,7 +34,6 @@ pub fn write_toml(
     prog_name: &str,
     digest_path_opt: Option<&str>,
 ) -> Result<()> {
-    // let prog_str = prog_name.clone();
     let types_dp_name = format!("types__{}_dp", prog_name);
     let reserved_keys: HashSet<&str> = [
         "differential_datalog",
@@ -94,9 +93,9 @@ fn edit_toml(
             continue;
         }
 
-        // Exclude any dependencies that include `nerpa_controlplane`.
-        // Since Nerpa programs are included in this subdirectory, this should remove
-        // any dependencies associated with old programs.
+        // Exclude any dependences that include `nerpa_controlplane`.
+        // Since Nerpa programs are written in this subdirectory, that should remove
+        // any additional dependencies associated with old programs.
         if line.contains("nerpa_controlplane") {
             continue;
         }

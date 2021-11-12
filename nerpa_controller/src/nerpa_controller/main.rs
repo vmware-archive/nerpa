@@ -37,6 +37,7 @@ use nerpa_controller::{
 };
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
+use std::fs::File;
 
 // Import the function to run a DDlog program.
 // Note that the crate name changes with the Nerpa program's name.
@@ -47,6 +48,7 @@ use l2sw_ddlog::run;
 pub async fn main() {
     const FILE_DIR_ARG: &str = "FILE_DIR";
     const FILE_NAME_ARG: &str = "FILE_NAME";
+    const DDLOG_RECORD: &str = "ddlog-record";
 
     let matches = App::new("nerpa_controller")
         .version(env!("CARGO_PKG_VERSION"))
@@ -63,6 +65,13 @@ pub async fn main() {
                 .required(true)
                 .index(2),
         )
+        .arg(
+            Arg::with_name(DDLOG_RECORD)
+                .long("ddlog-record")
+                .takes_value(true)
+                .value_name("FILE.TXT")
+                .help("File to record DB changes to replay later for debugging"),
+        )
         .get_matches();
 
     // Validate CLI arguments.
@@ -76,16 +85,24 @@ pub async fn main() {
         panic!("missing required argument: FILE_NAME");
     }
 
+    let mut record_file = matches.value_of_os(DDLOG_RECORD).map(
+        |filename| match File::create(filename) {
+            Ok(file) => file,
+            Err(err) => panic!("{}: create failed ({})", filename.to_string_lossy(), err)
+        }
+    );
+
     // Run controller.
     let file_dir = String::from(file_dir_opt.unwrap());
     let file_name = String::from(file_name_opt.unwrap());
-    run_controller(file_dir, file_name).await
+    run_controller(file_dir, file_name, &mut record_file).await
 }
 
 
 async fn run_controller(
     file_dir: String,
     file_name: String,
+    record_file: &mut Option<File>,
 ) {
     // Create P4Runtime client.
     let target = String::from("localhost:50051");
@@ -109,7 +126,7 @@ async fn run_controller(
 
     // Create a SwitchClient.
     // Handles communication with the switch.
-    let switch_client = SwitchClient::new(
+    let mut switch_client = SwitchClient::new(
         client,
         p4info,
         opaque,
@@ -121,7 +138,9 @@ async fn run_controller(
     );
 
     // Run the DDlog program.
-    let (hddlog, _) = run(1, false).unwrap();
+    let (mut hddlog, initial_contents) = run(1, false).unwrap();
+    hddlog.record_commands(record_file);
+    switch_client.push_outputs(&initial_contents).unwrap();
 
     // Instantiate controller.
     let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();

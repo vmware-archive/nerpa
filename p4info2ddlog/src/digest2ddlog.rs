@@ -142,6 +142,6 @@ types__{}_dp = {{path = \"{}/types/{}_dp\"}}
         ddlog_path,
         prog_name,
         ddlog_path,
-        prog_name
+        prog_name,
     )
 }
