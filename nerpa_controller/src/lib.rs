@@ -234,6 +234,50 @@ impl SwitchClient {
                 
                 match record {
                     Record::NamedStruct(name, recs) => {
+                        // Check if the record is the MulticastGroup.
+                        // Check if the record name includes "multicast". We assume that only this DDlog relation
+                        if name.as_ref().to_lowercase().contains("multicast") {
+                            // P4 Runtime requires multicast id greater than 0, so this is a valid sentinel value.
+                            let mut mcast_id: u32 = 0;
+                            let mut mcast_ports: Vec<(u32, u32)> = Vec::new();
+
+                            // Extract multicast group IDs and port values.
+                            // We expect the ID record name to include "id".
+                            // We expect the ports record name to include "port" and be an array.
+                            // We do not expect any other records in the multicast relation.
+                            for (_, (k, v)) in recs.iter().enumerate() {
+                                let rec_name = k.as_ref().to_lowercase();
+                                if rec_name.contains("id") {
+                                    mcast_id = Self::extract_record_value(v) as u32;
+                                } else if rec_name.contains("port") {
+                                    match v {
+                                        Record::Array(_, arecs) => {
+                                            for (i, r) in arecs.iter().enumerate() {
+                                                let instance = (i+1) as u32;
+                                                let port = Self::extract_record_value(r) as u32;
+                                                mcast_ports.push((port, instance));
+                                            }
+                                        },
+                                        _ => println!("port field in multicast relation was not an array"),
+                                    }
+                                } else {
+                                    println!("unexpected key in multicast group: {}", rec_name);
+                                }
+                            }
+
+                            // Break if the multicast ID was not set, or ports not defined.
+                            if mcast_id == 0 || mcast_ports.len() == 0 {
+                                break;
+                            }
+
+                            let multicast_update = p4ext::build_multicast_update(
+                                proto::p4runtime::Update_Type::INSERT,
+                                mcast_id,
+                                mcast_ports,
+                            ).unwrap_or_else(|err| panic!("could not build multicast update: {}", err));
+                            updates.push(multicast_update);
+                        }
+
                         // Translate the record table name to the P4 table name.
                         let table = match Self::get_matching_table(name.to_string(), switch.tables.clone()) {
                             Some(t) => t,
