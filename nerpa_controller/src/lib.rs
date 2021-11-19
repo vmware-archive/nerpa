@@ -56,7 +56,10 @@ use proto::p4runtime::{
 use proto::p4runtime_grpc::P4RuntimeClient;
 use protobuf::Message;
 
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::ffi::OsStr;
 use std::fs::File;
 
@@ -154,6 +157,7 @@ pub struct SwitchClient {
     device_id: u64,
     role_id: u64,
     target: String,
+    multicast_cache: HashSet<u32>,
 }
 
 impl SwitchClient {
@@ -184,6 +188,7 @@ impl SwitchClient {
             device_id,
             role_id,
             target,
+            multicast_cache: HashSet::new(),
         }
     }
 
@@ -265,13 +270,24 @@ impl SwitchClient {
                                 }
                             }
 
-                            // Break if the multicast ID was not set, or ports not defined.
-                            if mcast_id == 0 || mcast_ports.len() == 0 {
+                            // Break if the multicast ID was not set.
+                            if mcast_id == 0 {
                                 break;
                             }
 
+                            // If the multicast ID was set but there are no ports, we delete the Multicast group assignments.
+                            let mcast_update_type = if mcast_ports.len() == 0 {
+                                proto::p4runtime::Update_Type::DELETE
+                            } else if self.multicast_cache.contains(&mcast_id) {
+                                proto::p4runtime::Update_Type::MODIFY
+                            } else {
+                                self.multicast_cache.insert(&mcast_id);
+
+                                proto::p4runtime::Update_Type::INSERT
+                            };
+
                             let multicast_update = p4ext::build_multicast_update(
-                                proto::p4runtime::Update_Type::INSERT,
+                                mcast_update_type,
                                 mcast_id,
                                 mcast_ports,
                             ).unwrap_or_else(|err| panic!("could not build multicast update: {}", err));
