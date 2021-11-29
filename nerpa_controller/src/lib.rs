@@ -234,7 +234,7 @@ impl SwitchClient {
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
         for (_rel_id, output_map) in (*delta).clone().into_iter() {
-            for (value, _weight) in output_map {
+            for (value, weight) in output_map {
                 let record = value.clone().into_record();
                 
                 match record {
@@ -276,12 +276,14 @@ impl SwitchClient {
                             }
 
                             // If the multicast ID was set but there are no ports, we delete the Multicast group assignments.
-                            let mcast_update_type = if mcast_ports.len() == 0 {
+                            let mcast_update_type = if weight < 0 {
+                                self.multicast_cache.remove(&mcast_id);
+
                                 proto::p4runtime::Update_Type::DELETE
                             } else if self.multicast_cache.contains(&mcast_id) {
                                 proto::p4runtime::Update_Type::MODIFY
                             } else {
-                                self.multicast_cache.insert(&mcast_id);
+                                self.multicast_cache.insert(mcast_id);
 
                                 proto::p4runtime::Update_Type::INSERT
                             };
