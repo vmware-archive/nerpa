@@ -40,7 +40,6 @@ use proto::p4runtime::{
     MulticastGroupEntry,
     PacketReplicationEngineEntry,
     ReadRequest,
-    Replica,
     SetForwardingPipelineConfigRequest,
     SetForwardingPipelineConfigRequest_Action,
     StreamMessageRequest,
@@ -1055,25 +1054,16 @@ pub async fn write_digest_config(
     )
 }
 
-pub fn build_multicast_update(
+// Builds an update to write a multicast group to the switch.
+// This function's return value can be used as an input to `write`.
+pub fn build_multicast_write(
     update_type: proto::p4runtime::Update_Type,
     group_id: u32,
-    ports: Vec<(u32, u32)>,
-) -> Result<proto::p4runtime::Update, P4Error> {
+    replicas: Vec<proto::p4runtime::Replica>,
+) -> proto::p4runtime::Update {
     let mut multicast_entry = MulticastGroupEntry::new();
     multicast_entry.set_multicast_group_id(group_id);
-
-    // The ports parameter is expected to be (port number, instance) pairs, as per P4 Runtime.
-    let mut replicas_vec = Vec::<Replica>::new();
-    for (port_number, instance) in ports {
-        let mut r = Replica::new();
-        r.set_egress_port(port_number);
-        r.set_instance(instance);
-        replicas_vec.push(r);
-    }
-
-    let replicas = RepeatedField::from_vec(replicas_vec);
-    multicast_entry.set_replicas(replicas);
+    multicast_entry.set_replicas(RepeatedField::from_vec(replicas));
 
     let mut pre_entry = PacketReplicationEngineEntry::new();
     pre_entry.set_multicast_group_entry(multicast_entry);
@@ -1085,5 +1075,22 @@ pub fn build_multicast_update(
     update.set_field_type(update_type);
     update.set_entity(entity);
 
-    Ok(update)
+    update
+}
+
+// Builds the entity to read a multicast group from the switch.
+// This function's return value can be used as an input to `read`.
+pub fn build_multicast_read(
+    group_id: u32,
+) -> proto::p4runtime::Entity {
+    let mut multicast_entry = MulticastGroupEntry::new();
+    multicast_entry.set_multicast_group_id(group_id);
+
+    let mut pre_entry = PacketReplicationEngineEntry::new();
+    pre_entry.set_multicast_group_entry(multicast_entry);
+
+    let mut entity = proto::p4runtime::Entity::new();
+    entity.set_packet_replication_engine_entry(pre_entry);
+
+    entity
 }
