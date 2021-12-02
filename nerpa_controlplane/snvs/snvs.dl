@@ -234,10 +234,9 @@ snvs_dp::PriorityTagging(port, nonzero_pcp) :-
 // if the switch has any ports that trunk all VLANs.
 output relation MulticastGroup(
     mcast_id: bit<16>,
-    ports: Set<port_id_t>)
-MulticastGroup(vid as bit<16>, ports) :-
-    PortVlan(port, vid),
-    var ports = port.group_by(vid).to_set().
+    port: port_id_t)
+MulticastGroup(vid as bit<16>, port) :-
+    PortVlan(port, vid).
 
 relation PortVlan(
     port: port_id_t,

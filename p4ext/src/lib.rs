@@ -31,17 +31,25 @@ use itertools::Itertools;
 
 use proto::p4info;
 
-use proto::p4runtime::ForwardingPipelineConfig;
-use proto::p4runtime::ForwardingPipelineConfig_Cookie;
-use proto::p4runtime::GetForwardingPipelineConfigRequest;
-use proto::p4runtime::MasterArbitrationUpdate;
-use proto::p4runtime::ReadRequest;
-use proto::p4runtime::SetForwardingPipelineConfigRequest;
-use proto::p4runtime::SetForwardingPipelineConfigRequest_Action;
-use proto::p4runtime::StreamMessageRequest;
-use proto::p4runtime::StreamMessageResponse;
-use proto::p4runtime::Uint128;
-use proto::p4runtime::WriteRequest;
+use proto::p4runtime::{
+    FieldMatch,
+    ForwardingPipelineConfig,
+    ForwardingPipelineConfig_Cookie,
+    GetForwardingPipelineConfigRequest,
+    MasterArbitrationUpdate,
+    MulticastGroupEntry,
+    PacketReplicationEngineEntry,
+    ReadRequest,
+    SetForwardingPipelineConfigRequest,
+    SetForwardingPipelineConfigRequest_Action,
+    StreamMessageRequest,
+    StreamMessageResponse,
+    TableAction,
+    TableEntry,
+    Uint128,
+    WriteRequest
+};
+
 use proto::p4runtime_grpc::P4RuntimeClient;
 
 use proto::p4types;
@@ -884,8 +892,6 @@ pub fn build_table_entry(
         });
     }
 
-    use proto::p4runtime::{FieldMatch, TableAction, TableEntry};
-
     let action = actions[0].action.to_proto_runtime(params_values);
     let mut table_action : TableAction = TableAction::new();
     table_action.set_action(action);
@@ -1046,4 +1052,45 @@ pub async fn write_digest_config(
         target,
         client,
     )
+}
+
+// Builds an update to write a multicast group to the switch.
+// This function's return value can be used as an input to `write`.
+pub fn build_multicast_write(
+    update_type: proto::p4runtime::Update_Type,
+    group_id: u32,
+    replicas: Vec<proto::p4runtime::Replica>,
+) -> proto::p4runtime::Update {
+    let mut multicast_entry = MulticastGroupEntry::new();
+    multicast_entry.set_multicast_group_id(group_id);
+    multicast_entry.set_replicas(RepeatedField::from_vec(replicas));
+
+    let mut pre_entry = PacketReplicationEngineEntry::new();
+    pre_entry.set_multicast_group_entry(multicast_entry);
+
+    let mut entity = proto::p4runtime::Entity::new();
+    entity.set_packet_replication_engine_entry(pre_entry);
+
+    let mut update = proto::p4runtime::Update::new();
+    update.set_field_type(update_type);
+    update.set_entity(entity);
+
+    update
+}
+
+// Builds the entity to read a multicast group from the switch.
+// This function's return value can be used as an input to `read`.
+pub fn build_multicast_read(
+    group_id: u32,
+) -> proto::p4runtime::Entity {
+    let mut multicast_entry = MulticastGroupEntry::new();
+    multicast_entry.set_multicast_group_id(group_id);
+
+    let mut pre_entry = PacketReplicationEngineEntry::new();
+    pre_entry.set_multicast_group_entry(multicast_entry);
+
+    let mut entity = proto::p4runtime::Entity::new();
+    entity.set_packet_replication_engine_entry(pre_entry);
+
+    entity
 }
