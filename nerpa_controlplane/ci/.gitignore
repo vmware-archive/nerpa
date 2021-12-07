@@ -1,0 +1,8 @@
+# Generated DDlog crate
+ci_ddlog/
+
+# Generated DDlog program
+ci_dp.dl
+
+# Include compiled P4info bin for p4info2ddlog
+!ci.p4info.bin
