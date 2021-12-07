@@ -22,7 +22,11 @@ SOFTWARE.
 #include <core.p4>
 #include <v1model.p4>
 
-struct metadata {}
+typedef bit<12> VlanID;
+
+struct metadata {
+    VlanID vlan;
+}
 struct headers {}
 
 parser CiParser(packet_in packet,
@@ -41,25 +45,24 @@ control CiVerifyChecksum(inout headers hdr, inout metadata meta) {
 control CiIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
-    action Drop() {
-        mark_to_drop(standard_metadata);
-        exit;
-    }
-
-    table DstDrop {
-        key = { standard_metadata.ingress_port: exact @name("port"); }
-        actions = { Drop; }
-    }
-
-    apply {
-        DstDrop.apply();
-    }
+    apply {}
 }
 
 control CiEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    apply {}
+    // Output VLAN processing.
+    table OutputVlan {
+        key = {
+            standard_metadata.egress_port: exact @name("port");
+            meta.vlan: optional @name("vlan");
+        }
+        actions = { NoAction; }
+    }
+
+    apply {
+        OutputVlan.apply();
+    }
 }
 
 control CiComputeChecksum(inout headers hdr, inout metadata meta) {

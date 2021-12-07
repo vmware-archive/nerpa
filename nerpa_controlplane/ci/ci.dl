@@ -23,13 +23,24 @@ import ci_dp as ci_dp
 typedef port_id_t = bit<9>
 typedef vlan_id_t = bit<12>
 
-input relation Port (
+typedef vlan_set_t = AllVlans | SomeVlans{vlans: Set<vlan_id_t>}
+typedef vlan_config_t = AccessPort{vid: vlan_id_t}
+                      | TrunkPort{native_vid: vlan_id_t,
+                                  tag_native: bool,
+                                  other_vlans: vlan_set_t}
+
+typedef priority_tagging_t = NoPriorityTag
+                            | NonzeroPriorityTag
+                            | AlwaysPriorityTag
+
+relation Port(
     id: port_id_t,
+    vlan: vlan_config_t,
+    priority_tagging: priority_tagging_t
 )
 
-relation PortVlan(
-    port: port_id_t,
-    vlan: vlan_id_t,
-)
+Port(0, AccessPort{1}, NoPriorityTag).
 
-PortVlan(port, 0) :- Port(.id = port).
+ci_dp::OutputVlan(port, Some{native_vid}, 2) :-
+    Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid,
+                                      .tag_native = true}).

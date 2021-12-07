@@ -31,7 +31,6 @@ echo "Building proto crate..."
 cd $NERPA_DIR/proto
 cargo install protobuf-codegen
 cargo install grpcio-compiler
-# cargo build
 
 # Define program-specific variables.
 TEST_FN=ci
