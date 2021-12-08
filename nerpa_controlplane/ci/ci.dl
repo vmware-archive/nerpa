@@ -18,6 +18,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+/* Basic DDlog program for continuous integration.
+   This defines a VLAN-port relationship, taken from the snvs program. */
+
 import ci_dp as ci_dp
 
 typedef port_id_t = bit<9>
