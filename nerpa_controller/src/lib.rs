@@ -222,18 +222,136 @@ impl SwitchClient {
     }
 
     // Pushes DDlog outputs as table entries in the P4-enabled switch.
-    pub fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+    pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
 
         let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
         for (_rel_id, output_map) in (*delta).clone().into_iter() {
-            for (value, _weight) in output_map {
+            for (value, weight) in output_map {
                 let record = value.clone().into_record();
                 
                 match record {
                     Record::NamedStruct(name, recs) => {
+                        // Check if the record corresponds to the multicast group.
+                        // We assume that there will be exactly one relevant DDlog relation,
+                        // and that its name includes "multicast".
+                        if name.as_ref().to_lowercase().contains("multicast") {
+                            // Extract multicast group ID and port value.
+                            // We expect there to be two records, one representing the ID and one the port.
+                            // The ID record name  should include "id" (not case-sensitive).
+                            // The port record name  should include "port" (not case-sensitive).
+                            if recs.len() != 2 {
+                                println!("multicast relation should include exactly 2 fields!");
+                                continue;
+                            }
+
+                            // P4 Runtime requires multicast ID greater than 0 for a valid write,
+                            // so it can be used as a sentinel value.
+                            let mut mcast_id: u32 = 0;
+
+                            // Since port is 16-bit, the maximum u32 can be used as a sentinel for the port.
+                            let mut mcast_port: u32 = u32::MAX;
+
+                            for (k, v) in recs.iter() {
+                                let rec_name = k.as_ref().to_lowercase();
+                                if rec_name.contains("id") {
+                                    mcast_id = Self::extract_record_value(v) as u32;
+                                } else if rec_name.contains("port") {
+                                    mcast_port = Self::extract_record_value(v) as u32;
+                                } else {
+                                    println!("multicast relation field named {} did not include port or id", rec_name);
+                                }
+                            }
+
+                            if mcast_id == 0 {
+                                println!("multicast relation does not contain an 'id' field");
+                                continue;
+                            }
+
+                            if mcast_port == u32::MAX {
+                                println!("multicast relation does not contain a 'port' field");
+                                continue;
+                            }
+
+                            // We read all current multicast entities using group id 0.
+                            // We then find the replicas for the desired multicast group.
+                            // Since this search is wild-carded, we can safely unwrap the result.
+                            let mcast_entries = p4ext::read(
+                                vec![p4ext::build_multicast_read(0)],
+                                self.device_id,
+                                &self.client
+                            ).await.unwrap();
+
+                            // We find the replicas for the current multicast group.
+                            let mut replicas = Vec::new();
+                            for mcast_ent in mcast_entries.iter() {
+                                let mge = mcast_ent
+                                    .get_packet_replication_engine_entry()
+                                    .get_multicast_group_entry();
+                                if mge.get_multicast_group_id() == mcast_id {
+                                    replicas = mge.get_replicas().to_vec();
+                                }
+                            }
+
+                            // No replicas means this is a new multicast group.
+                            // In this case, the update type is an INSERT.
+                            // Else, it is a MODIFY.
+                            let mcast_update_type = if replicas.is_empty() {
+                                proto::p4runtime::Update_Type::INSERT
+                            } else {
+                                proto::p4runtime::Update_Type::MODIFY
+                            };
+
+                            // A non-negative weight means we insert this port in the multicast group.
+                            // Else, we delete this port from the multicast group.
+                            if weight >= 0 {
+                                let mut new_replica = proto::p4runtime::Replica::new();
+                                new_replica.set_egress_port(mcast_port);
+
+                                let new_replica_instance: u32 = replicas.len() as u32 + 1;
+                                new_replica.set_instance(new_replica_instance);
+
+                                replicas.push(new_replica);
+                            } else {
+                                // Sort the replicas in increasing order of instance.
+                                replicas.sort_by(|a, b| a.instance.cmp(&b.instance));
+
+                                // Adjust the instance for replicas with different port.
+                                // This avoids gaps in the ordering of replicas.
+                                let mut num_deleted = 0;
+                                for r in replicas.iter_mut() {
+                                    if r.egress_port == mcast_port {
+                                        num_deleted += 1;
+                                    } else {
+                                        r.instance -= num_deleted;
+                                    }
+                                }
+
+                                // Remove replicas with matching port.
+                                replicas.retain(|r| r.egress_port != mcast_port);
+                            }
+
+                            // Push the multicast update to the switch.
+                            let mcast_update = p4ext::build_multicast_write(
+                                mcast_update_type,
+                                mcast_id,
+                                replicas,
+                            );
+
+                            let write_res = p4ext::write(
+                                vec![mcast_update],
+                                self.device_id,
+                                self.role_id,
+                                &self.target,
+                                &self.client
+                            );
+                            if write_res.is_err() {
+                                println!("could not push multicast update to switch: {:#?}", write_res.err());
+                            }
+                        }
+
                         // Translate the record table name to the P4 table name.
                         let table = match Self::get_matching_table(name.to_string(), switch.tables.clone()) {
                             Some(t) => t,
@@ -413,7 +531,7 @@ impl ControllerActor {
         match msg {
             ControllerActorMessage::UpdateMessage {respond_to, input} => {
                 let ddlog_res = self.program.add_input(input).unwrap();
-                let message_res = respond_to.send(self.switch_client.push_outputs(&ddlog_res));
+                let message_res = respond_to.send(self.switch_client.push_outputs(&ddlog_res).await);
                 if message_res.is_err() {
                     println!("could not send message from actor to controller: {:#?}", message_res.err());
                 }
@@ -434,7 +552,7 @@ impl ControllerActor {
                 while let Some(inp) = rx.recv().await {
                     let ddlog_res = self.program.add_input(vec![inp]);
                     if ddlog_res.is_ok() {
-                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap());
+                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
                             println!("could not push digest output relation to switch: {:#?}", p4_res.err())
                         }
