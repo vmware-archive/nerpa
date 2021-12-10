@@ -44,8 +44,6 @@ fn main() {
     println!("cargo:rustc-link-search=/usr/local/lib/");
 
     println!("cargo:rustc-link-lib=openvswitch");
-    println!("cargo:rustc-link-lib=unbound");
-    println!("cargo:rustc-link-lib=unwind");
     println!("cargo:rustc-link-lib=ssl");
     println!("cargo:rustc-link-lib=crypto");
 }

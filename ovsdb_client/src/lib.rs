@@ -85,6 +85,32 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn new(
+        prog: HDDlog,
+        delta: DeltaMap<DDValue>,
+        name: String,
+    ) -> Self {
+        let prefix = {
+            let db = name.clone();
+            let lower_prefix = format!("{}_mp::", db);
+
+            let mut lpc = lower_prefix.chars();
+            match lpc.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().chain(lpc).collect(),
+            }
+        };
+
+        Self {
+            prog: prog,
+            delta: delta,
+            prefix: prefix,
+            input_relations: nerpa_rels::nerpa_input_relations(),
+            state: Some(ConnectionState::Initial),
+            db_name: name,
+        }
+    }
+
     fn process_txn_reply(
         &mut self,
         cs: *mut ovsdb_sys::ovsdb_cs,
@@ -150,6 +176,54 @@ impl Context {
     }
 
     fn parse_updates(
+        &self,
+        events: Vec<ovsdb_sys::ovsdb_cs_event>
+    ) -> Vec<Update<DDValue>> {
+        let mut updates = Vec::new();
+
+        if events.is_empty() {
+            return updates;
+        }
+
+        for event in events {
+            if event.type_ != EVENT_TYPE_UPDATE {
+                continue;
+            }
+
+            let table_updates_s = unsafe {
+                let update = event.__bindgen_anon_1.update;
+                let buf = ovsdb_sys::json_to_string(update.table_updates, 0);
+
+                ffi::CStr::from_ptr(buf).to_str().unwrap()
+            };
+
+            let commands_res = ddlog_ovsdb_adapter::cmds_from_table_updates_str(
+                &self.prefix,
+                table_updates_s
+            );
+
+            if commands_res.is_err() {
+                println!("error extracting commands from table updates: {}", commands_res.unwrap_err());
+                continue;
+            }
+
+            let updates_res: Result<Vec<Update<DDValue>>, String> = commands_res
+                .unwrap()
+                .iter()
+                .map(|c| self.prog.convert_update_command(c))
+                .collect();
+
+            match updates_res {
+                Err(e) => println!("error converting update command: {}", e),
+                Ok(mut r) => updates.append(&mut r),
+            };
+        }
+
+        updates
+    }
+
+    // TODO: Delete this function.
+    fn convert_updates_to_output(
         &mut self,
         updates_v: Vec<ovsdb_sys::ovsdb_cs_event>,
     ) -> Result<(), String> {
@@ -269,6 +343,7 @@ unsafe extern "C" fn compose_monitor_request(
     monitor_requests
 }
 
+// TODO: Delete this function.
 pub fn export_input_from_ovsdb(
     server: String,
     database: String,
@@ -370,11 +445,86 @@ pub fn export_input_from_ovsdb(
             ovsdb_sys::ovsdb_cs_event_destroy(event); */
         }
         println!("Received {} update events from OVSDB.", updates.len());
-        ctx.parse_updates(updates).ok()?;
+        ctx.convert_updates_to_output(updates).ok()?;
 
         if ctx.delta.len() > 0 {
             return Some(ctx.delta);
         }
+
+        std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
+    }
+}
+
+pub async fn process_ovsdb_inputs(
+    mut ctx: Context,
+    server: String,
+    database: String,
+) -> Result<(), String> {
+    let server_cs = ffi::CString::new(server.as_str()).unwrap();
+    let database_cs = ffi::CString::new(database.as_str()).unwrap();
+
+    // Construct the client-sync here, so `ctx` can be passed when creating the connection.
+    let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
+        compose_monitor_requests: Some(compose_monitor_request),
+    } as *const ovsdb_sys::ovsdb_cs_ops;
+    let cs_ops_void = &mut ctx as *mut Context as *mut ffi::c_void;
+    let cs = unsafe {
+        let cs = ovsdb_sys::ovsdb_cs_create(
+            database_cs.as_ptr(),
+            1,
+            cs_ops,
+            cs_ops_void,
+        );
+        ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
+        ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
+
+        cs
+    };
+
+    loop {
+        let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
+
+        let mut events = &mut ovs_list::OvsList::default().as_ovs_list();
+        unsafe{ovsdb_sys::ovsdb_cs_run(cs, events)};
+
+        while unsafe{!ovs_list::is_empty(events)} {
+
+            /* Advance the list pointer, convert the node to an event. */
+            events = unsafe{ovs_list::remove(events).as_mut().unwrap()};
+            let event = match unsafe{ovs_list::to_event(events)} {
+                None => break,
+                Some(e) => e,
+            };
+
+            match event.type_ {
+                EVENT_TYPE_RECONNECT => {
+                    ctx.state = Some(ConnectionState::Initial);
+                },
+                EVENT_TYPE_LOCKED => {
+                    /* Nothing to do here. */
+                },
+                EVENT_TYPE_UPDATE => {
+                    if unsafe{event.__bindgen_anon_1.update.clear} {
+                        updates = Vec::new();
+                    }
+
+                    updates.push(event);
+                    continue;
+                },
+                EVENT_TYPE_TXN_REPLY => unsafe{
+                    return ctx.process_txn_reply(cs, event.__bindgen_anon_1.txn_reply);
+                },
+                _ => {
+                    println!("received invalid event type from ovsdb");
+                    continue;
+                }
+            }
+        }
+
+        let updates = ctx.parse_updates(updates);
+        println!("Parsed updates: {:#?}", updates);
+
+        // TODO: Send the updates on a channel back to the controller.
 
         std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
     }
