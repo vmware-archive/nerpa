@@ -147,5 +147,12 @@ async fn run_controller(
 
     // TODO: We want to read inputs from the management and data planes.
     // Currently, this only processes inputs from the data plane.
-    nerpa_controller.stream_digests().await;
+    // nerpa_controller.stream_digests().await;
+
+    // Start streaming OVSDB inputs.
+    // TODO: Stop requiring the creation of a new DDlog program.
+    let (ovsdb_hddlog, _) = run(1, false).unwrap();
+    let database = file_name.clone();
+    let server = String::from("unix:/usr/local/var/run/openvswitch/db.sock");
+    nerpa_controller.stream_ovsdb_inputs(ovsdb_hddlog, server, database).await;
 }

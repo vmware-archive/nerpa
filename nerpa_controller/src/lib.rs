@@ -60,6 +60,8 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::File;
 
+use tokio::sync::{oneshot, mpsc};
+
 // Controller serves as a handle for the Tokio tasks.
 // The Tokio task can either process DDlog inputs or push outputs to the switch.
 #[derive(Clone)]
@@ -105,6 +107,30 @@ impl Controller {
         let (send, recv) = oneshot::channel();
         let msg = ControllerActorMessage::DigestMessage {
             _respond_to: send,
+        };
+
+        let message_res = self.sender.send(msg).await;
+        if message_res.is_err() {
+            println!("could not send message to controller actor: {:#?}", message_res);
+        }
+
+        recv.await.expect("Actor task has been killed");
+    }
+
+    pub async fn stream_ovsdb_inputs(
+        &self,
+        hddlog: HDDlog,
+        server: String,
+        database: String,
+    ) {
+        // The oneshot channel keeps an Actor running that streams OVSDB inputs.
+        // It closes when the Actor task is killed.
+        let (send, recv) = oneshot::channel();
+        let msg = ControllerActorMessage::OvsdbMessage {
+            _respond_to: send,
+            hddlog: hddlog,
+            server: server,
+            database: database,
         };
 
         let message_res = self.sender.send(msg).await;
@@ -487,8 +513,6 @@ impl SwitchClient {
     }
 }
 
-use tokio::sync::{oneshot, mpsc};
-
 struct ControllerActor {
     receiver: mpsc::Receiver<ControllerActorMessage>,
     switch_client: SwitchClient,
@@ -503,6 +527,12 @@ enum ControllerActorMessage {
     },
     DigestMessage {
         _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
+    },
+    OvsdbMessage {
+        _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
+        hddlog: HDDlog,
+        server: String,
+        database: String,
     },
 }
 
@@ -554,7 +584,36 @@ impl ControllerActor {
                     if ddlog_res.is_ok() {
                         let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
-                            println!("could not push digest output relation to switch: {:#?}", p4_res.err())
+                            println!("could not push digest output relation to switch: {:#?}", p4_res.err());
+                        }
+                    }
+                };
+            },
+            ControllerActorMessage::OvsdbMessage{_respond_to, hddlog, server, database} => {
+                let (send, mut rx) = mpsc::channel::<Vec<Update<DDValue>>>(1000);
+
+                let ctx = ovsdb_client::Context::new(
+                    hddlog,
+                    DeltaMap::<DDValue>::new(),
+                    database.clone(),
+                );
+
+                tokio::spawn(async move {
+                    ovsdb_client::process_ovsdb_inputs(
+                        ctx,
+                        server,
+                        database,
+                        send,
+                    ).await
+                });
+
+                // TODO: Successfully read inputs from `ovsdb_client`.
+                while let Some(inp) = rx.recv().await {
+                    let ddlog_res = self.program.add_input(inp);
+                    if ddlog_res.is_ok() {
+                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
+                        if p4_res.is_err() {
+                            println!("could not push ovsdb output relation to switch: {:#?}", p4_res.err());
                         }
                     }
                 };

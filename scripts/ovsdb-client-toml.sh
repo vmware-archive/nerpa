@@ -17,4 +17,5 @@ ovsdb-sys = {path = \"../ovsdb-sys\"}
 $2 = {path = \"../$1/$2_ddlog\", features = [\"ovsdb\"]}
 memoffset = \"0.6.4\"
 serde = \"1.0.126\"
-serde_json = \"1.0.65\"" > $OVSDB_TOML
+serde_json = \"1.0.65\"
+tokio = { version = \"1.2.0\", features = [\"full\"]}" > $OVSDB_TOML
