@@ -29,6 +29,7 @@ extern crate memoffset;
 #[allow(dead_code)]
 mod nerpa_rels;
 mod ovs_list;
+pub mod context;
 
 use serde_json::Value;
 
@@ -51,177 +52,6 @@ const EVENT_TYPE_RECONNECT: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event
 const EVENT_TYPE_LOCKED: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_LOCKED;
 const EVENT_TYPE_UPDATE: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE;
 const EVENT_TYPE_TXN_REPLY: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_TXN_REPLY;
-
-#[allow(dead_code)]
-#[derive(PartialEq)]
-enum ConnectionState {
-    /* Initial state before output-only data has been requested. */
-    Initial,
-    /* Output-only data requested. Waiting for reply. */
-    OutputOnlyDataRequested,
-    /* Output-only data received. Any request now would be to update data. */
-    Update,
-}
-
-#[repr(C)]
-pub struct Context {
-    prog: HDDlog,
-    pub delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
-
-    /* Database info.
-     *
-     * The '*_relations' vectors contain DDlog relation names.
-     * 'prefix' is the prefix for the DDlog module containing relations. */
-    
-    prefix: String,
-    input_relations: Vec<String>,
-
-    /* OVSDB connection. */
-    // TODO: Add client-sync on struct.
-    state: Option<ConnectionState>,
-
-    /* Database info. */
-    db_name: String,
-}
-
-impl Context {
-    pub fn new(
-        prog: HDDlog,
-        delta: DeltaMap<DDValue>,
-        name: String,
-    ) -> Self {
-        let prefix = {
-            let db = name.clone();
-            let lower_prefix = format!("{}_mp::", db);
-
-            let mut lpc = lower_prefix.chars();
-            match lpc.next() {
-                None => String::new(),
-                Some(f) => f.to_uppercase().chain(lpc).collect(),
-            }
-        };
-
-        Self {
-            prog,
-            delta,
-            prefix,
-            input_relations: nerpa_rels::nerpa_input_relations(),
-            state: Some(ConnectionState::Initial),
-            db_name: name,
-        }
-    }
-
-    fn process_txn_reply(
-        &mut self,
-        cs: *mut ovsdb_sys::ovsdb_cs,
-        reply: *mut ovsdb_sys::jsonrpc_msg,
-    ) -> Result<(), String> {
-        if reply.is_null() {
-            return Err(
-                format!("received a null transaction reply message")
-            );
-        }
-
-        /* Dereferencing 'reply' is safe due to the nil check. */
-        let reply_type = unsafe{
-            (*reply).type_
-        };
-
-        if reply_type == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
-            /* Convert the jsonrpc_msg to a *mut c_char.
-             * Represent it in a Rust string for debugging, and free the C string. */
-            let reply_s = unsafe {
-                let reply_cs = ovsdb_sys::jsonrpc_msg_to_string(reply);
-                let reply_s = format!("received database error: {:#?}", reply_cs);
-                libc::free(reply_cs as *mut libc::c_void);
-
-                reply_s
-            };
-
-            println!("{}", reply_s);
-
-            /* 'ovsdb_cs_force_reconnect' does not check for a null pointer. */
-            if cs.is_null() {
-                let e = "needs non-nil client sync to force reconnect after txn reply error"; 
-                return Err(e.to_string());
-            }
-
-            unsafe {
-                ovsdb_sys::ovsdb_cs_force_reconnect(cs);
-            }
-
-            return Err(reply_s);
-        }
-
-        match self.state {
-            Some(ConnectionState::Initial) => {
-                return Err(
-                    format!("found initial state while processing transaction reply")
-                );
-            },
-            Some(ConnectionState::OutputOnlyDataRequested) => {
-                // TODO: Store and update 'output_only_data' on Context.
-
-                self.state = Some(ConnectionState::Update);
-            },
-            Some(ConnectionState::Update) => {}, /* Nothing to do. */
-            None => {
-                return Err(
-                    format!("found invalid state while processing transaction reply")
-                );
-            }
-        }
-
-        Ok(())
-    }
-
-    fn parse_updates(
-        &self,
-        events: Vec<ovsdb_sys::ovsdb_cs_event>
-    ) -> Vec<Update<DDValue>> {
-        let mut updates = Vec::new();
-
-        if events.is_empty() {
-            return updates;
-        }
-
-        for event in events {
-            if event.type_ != EVENT_TYPE_UPDATE {
-                continue;
-            }
-
-            let table_updates_s = unsafe {
-                let update = event.__bindgen_anon_1.update;
-                let buf = ovsdb_sys::json_to_string(update.table_updates, 0);
-
-                ffi::CStr::from_ptr(buf).to_str().unwrap()
-            };
-
-            let commands_res = ddlog_ovsdb_adapter::cmds_from_table_updates_str(
-                &self.prefix,
-                table_updates_s
-            );
-
-            if commands_res.is_err() {
-                println!("error extracting commands from table updates: {}", commands_res.unwrap_err());
-                continue;
-            }
-
-            let updates_res: Result<Vec<Update<DDValue>>, String> = commands_res
-                .unwrap()
-                .iter()
-                .map(|c| self.prog.convert_update_command(c))
-                .collect();
-
-            match updates_res {
-                Err(e) => println!("error converting update command: {}", e),
-                Ok(mut r) => updates.append(&mut r),
-            };
-        }
-
-        updates
-    }
-}
 
 unsafe extern "C" fn compose_monitor_request(
     schema_json: *const ovsdb_sys::json,
@@ -278,7 +108,7 @@ unsafe extern "C" fn compose_monitor_request(
 }
 
 pub async fn process_ovsdb_inputs(
-    mut ctx: Context,
+    mut ctx: context::Context,
     server: String,
     database: String,
     _respond_to: mpsc::Sender<Vec<Update<DDValue>>>,
@@ -290,7 +120,7 @@ pub async fn process_ovsdb_inputs(
     let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
         compose_monitor_requests: Some(compose_monitor_request),
     } as *const ovsdb_sys::ovsdb_cs_ops;
-    let cs_ops_void = &mut ctx as *mut Context as *mut ffi::c_void;
+    let cs_ops_void = &mut ctx as *mut context::Context as *mut ffi::c_void;
     let cs = unsafe {
         let cs = ovsdb_sys::ovsdb_cs_create(
             database_cs.as_ptr(),
@@ -321,7 +151,7 @@ pub async fn process_ovsdb_inputs(
 
             match event.type_ {
                 EVENT_TYPE_RECONNECT => {
-                    ctx.state = Some(ConnectionState::Initial);
+                    ctx.state = Some(context::ConnectionState::Initial);
                 },
                 EVENT_TYPE_LOCKED => {
                     /* Nothing to do here. */

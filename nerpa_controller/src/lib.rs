@@ -592,7 +592,7 @@ impl ControllerActor {
             ControllerActorMessage::OvsdbMessage{_respond_to, hddlog, server, database} => {
                 let (send, mut rx) = mpsc::channel::<Vec<Update<DDValue>>>(1000);
 
-                let ctx = ovsdb_client::Context::new(
+                let ctx = ovsdb_client::context::Context::new(
                     hddlog,
                     DeltaMap::<DDValue>::new(),
                     database.clone(),
