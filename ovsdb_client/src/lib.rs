@@ -107,21 +107,25 @@ unsafe extern "C" fn compose_monitor_request(
     monitor_requests
 }
 
+struct OvsdbCSPtr(*mut ovsdb_sys::ovsdb_cs);
+unsafe impl Send for OvsdbCSPtr{}
+
 pub async fn process_ovsdb_inputs(
     mut ctx: context::Context,
     server: String,
     database: String,
-    _respond_to: mpsc::Sender<Vec<Update<DDValue>>>,
+    respond_to: mpsc::Sender<Update<DDValue>>,
 ) -> Result<(), String> {
     let server_cs = ffi::CString::new(server.as_str()).unwrap();
     let database_cs = ffi::CString::new(database.as_str()).unwrap();
 
     // Construct the client-sync here, so `ctx` can be passed when creating the connection.
-    let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
-        compose_monitor_requests: Some(compose_monitor_request),
-    } as *const ovsdb_sys::ovsdb_cs_ops;
-    let cs_ops_void = &mut ctx as *mut context::Context as *mut ffi::c_void;
-    let cs = unsafe {
+    let cs_ptr = unsafe {
+        let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
+            compose_monitor_requests: Some(compose_monitor_request),
+        } as *const ovsdb_sys::ovsdb_cs_ops;
+        let cs_ops_void = &mut ctx as *mut context::Context as *mut ffi::c_void;
+
         let cs = ovsdb_sys::ovsdb_cs_create(
             database_cs.as_ptr(),
             1,
@@ -131,53 +135,58 @@ pub async fn process_ovsdb_inputs(
         ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
         ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
 
-        cs
+        OvsdbCSPtr(cs)
     };
 
     loop {
-        let mut updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
+        let updates = unsafe {
+            let mut event_updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
+            let cs = cs_ptr.0;
 
-        let mut events = &mut ovs_list::OvsList::default().as_ovs_list();
-        unsafe{ovsdb_sys::ovsdb_cs_run(cs, events)};
+            let mut events_list = &mut ovs_list::OvsList::default().as_ovs_list();
+            ovsdb_sys::ovsdb_cs_run(cs, events_list);
 
-        while unsafe{!ovs_list::is_empty(events)} {
+            while !ovs_list::is_empty(events_list) {
+                events_list = ovs_list::remove(events_list).as_mut().unwrap();
+                let event = match ovs_list::to_event(events_list) {
+                    None => break,
+                    Some(e) => e,
+                };
 
-            /* Advance the list pointer, convert the node to an event. */
-            events = unsafe{ovs_list::remove(events).as_mut().unwrap()};
-            let event = match unsafe{ovs_list::to_event(events)} {
-                None => break,
-                Some(e) => e,
-            };
+                match event.type_ {
+                    EVENT_TYPE_RECONNECT => {
+                        ctx.state = Some(context::ConnectionState::Initial);
+                    },
+                    EVENT_TYPE_LOCKED => {
+                        /* Nothing to do here. */
+                    },
+                    EVENT_TYPE_UPDATE => {
+                        if event.__bindgen_anon_1.update.clear {
+                            event_updates = Vec::new();
+                        }
 
-            match event.type_ {
-                EVENT_TYPE_RECONNECT => {
-                    ctx.state = Some(context::ConnectionState::Initial);
-                },
-                EVENT_TYPE_LOCKED => {
-                    /* Nothing to do here. */
-                },
-                EVENT_TYPE_UPDATE => {
-                    if unsafe{event.__bindgen_anon_1.update.clear} {
-                        updates = Vec::new();
+                        event_updates.push(event);
+                        continue;
+                    },
+                    EVENT_TYPE_TXN_REPLY => {
+                        ctx.process_txn_reply(cs, event.__bindgen_anon_1.txn_reply);
+                    },
+                    _ => {
+                        println!("received invalid event type from ovsdb");
+                        continue;
                     }
-
-                    updates.push(event);
-                    continue;
-                },
-                EVENT_TYPE_TXN_REPLY => unsafe{
-                    return ctx.process_txn_reply(cs, event.__bindgen_anon_1.txn_reply);
-                },
-                _ => {
-                    println!("received invalid event type from ovsdb");
-                    continue;
                 }
             }
-        }
 
-        let updates = ctx.parse_updates(updates);
+            let updates = ctx.parse_updates(event_updates);
+            updates
+        };
+
         println!("Parsed updates: {:#?}", updates);
-
-        // TODO: Send the updates on a channel back to the controller.
+        for update in updates {
+            println!("Sending update back to actor: {:#?}...", update);
+            respond_to.send(update).await;
+        }
 
         std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
     }

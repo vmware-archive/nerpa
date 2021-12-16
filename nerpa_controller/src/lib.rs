@@ -590,7 +590,7 @@ impl ControllerActor {
                 };
             },
             ControllerActorMessage::OvsdbMessage{_respond_to, hddlog, server, database} => {
-                let (send, mut rx) = mpsc::channel::<Vec<Update<DDValue>>>(1000);
+                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1);
 
                 let ctx = ovsdb_client::context::Context::new(
                     hddlog,
@@ -607,9 +607,8 @@ impl ControllerActor {
                     ).await
                 });
 
-                // TODO: Successfully read inputs from `ovsdb_client`.
                 while let Some(inp) = rx.recv().await {
-                    let ddlog_res = self.program.add_input(inp);
+                    let ddlog_res = self.program.add_input(vec![inp]);
                     if ddlog_res.is_ok() {
                         let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
