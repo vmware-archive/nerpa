@@ -95,9 +95,9 @@ impl Controller {
         let (send, recv) = oneshot::channel();
         let msg = ControllerActorMessage::InputMessage {
             _respond_to: send,
-            hddlog: hddlog,
-            server: server,
-            database: database,
+            hddlog,
+            server,
+            database,
         };
 
         let message_res = self.sender.send(msg).await;

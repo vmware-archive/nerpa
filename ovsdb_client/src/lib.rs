@@ -27,7 +27,6 @@ extern crate snvs_ddlog;
 extern crate memoffset;
 
 #[allow(dead_code)]
-mod nerpa_rels;
 mod ovs_list;
 pub mod context;
 
@@ -38,10 +37,7 @@ use std::{
     os::raw,
 };
 
-use differential_datalog::api::HDDlog;
-
 use differential_datalog::ddval::DDValue;
-use differential_datalog::DeltaMap;
 use differential_datalog::program::Update;
 
 use tokio::sync::mpsc;
@@ -169,7 +165,10 @@ pub async fn process_ovsdb_inputs(
                         continue;
                     },
                     EVENT_TYPE_TXN_REPLY => {
-                        ctx.process_txn_reply(cs, event.__bindgen_anon_1.txn_reply);
+                        let reply_res = ctx.process_txn_reply(cs, event.__bindgen_anon_1.txn_reply);
+                        if reply_res.is_err() {
+                            println!("could not process txn reply with error: {:#?}", reply_res.err());
+                        }
                     },
                     _ => {
                         println!("received invalid event type from ovsdb");
@@ -178,12 +177,14 @@ pub async fn process_ovsdb_inputs(
                 }
             }
 
-            let updates = ctx.parse_updates(event_updates);
-            updates
+            ctx.parse_updates(event_updates)
         };
 
         for update in updates {
-            respond_to.send(update).await;
+            let send_res = respond_to.send(update).await;
+            if send_res.is_err() {
+                println!("could not send update from ovsdb client to controller: {:#?}", send_res.err());
+            }
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10 * 1000));

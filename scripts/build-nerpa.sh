@@ -74,6 +74,7 @@ if test -f $FILE_NAME.ovsschema; then
 
     # Build the ovsdb client crate.
     cd $NERPA_DIR/ovsdb_client
+    mkdir -p src/context
     pip3 install -r requirements.txt
     python3 ovsdb2ddlog2rust --schema-file=$FILE_DIR/$FILE_NAME.ovsschema -p nerpa_ --output-file src/context/nerpa_rels.rs
     cargo build

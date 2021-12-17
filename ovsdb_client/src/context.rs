@@ -89,31 +89,30 @@ impl Context {
         }
     }
 
-    /* Process a batch of messages from the database server on 'ctx'. */
-    pub fn run(&mut self) -> Vec<Update<DDValue>> {
-        Vec::new()
-    }
-
-    pub fn process_txn_reply(
+    /// Processes a TXN_REPLY event from OVSDB.
+    ///
+    /// # Safety
+    ///
+    /// This function is marked unsafe because it dereferences a possibly null raw pointer.
+    /// Because it checks if this pointer is null, its behavior will be safe.
+    pub unsafe fn process_txn_reply(
         &mut self,
         cs: *mut ovsdb_sys::ovsdb_cs,
         reply: *mut ovsdb_sys::jsonrpc_msg,
     ) -> Result<(), String> {
         if reply.is_null() {
             return Err(
-                format!("received a null transaction reply message")
+                "received a null transaction reply message".to_string()
             );
         }
 
         /* Dereferencing 'reply' is safe due to the nil check. */
-        let reply_type = unsafe{
-            (*reply).type_
-        };
+        let reply_type = (*reply).type_;
 
         if reply_type == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
             /* Convert the jsonrpc_msg to a *mut c_char.
              * Represent it in a Rust string for debugging, and free the C string. */
-            let reply_s = unsafe {
+            let reply_s = {
                 let reply_cs = ovsdb_sys::jsonrpc_msg_to_string(reply);
                 let reply_s = format!("received database error: {:#?}", reply_cs);
                 libc::free(reply_cs as *mut libc::c_void);
@@ -121,17 +120,14 @@ impl Context {
                 reply_s
             };
 
-            println!("{}", reply_s);
-
             /* 'ovsdb_cs_force_reconnect' does not check for a null pointer. */
             if cs.is_null() {
-                let e = "needs non-nil client sync to force reconnect after txn reply error"; 
-                return Err(e.to_string());
+                return Err(
+                    "needs non-nil client sync to force reconnect after txn reply error".to_string()
+                );
             }
 
-            unsafe {
-                ovsdb_sys::ovsdb_cs_force_reconnect(cs);
-            }
+            ovsdb_sys::ovsdb_cs_force_reconnect(cs);
 
             return Err(reply_s);
         }
@@ -139,7 +135,7 @@ impl Context {
         match self.state {
             Some(ConnectionState::Initial) => {
                 return Err(
-                    format!("found initial state while processing transaction reply")
+                    "found initial state while processing transaction reply".to_string()
                 );
             },
             Some(ConnectionState::OutputOnlyDataRequested) => {
@@ -150,7 +146,7 @@ impl Context {
             Some(ConnectionState::Update) => {}, /* Nothing to do. */
             None => {
                 return Err(
-                    format!("found invalid state while processing transaction reply")
+                    "found invalid state while processing transaction reply".to_string()
                 );
             }
         }
@@ -196,7 +192,6 @@ impl Context {
 
     pub fn parse_updates(
         &self,
-        // fr_events: Fragile<Vec<ovsdb_sys::ovsdb_cs_event>>,
         events: Vec<ovsdb_sys::ovsdb_cs_event>,
     ) -> Vec<Update<DDValue>> {
         let mut updates = Vec::new();
@@ -216,8 +211,6 @@ impl Context {
 
                 ffi::CStr::from_ptr(buf).to_str().unwrap()
             };
-
-            println!("Table update string: {:#?}", table_updates_s);
 
             let commands_res = ddlog_ovsdb_adapter::cmds_from_table_updates_str(
                 &self.prefix,
