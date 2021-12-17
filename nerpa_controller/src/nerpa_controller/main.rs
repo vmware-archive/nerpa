@@ -146,7 +146,11 @@ async fn run_controller(
     let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();
 
     // Start streaming inputs from OVSDB and from the dataplane.
-    // TODO: Stop requiring the creation of a new DDlog program.
+    // Creating a new DDlog program does not affect overall correctness.
+    // The 'ovsdb_client' only uses the DDlog program to convert JSON RPC messages
+    // received from OVSDB into input relations, not to track state of the program.
+    // The controller then sends these input relations to its DDlog program, which
+    // pushes the output relation to the switch.
     let (ovsdb_hddlog, _) = run(1, false).unwrap();
     let database = file_name.clone();
     let server = String::from("unix:/usr/local/var/run/openvswitch/db.sock");
