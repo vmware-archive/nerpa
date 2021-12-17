@@ -182,9 +182,7 @@ pub async fn process_ovsdb_inputs(
             updates
         };
 
-        println!("Parsed updates: {:#?}", updates);
         for update in updates {
-            println!("Sending update back to actor: {:#?}...", update);
             respond_to.send(update).await;
         }
 

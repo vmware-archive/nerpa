@@ -520,7 +520,6 @@ impl ControllerActor {
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
         match msg {
             ControllerActorMessage::InputMessage {_respond_to, hddlog, server, database} => {
-                println!("Received InputMessage!");
                 let (digest_tx, mut rx) = mpsc::channel::<Update<DDValue>>(1);
                 let ovsdb_tx = mpsc::Sender::clone(&digest_tx);
 
