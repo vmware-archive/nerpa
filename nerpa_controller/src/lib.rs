@@ -83,24 +83,6 @@ impl Controller {
         Ok(Self{sender})
     }
 
-    pub async fn input_to_switch(
-        &self,
-        input: Vec<Update<DDValue>>
-    ) -> Result<(), p4ext::P4Error> {
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::UpdateMessage {
-            respond_to: send,
-            input,
-        };
-
-        let message_res = self.sender.send(msg).await;
-        if message_res.is_err() {
-            println!("could not send message to controller actor: {:#?}", message_res);
-        }
-
-        recv.await.expect("Actor task has been killed")
-    }
-
     // Streams inputs from OVSDB and from the data plane.
     pub async fn stream_inputs(
         &self,
@@ -112,46 +94,6 @@ impl Controller {
         // It closes when the Actor task is killed.
         let (send, recv) = oneshot::channel();
         let msg = ControllerActorMessage::InputMessage {
-            _respond_to: send,
-            hddlog: hddlog,
-            server: server,
-            database: database,
-        };
-
-        let message_res = self.sender.send(msg).await;
-        if message_res.is_err() {
-            println!("could not send message to controller actor: {:#?}", message_res);
-        }
-
-        recv.await.expect("Actor task has been killed");
-    }
-
-    pub async fn stream_digests(&self) {
-        // The oneshot channel keeps an Actor running that processes digests.
-        // It closes when the Actor task is killed.
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::DigestMessage {
-            _respond_to: send,
-        };
-
-        let message_res = self.sender.send(msg).await;
-        if message_res.is_err() {
-            println!("could not send message to controller actor: {:#?}", message_res);
-        }
-
-        recv.await.expect("Actor task has been killed");
-    }
-
-    pub async fn stream_ovsdb_inputs(
-        &self,
-        hddlog: HDDlog,
-        server: String,
-        database: String,
-    ) {
-        // The oneshot channel keeps an Actor running that streams OVSDB inputs.
-        // It closes when the Actor task is killed.
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::OvsdbMessage {
             _respond_to: send,
             hddlog: hddlog,
             server: server,
@@ -546,19 +488,6 @@ struct ControllerActor {
 
 #[derive(Debug)]
 enum ControllerActorMessage {
-    UpdateMessage {
-        respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
-        input: Vec<Update<DDValue>>,
-    },
-    DigestMessage {
-        _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
-    },
-    OvsdbMessage {
-        _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
-        hddlog: HDDlog,
-        server: String,
-        database: String,
-    },
     InputMessage {
         _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
         hddlog: HDDlog,
@@ -634,64 +563,6 @@ impl ControllerActor {
                     }
                 };
             },
-            ControllerActorMessage::UpdateMessage {respond_to, input} => {
-                let ddlog_res = self.program.add_input(input).unwrap();
-                let message_res = respond_to.send(self.switch_client.push_outputs(&ddlog_res).await);
-                if message_res.is_err() {
-                    println!("could not send message from actor to controller: {:#?}", message_res.err());
-                }
-            },
-            ControllerActorMessage::DigestMessage{ _respond_to } => {
-                // This configuration sends a notification per-digest.
-                let config_res = self.switch_client.configure_digests(0, 1, 1).await;
-                if config_res.is_err() {
-                    panic!("could not configure digests: {:#?}", config_res);
-                }
-
-                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1000);
-
-                let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
-                let mut digest_actor = DigestActor::new(sink, receiver, send);
-                tokio::spawn(async move { digest_actor.run().await });
-
-                while let Some(inp) = rx.recv().await {
-                    let ddlog_res = self.program.add_input(vec![inp]);
-                    if ddlog_res.is_ok() {
-                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
-                        if p4_res.is_err() {
-                            println!("could not push digest output relation to switch: {:#?}", p4_res.err());
-                        }
-                    }
-                };
-            },
-            ControllerActorMessage::OvsdbMessage{_respond_to, hddlog, server, database} => {
-                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1);
-
-                let ctx = ovsdb_client::context::Context::new(
-                    hddlog,
-                    DeltaMap::<DDValue>::new(),
-                    database.clone(),
-                );
-
-                tokio::spawn(async move {
-                    ovsdb_client::process_ovsdb_inputs(
-                        ctx,
-                        server,
-                        database,
-                        send,
-                    ).await
-                });
-
-                while let Some(inp) = rx.recv().await {
-                    let ddlog_res = self.program.add_input(vec![inp]);
-                    if ddlog_res.is_ok() {
-                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
-                        if p4_res.is_err() {
-                            println!("could not push ovsdb output relation to switch: {:#?}", p4_res.err());
-                        }
-                    }
-                };
-            }
         }
     }
 }
