@@ -154,42 +154,6 @@ impl Context {
         Ok(())
     }
 
-    pub fn parse_table_updates(
-        &self,
-        table_updates:Vec<String>,
-    ) -> Vec<Update<DDValue>> {
-        let mut updates = Vec::new();
-        
-        if table_updates.is_empty() {
-            return updates;
-        }
-
-        for table_update in table_updates {
-            let commands_res = ddlog_ovsdb_adapter::cmds_from_table_updates_str(
-                &self.prefix,
-                &table_update
-            );
-
-            if commands_res.is_err() {
-                println!("error extracting commands from table updates: {}", commands_res.unwrap_err());
-                continue;
-            }
-
-            let updates_res: Result<Vec<Update<DDValue>>, String> = commands_res
-                .unwrap()
-                .iter()
-                .map(|c| self.prog.convert_update_command(c))
-                .collect();
-
-            match updates_res {
-                Err(e) => println!("error converting update command: {}", e),
-                Ok(mut r) => updates.append(&mut r),
-            };
-        }
-
-        updates
-    }
-
     pub fn parse_updates(
         &self,
         events: Vec<ovsdb_sys::ovsdb_cs_event>,
