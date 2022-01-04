@@ -143,9 +143,14 @@ async fn run_controller(
     switch_client.push_outputs(&initial_contents).await.unwrap();
 
     // Instantiate controller.
-    let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();
+    // We store the DDlog program on the heap. We can safely pass references to heap
+    // memory to both the controller and the OVSDB client.
+    let controller_hddlog = Arc::new(hddlog);
+    let ovsdb_hddlog = controller_hddlog.clone();
+    let nerpa_controller = Controller::new(switch_client, controller_hddlog).unwrap();
 
-    // TODO: We want to read inputs from the management and data planes.
-    // Currently, this only processes inputs from the data plane.
-    nerpa_controller.stream_digests().await;
+    // Start streaming inputs from OVSDB and from the dataplane.
+    let database = file_name.clone();
+    let server = String::from("unix:/usr/local/var/run/openvswitch/db.sock");
+    nerpa_controller.stream_inputs(ovsdb_hddlog, server, database).await;
 }

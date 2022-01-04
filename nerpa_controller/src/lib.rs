@@ -56,9 +56,13 @@ use proto::p4runtime::{
 use proto::p4runtime_grpc::P4RuntimeClient;
 use protobuf::Message;
 
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::fs::File;
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fs::File,
+    sync::Arc,
+};
+use tokio::sync::{oneshot, mpsc};
 
 // Controller serves as a handle for the Tokio tasks.
 // The Tokio task can either process DDlog inputs or push outputs to the switch.
@@ -70,7 +74,7 @@ pub struct Controller {
 impl Controller {
     pub fn new(
         switch_client: SwitchClient,
-        hddlog: HDDlog,
+        hddlog: Arc<HDDlog>,
     ) -> Result<Controller, String> {
         let (sender, receiver) = mpsc::channel(1000);
         let program = ControllerProgram::new(hddlog);
@@ -81,30 +85,21 @@ impl Controller {
         Ok(Self{sender})
     }
 
-    pub async fn input_to_switch(
+    // Streams inputs from OVSDB and from the data plane.
+    pub async fn stream_inputs(
         &self,
-        input: Vec<Update<DDValue>>
-    ) -> Result<(), p4ext::P4Error> {
-        let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::UpdateMessage {
-            respond_to: send,
-            input,
-        };
-
-        let message_res = self.sender.send(msg).await;
-        if message_res.is_err() {
-            println!("could not send message to controller actor: {:#?}", message_res);
-        }
-
-        recv.await.expect("Actor task has been killed")
-    }
-
-    pub async fn stream_digests(&self) {
-        // The oneshot channel keeps an Actor running that processes digests.
+        hddlog: Arc<HDDlog>,
+        server: String,
+        database: String,
+    ) {
+        // The oneshot channel keeps the Actor running that processes inputs.
         // It closes when the Actor task is killed.
         let (send, recv) = oneshot::channel();
-        let msg = ControllerActorMessage::DigestMessage {
+        let msg = ControllerActorMessage::InputMessage {
             _respond_to: send,
+            hddlog,
+            server,
+            database,
         };
 
         let message_res = self.sender.send(msg).await;
@@ -117,11 +112,11 @@ impl Controller {
 }
 
 pub struct ControllerProgram {
-    hddlog: HDDlog,
+    hddlog: Arc<HDDlog>,
 }
 
 impl ControllerProgram {
-    pub fn new(hddlog: HDDlog) -> Self {
+    pub fn new(hddlog: Arc<HDDlog>) -> Self {
         Self{hddlog}
     }
 
@@ -487,8 +482,6 @@ impl SwitchClient {
     }
 }
 
-use tokio::sync::{oneshot, mpsc};
-
 struct ControllerActor {
     receiver: mpsc::Receiver<ControllerActorMessage>,
     switch_client: SwitchClient,
@@ -497,12 +490,11 @@ struct ControllerActor {
 
 #[derive(Debug)]
 enum ControllerActorMessage {
-    UpdateMessage {
-        respond_to: oneshot::Sender<Result<(), p4ext::P4Error>>,
-        input: Vec<Update<DDValue>>,
-    },
-    DigestMessage {
+    InputMessage {
         _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
+        hddlog: Arc<HDDlog>,
+        server: String,
+        database: String,
     },
 }
 
@@ -529,36 +521,49 @@ impl ControllerActor {
     // Handle messages to the ControllerActor, calling the appropriate logic based on its branch.
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
         match msg {
-            ControllerActorMessage::UpdateMessage {respond_to, input} => {
-                let ddlog_res = self.program.add_input(input).unwrap();
-                let message_res = respond_to.send(self.switch_client.push_outputs(&ddlog_res).await);
-                if message_res.is_err() {
-                    println!("could not send message from actor to controller: {:#?}", message_res.err());
-                }
-            },
-            ControllerActorMessage::DigestMessage{ _respond_to } => {
-                // This configuration sends a notification per-digest.
+            ControllerActorMessage::InputMessage {_respond_to, hddlog, server, database} => {
+                let (digest_tx, mut rx) = mpsc::channel::<Update<DDValue>>(1);
+                let ovsdb_tx = mpsc::Sender::clone(&digest_tx);
+
+                // Start streaming digests.
+                // Set the configuration as a notification per-digest.
                 let config_res = self.switch_client.configure_digests(0, 1, 1).await;
                 if config_res.is_err() {
                     panic!("could not configure digests: {:#?}", config_res);
                 }
 
-                let (send, mut rx) = mpsc::channel::<Update<DDValue>>(1000);
-
+                // Start the digest actor.
                 let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
-                let mut digest_actor = DigestActor::new(sink, receiver, send);
+                let mut digest_actor = DigestActor::new(sink, receiver, digest_tx);
                 tokio::spawn(async move { digest_actor.run().await });
 
+                // Start processing inputs from OVSDB.
+                let ctx = ovsdb_client::context::Context::new(
+                    hddlog,
+                    DeltaMap::<DDValue>::new(),
+                    database.clone(),
+                );
+
+                tokio::spawn(async move {
+                    ovsdb_client::process_ovsdb_inputs(
+                        ctx,
+                        server,
+                        database,
+                        ovsdb_tx,
+                    ).await
+                });
+
+                // Process each input.
                 while let Some(inp) = rx.recv().await {
                     let ddlog_res = self.program.add_input(vec![inp]);
                     if ddlog_res.is_ok() {
                         let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
-                            println!("could not push digest output relation to switch: {:#?}", p4_res.err())
+                            println!("could not push digest output relation to switch: {:#?}", p4_res.err());
                         }
                     }
                 };
-            }
+            },
         }
     }
 }

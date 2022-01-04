@@ -64,7 +64,7 @@ ddlog -i $FILE_NAME.dl &&
 (cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
 
 # Optionally, generate necessary code for the management plane.
-# Build the OVSDB client crate. This depends on the DDlog crate.
+# Build the OVSDB client crate, which depends on the DDlog crate.
 if test -f $FILE_NAME.ovsschema; then
     echo "Building the OVSDB client crate..."
 
@@ -74,10 +74,19 @@ if test -f $FILE_NAME.ovsschema; then
 
     # Build the ovsdb client crate.
     cd $NERPA_DIR/ovsdb_client
+    mkdir -p src/context
     pip3 install -r requirements.txt
-    python3 ovsdb2ddlog2rust --schema-file=$FILE_DIR/$FILE_NAME.ovsschema -p nerpa_ --output-file src/nerpa_rels.rs
+    python3 ovsdb2ddlog2rust --schema-file=$FILE_DIR/$FILE_NAME.ovsschema -p nerpa_ --output-file src/context/nerpa_rels.rs
     cargo build
     cd $FILE_DIR
+
+    # Create the database from OVSDB schema, if it does not exist.
+    # Set up OVSDB. This assumes the Linux default directory.
+    OVSDB_FN=/usr/local/etc/openvswitch/$FILE_NAME.db
+    if test ! -f $OVSDB_FN; then
+        export PATH=$PATH:/usr/local/share/openvswitch/scripts
+        ovsdb-tool create $OVSDB_FN $FILE_DIR/$FILE_NAME.ovsschema
+    fi
 fi
 
 echo "Building controller crate..."

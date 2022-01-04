@@ -1,4 +1,4 @@
 # Generated files
 target/
-src/nerpa_rels.rs
+src/context/nerpa_rels.rs
 Cargo.*

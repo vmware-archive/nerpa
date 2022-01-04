@@ -90,5 +90,25 @@ chmod +x $CLI_EXEC
 
 PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC < $COMMANDS_FILE
 
+# Optionally, start OVSDB.
+if test -f $FILE_DIR/$FILE_NAME.ovsschema; then
+    echo "Stopping OVSDB..."
+    sudo pkill -f ovsdb-server
+
+    echo "Starting OVSDB..."
+    export PATH=$PATH:/usr/local/share/openvswitch/scripts
+    mkdir -p /usr/local/var/run/openvswitch
+
+    # Run the OVSDB server.
+    echo "Running the OVSDB server..."
+    ovsdb-server --pidfile --detach --log-file \
+        --remote=punix:/usr/local/var/run/openvswitch/db.sock \
+        /usr/local/etc/openvswitch/$FILE_NAME.db
+
+    # Listen for connections.
+    echo "Listening for connections..."
+    ovs-appctl -t ovsdb-server ovsdb-server/add-remote ptcp:6640
+fi
+
 # Run the controller.
 (cd $NERPA_DIR/nerpa_controller && cargo run -- --ddlog-record=replay.txt $FILE_DIR $FILE_NAME && cd $NERPA_DIR)
