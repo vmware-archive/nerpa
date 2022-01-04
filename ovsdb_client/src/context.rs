@@ -29,10 +29,11 @@ use differential_datalog::DeltaMap;
 use differential_datalog::program::Update;
 
 use std::ffi;
+use std::sync::Arc;
 
 #[repr(C)]
 pub struct Context {
-    prog: HDDlog,
+    prog: Arc<HDDlog>,
     pub delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
 
     /* Database info.
@@ -64,7 +65,7 @@ pub enum ConnectionState {
 
 impl Context {
     pub fn new(
-        prog: HDDlog,
+        prog: Arc<HDDlog>,
         delta: DeltaMap<DDValue>,
         name: String,
     ) -> Self {

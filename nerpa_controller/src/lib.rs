@@ -56,10 +56,12 @@ use proto::p4runtime::{
 use proto::p4runtime_grpc::P4RuntimeClient;
 use protobuf::Message;
 
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::fs::File;
-
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fs::File,
+    sync::Arc,
+};
 use tokio::sync::{oneshot, mpsc};
 
 // Controller serves as a handle for the Tokio tasks.
@@ -72,7 +74,7 @@ pub struct Controller {
 impl Controller {
     pub fn new(
         switch_client: SwitchClient,
-        hddlog: HDDlog,
+        hddlog: Arc<HDDlog>,
     ) -> Result<Controller, String> {
         let (sender, receiver) = mpsc::channel(1000);
         let program = ControllerProgram::new(hddlog);
@@ -86,7 +88,7 @@ impl Controller {
     // Streams inputs from OVSDB and from the data plane.
     pub async fn stream_inputs(
         &self,
-        hddlog: HDDlog,
+        hddlog: Arc<HDDlog>,
         server: String,
         database: String,
     ) {
@@ -110,11 +112,11 @@ impl Controller {
 }
 
 pub struct ControllerProgram {
-    hddlog: HDDlog,
+    hddlog: Arc<HDDlog>,
 }
 
 impl ControllerProgram {
-    pub fn new(hddlog: HDDlog) -> Self {
+    pub fn new(hddlog: Arc<HDDlog>) -> Self {
         Self{hddlog}
     }
 
@@ -490,7 +492,7 @@ struct ControllerActor {
 enum ControllerActorMessage {
     InputMessage {
         _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
-        hddlog: HDDlog,
+        hddlog: Arc<HDDlog>,
         server: String,
         database: String,
     },
