@@ -40,6 +40,8 @@ if test ! -f "$FILE_NAME.p4"; then
 fi
 
 echo "Compiling P4 program..."
+rm -f $FILE_NAME.p4info.bin
+rm -f $FILE_NAME.p4info.txt
 p4c --target bmv2 --arch v1model --p4runtime-files $FILE_NAME.p4info.bin,$FILE_NAME.p4info.txt $FILE_NAME.p4
 
 # Generate DDlog dataplane relations from P4info, using p4info2ddlog.
@@ -60,6 +62,7 @@ if test ! -f "$FILE_NAME.dl"; then
 fi
 
 echo "Compiling DDlog crate..."
+rm -rf ${FILE_NAME}_ddlog &&
 ddlog -i $FILE_NAME.dl &&
 (cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
 

@@ -22,7 +22,10 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt::Write;
-use std::fs::File;
+use std::fs::{
+    File,
+    metadata
+};
 use std::io::{BufRead, BufReader};
 use std::io::Write as IoWrite;
 use std::path::Path;
@@ -39,6 +42,7 @@ pub fn write_toml(
         "differential_datalog",
         "digest2ddlog",
         "types",
+        "ovsdb_client",
         types_dp_name.as_str(),
         prog_name,
     ].iter().cloned().collect();
@@ -56,6 +60,12 @@ pub fn write_toml(
 
     if !digest_path_opt.is_none() {
         writeln!(toml_out, "digest2ddlog = {{path = \"{}\"}}", digest_path_opt.unwrap())?;
+    }
+
+    // If the program directory contains an OVS schemafile, we add the ovsdb client dependency.
+    let ovs_schema_fn = format!("{}/{}.ovsschema", io_dir, prog_name);
+    if metadata(ovs_schema_fn.as_str()).is_ok() {
+        writeln!(toml_out, "ovsdb_client = {{path = \"../ovsdb_client\"}}")?;
     }
 
     let toml_fn_os = OsStr::new(&TOML_FN);
