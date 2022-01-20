@@ -8,3 +8,6 @@
 *.p4i
 *.p4info.bin
 *.p4info.txt
+
+# Rust output
+target/
