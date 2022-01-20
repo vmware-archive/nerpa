@@ -233,7 +233,7 @@ pub fn p4info_to_ddlog(
 
                 let full_type = match mf.get_match_type() {
                     EXACT => bt,
-                    LPM => format!("({}, bit<32>>)", bt),
+                    LPM => format!("({}, bit<32>)", bt),
                     RANGE | TERNARY => format!("({}, {})", bt, bt),
                     OPTIONAL => format!("Option<{}>", bt),
                     UNSPECIFIED => "()".into(),
