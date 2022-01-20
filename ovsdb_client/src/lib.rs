@@ -21,7 +21,6 @@ SOFTWARE.
 extern crate ddlog_ovsdb_adapter;
 extern crate libc;
 extern crate ovsdb_sys;
-extern crate snvs_ddlog;
 
 #[macro_use]
 extern crate memoffset;
