@@ -1,0 +1,5 @@
+mc_mgrp_create 1
+mc_node_create 0 3 4
+mc_node_associate 1 0
+table_add ArpIngress.ForwardL2 SetMulticastGroup ff:ff:ff:ff:ff:ff => 1
+table_add ArpIngress.IPv4Lpm IPv4Route 10.0.1.0/24 => 7

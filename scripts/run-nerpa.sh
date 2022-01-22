@@ -72,7 +72,7 @@ if test ! -f $SWITCH_SETTINGS; then
 fi
 
 SWITCH_FLAGS="--log-console -i 0@veth1 -i 1@veth3 -i 2@veth5 -i 3@veth7 $SWITCH_SETTINGS"
-GRPC_FLAGS="--grpc-server-addr 0.0.0.0:50051 --cpu-port 1010"
+GRPC_FLAGS="--grpc-server-addr 0.0.0.0:50051 --cpu-port 510"
 
 sudo $SWITCH_GRPC_EXEC $SWITCH_FLAGS -- $GRPC_FLAGS & sleep 2 
 

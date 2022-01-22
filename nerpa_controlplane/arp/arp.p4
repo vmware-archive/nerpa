@@ -25,7 +25,7 @@ const bit<16> TYPE_ARP = 0x0806;
 const bit<16> TYPE_CPU_METADATA = 0x081b;
 const bit<16> TYPE_IPV4 = 0x800;
 
-const bit<9> CPU_PORT = 0x1;
+const bit<9> CPU_PORT = 510;
 
 const bit<16> ARP_OP_REQ = 0x0001;
 const bit<16> ARP_OP_REPLY = 0x002;
@@ -36,6 +36,7 @@ header Ethernet_t {
     bit<16> etherType;
 }
 
+@controller_header("packet_in")
 header Cpu_metadata_t {
     bit<8> fromCpu;
     bit<16> origEtherType;

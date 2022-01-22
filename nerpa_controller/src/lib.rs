@@ -534,16 +534,16 @@ impl ControllerActor {
                 let (digest_tx, mut rx) = mpsc::channel::<Update<DDValue>>(1);
                 let ovsdb_tx = mpsc::Sender::clone(&digest_tx);
 
-                // Start streaming digests.
+                // Start streaming messages from the dataplane.
                 // Set the configuration as a notification per-digest.
                 let config_res = self.switch_client.configure_digests(0, 1, 1).await;
                 if config_res.is_err() {
                     panic!("could not configure digests: {:#?}", config_res);
                 }
 
-                // Start the digest actor.
+                // Start the dataplane message actor.
                 let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
-                let mut digest_actor = DigestActor::new(sink, receiver, digest_tx);
+                let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_tx);
                 tokio::spawn(async move { digest_actor.run().await });
 
                 // Start processing inputs from OVSDB.
@@ -577,13 +577,13 @@ impl ControllerActor {
     }
 }
 
-struct DigestActor {
+struct DataplaneResponseActor {
     sink: StreamingCallSink<StreamMessageRequest>,
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
     respond_to: mpsc::Sender<Update<DDValue>>
 }
 
-impl DigestActor {
+impl DataplaneResponseActor {
     fn new(
         sink: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
@@ -594,7 +594,7 @@ impl DigestActor {
 
     // Runs the actor indefinitely and handles each received message.
     async fn run(&mut self) {
-        // Send a master arbitration update. This lets the actor properly stream digests.
+        // Send a master arbitration update. This lets the actor properly stream responses from the dataplane.
         use futures::SinkExt;
 
         let mut update = MasterArbitrationUpdate::new();
@@ -607,12 +607,13 @@ impl DigestActor {
         }
 
         while let Some(result) = self.receiver.next().await {
-            self.handle_digest(result).await;
+            self.handle_dataplane_message(result).await;
         }
     }
 
-    // Handles digest messages by converting each digest into the appropriate DDlog input relation.
-    pub async fn handle_digest(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
+    // Handles dataplane messages based on their type.
+    // Each digest is converted into the appropriate DDlog input relation.
+    pub async fn handle_dataplane_message(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
         match res {
             Err(e) => println!("received GRPC error from p4runtime streaming channel: {:#?}", e),
             Ok(r) => {
@@ -635,9 +636,12 @@ impl DigestActor {
                             }
                         }
                     },
+                    packet(p) => {
+                        println!("received packet from p4runtime streaming channel: {:#?}", p);
+                    }
                     error(e) => println!("received error from p4runtime streaming channel: {:#?}", e),
-                    // no action for arbitration, packet, idle timeout, or other
-                    _ => {},
+                    // no action for arbitration, idle timeout, or other
+                    m => println!("received message from p4runtime streaming channel: {:#?}", m),
                 };
             }
         }
