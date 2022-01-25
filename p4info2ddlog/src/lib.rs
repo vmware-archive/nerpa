@@ -18,7 +18,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-mod digest2ddlog;
+mod dp2ddlog;
 mod controller;
 
 use anyhow::{anyhow, Context, Result};
@@ -397,6 +397,28 @@ pub fn p4info_to_ddlog(
         writeln!(output, ")")?;
     }
 
+    // Format the controller metadata as input relations.
+    // Write the formatted input relation to the output butter.
+    let controller_metadata = p4info.get_controller_packet_metadata();
+    // println!("controller metadata: {:#?}", controller_metadata);
+    // XXX: Should there be only one such relation?
+    for cm in controller_metadata.iter() {
+        // The name 'packet_in' corresponds to messages from the dataplane to the controller.
+        let cm_name = cm.get_preamble().get_name();
+        if !cm_name.eq("packet_in") {
+            continue;
+        }
+
+        let cm_meta = cm.get_metadata();
+        // println!("cm metadata: {:#?}", cm_meta);
+        writeln!(output, "input relation DataplanePacket(")?;
+        for (_i, cmm) in cm_meta.iter().enumerate() {
+            writeln!(output, "    {}: bit<{}>,", cmm.get_name(), cmm.get_bitwidth())?;
+        }
+        writeln!(output, "    packet: Vec<bit<8>>")?;
+        writeln!(output, ")")?;
+    }
+
     let output_fn = format!("{}/{}_dp.dl", io_dir, prog_name);
     let output_filename_os = OsStr::new(&output_fn);
     let output_filename = output_filename_os.to_string_lossy();
@@ -412,7 +434,7 @@ pub fn p4info_to_ddlog(
         crate_arg,
     )?;
 
-    // Generate the external crate `digest2ddlog`.
+    // Generate the external crate `dp2ddlog`.
     // This converts P4 Runtime digests to DDlog inputs.
 
     // If the crate argument was not passed, early return.
@@ -428,9 +450,10 @@ pub fn p4info_to_ddlog(
     // Write the crate's library file.
     let crate_rs_fn = format!("{}/src/lib.rs", crate_str);
     let crate_rs_os = OsStr::new(&crate_rs_fn);
-    let crate_rs_output = digest2ddlog::write_rs(
+    let crate_rs_output = dp2ddlog::write_rs(
         p4info.get_digests(),
         p4info.get_type_info(),
+        p4info.get_controller_packet_metadata(),
         prog_name
     )?;
 
@@ -442,7 +465,7 @@ pub fn p4info_to_ddlog(
     // Write the crate `.toml`.
     let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
     let crate_toml_os = OsStr::new(&crate_toml_fn);
-    let crate_toml_output = digest2ddlog::write_toml(io_dir, prog_name);
+    let crate_toml_output = dp2ddlog::write_toml(io_dir, prog_name);
 
     File::create(crate_toml_os)
         .with_context(|| format!("{}: create failed", crate_toml_fn))?

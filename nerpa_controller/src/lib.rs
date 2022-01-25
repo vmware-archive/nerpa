@@ -33,7 +33,10 @@ use differential_datalog::ddval::DDValue;
 use differential_datalog::program::Update;
 use differential_datalog::record::{Record, IntoRecord};
 
-use digest2ddlog::digest_to_ddlog;
+use dp2ddlog::{
+    digest_to_ddlog,
+    packetin_to_ddlog,
+};
 
 use futures::{
     StreamExt,
@@ -50,6 +53,7 @@ use p4ext::{
 
 use proto::p4runtime::{
     MasterArbitrationUpdate,
+    PacketIn,
     StreamMessageRequest,
     StreamMessageResponse,
 };
@@ -617,27 +621,36 @@ impl DataplaneResponseActor {
         match res {
             Err(e) => println!("received GRPC error from p4runtime streaming channel: {:#?}", e),
             Ok(r) => {
-                let update_opt = r.update;
-                if update_opt.is_none() {
+                let p4_update_opt = r.update;
+                if p4_update_opt.is_none() {
                     println!("received empty response from p4runtime streaming channel");
                 }
 
                 use proto::p4runtime::StreamMessageResponse_oneof_update::*;
 
                 // unwrap() is safe because of none check
-                match update_opt.unwrap() {
+                match p4_update_opt.unwrap() {
                     digest(d) => {
                         for data in d.get_data().iter() {
-                            let update = digest_to_ddlog(d.get_digest_id(), data);
+                            let dd_update = digest_to_ddlog(d.get_digest_id(), data);
                             
-                            let channel_res = self.respond_to.send(update).await;
+                            let channel_res = self.respond_to.send(dd_update).await;
                             if channel_res.is_err() {
                                 println!("could not send response over channel: {:#?}", channel_res);
                             }
                         }
                     },
                     packet(p) => {
-                        println!("received packet from p4runtime streaming channel: {:#?}", p);
+                        let dd_update_opt = packetin_to_ddlog(p);
+                        println!("packetin update: {:#?}", dd_update_opt);
+
+                        if dd_update_opt.is_some() {
+                            let dd_update = dd_update_opt.unwrap();
+                            let channel_res = self.respond_to.send(dd_update).await;
+                            if channel_res.is_err() {
+                                println!("could not send response over channel: {:#?}", channel_res);
+                            }
+                        }
                     }
                     error(e) => println!("received error from p4runtime streaming channel: {:#?}", e),
                     // no action for arbitration, idle timeout, or other

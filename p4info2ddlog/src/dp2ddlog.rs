@@ -20,7 +20,10 @@ SOFTWARE.
 
 use anyhow::Result;
 
-use proto::p4info::Digest;
+use proto::p4info::{
+    ControllerPacketMetadata,
+    Digest,
+};
 use proto::p4types::P4TypeInfo;
 
 use std::fmt::Write;
@@ -28,6 +31,7 @@ use std::fmt::Write;
 pub fn write_rs(
     digests: &[Digest],
     type_info: &P4TypeInfo,
+    controller_metadata: &[ControllerPacketMetadata],
     prog_name: &str
 ) -> Result<String> {
     let mut d2d_out = String::new();
@@ -35,8 +39,10 @@ pub fn write_rs(
     writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
     writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
     writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
+    writeln!(d2d_out, "use proto::p4runtime::{{PacketIn, PacketMetadata}};")?;
 
     writeln!(d2d_out, "use {}_ddlog::Relations;", prog_name)?;
+    writeln!(d2d_out, "use {}_ddlog::typedefs::ddlog_std;", prog_name)?;
     writeln!(d2d_out)?;
     writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
 
@@ -91,7 +97,6 @@ pub fn write_rs(
 
     writeln!(d2d_out, "  }}")?; // close brace for `match`
     writeln!(d2d_out, "}}")?; // close brace for `fn`
-    writeln!(d2d_out)?;
 
     let helpers = "
 fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
@@ -106,8 +111,65 @@ fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
     }
 
     buf
-}";
+}
+";
     writeln!(d2d_out, "{}", helpers)?;
+
+    writeln!(d2d_out, "pub fn packetin_to_ddlog(p: PacketIn) -> Option<Update<DDValue>> {{")?;
+
+    // Filter the controller metadata array to the element with name `packet_in`.
+    // p4c allows there to be only one header with this name/annotation.
+    // If there is a different number of headers, the function outputs None.
+    let packet_metadata_vec: Vec<ControllerPacketMetadata> = controller_metadata
+        .to_vec()
+        .into_iter()
+        .filter(|m| m.get_preamble().get_name() == "packet_in")
+        .collect();
+    println!("controller metadata after filter: {:#?}", packet_metadata_vec);
+    if packet_metadata_vec.len() != 1 {
+        writeln!(d2d_out, "  None")?;
+        writeln!(d2d_out, "}}")?;
+        return Ok(d2d_out);
+    }
+    let packet_metadata = &packet_metadata_vec[0];
+
+    writeln!(d2d_out, "  let payload = p.get_payload();")?;
+    writeln!(d2d_out, "  let metadata = p.get_metadata().to_vec();")?;
+    writeln!(d2d_out, "  Some(Update::Insert{{")?;
+    writeln!(d2d_out, "    relid: Relations::{}_dp_DataplanePacket as RelId,", prog_name)?;
+    writeln!(d2d_out, "    v: types__{}_dp::DataplanePacket {{", prog_name)?;
+    for pm in packet_metadata.get_metadata().iter() {
+        let field_name = pm.get_name();
+
+        let id = pm.get_id();
+        let field_value = {
+            let bitwidth = pm.get_bitwidth();
+            let num_bits = match bitwidth {
+                1..=16 => 16,
+                17..=32 => 32,
+                33..=64 => 64,
+                65..=128 => 128,
+                _ => panic!("unsupported bitwidth: {}", bitwidth),
+            };
+
+            let handle_u8 = if bitwidth <= 8 {" as u8," } else {","};
+
+            let meta_value = format!("metadata.iter().filter(|m| m.get_metadata_id() == {}).cloned().collect::<Vec<PacketMetadata>>()[0].get_value()", id);
+
+            let field_value = format!("NetworkEndian::read_u{}(&pad_left_zeros({}, {})){}", num_bits, meta_value, num_bits / 8, handle_u8);
+
+            field_value
+        };
+
+        writeln!(d2d_out, "      {}: {}", field_name, field_value)?;
+    }
+    writeln!(d2d_out, "      packet: ddlog_std::Vec::from(p.get_payload()),")?;
+    writeln!(d2d_out, "    }}.into_ddvalue(),")?; // close brace for value
+    writeln!(d2d_out, "  }})")?; // close brace for the update
+
+    
+    writeln!(d2d_out, "}}")?; // close brace for `fn`
+    writeln!(d2d_out)?;
 
     Ok(d2d_out)
 }
@@ -120,7 +182,7 @@ pub fn write_toml(
 
     format!("
 [package]
-name = \"digest2ddlog\"
+name = \"dp2ddlog\"
 version = \"0.1.0\"
 authors = [\"Debnil Sur <dsur@vmware.com>\"]
 edition = \"2018\"

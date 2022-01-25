@@ -30,6 +30,7 @@ const bit<9> CPU_PORT = 510;
 const bit<16> ARP_OP_REQ = 0x0001;
 const bit<16> ARP_OP_REPLY = 0x002;
 
+@controller_header("packet_out")
 header Ethernet_t {
     bit<48> dstAddr;
     bit<48> srcAddr;

@@ -47,7 +47,7 @@ p4c --target bmv2 --arch v1model --p4runtime-files $FILE_NAME.p4info.bin,$FILE_N
 # Generate DDlog dataplane relations from P4info, using p4info2ddlog.
 echo "Generating DDlog relations for dataplane using P4 info..."
 cd $NERPA_DIR/p4info2ddlog
-cargo run $FILE_DIR $FILE_NAME $NERPA_DIR/digest2ddlog
+cargo run $FILE_DIR $FILE_NAME $NERPA_DIR/dp2ddlog
 cd $FILE_DIR
 
 # Compile DDlog crate.

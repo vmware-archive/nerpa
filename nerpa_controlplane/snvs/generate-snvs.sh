@@ -15,7 +15,7 @@ ovsdb2ddlog -f snvs.ovsschema --output-file=Snvs_mp.dl
 
 # Generate DDlog output relations from P4info.
 cd ../../p4info2ddlog
-cargo run ../nerpa_controlplane/snvs snvs ../digest2ddlog
+cargo run ../nerpa_controlplane/snvs snvs ../dp2ddlog
 cd ../nerpa_controlplane/snvs
 
 # Generate DDlog crate.
