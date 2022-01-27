@@ -110,7 +110,7 @@ TOOLS_PATH=$SWITCH_EMULATOR_PATH/tools/
 CLI_EXEC=$SWITCH_EMULATOR_PATH/targets/simple_switch/sswitch_CLI.py
 chmod +x $CLI_EXEC
 
-PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC < $COMMANDS_FILE
+sed '/^#/d' $COMMANDS_FILE | PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC
 
 # Optionally, start OVSDB.
 if test -f $FILE_DIR/$FILE_NAME.ovsschema; then
