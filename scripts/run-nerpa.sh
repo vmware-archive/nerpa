@@ -113,23 +113,24 @@ chmod +x $CLI_EXEC
 sed '/^#/d' $COMMANDS_FILE | PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC
 
 # Optionally, start OVSDB.
-if test -f $FILE_DIR/$FILE_NAME.ovsschema; then
+SCHEMA=$FILE_DIR/$FILE_NAME.ovsschema
+if test -f "$SCHEMA"; then
+    # Use the current directory instead of the system ones, for testing purposes.
+    export OVS_LOGDIR=$(pwd)
+    export OVS_RUNDIR=$(pwd)
+    export OVS_SYSCONFDIR=$(pwd)
+    export OVS_PKGDATADIR=$(pwd)
+
     echo "Stopping OVSDB..."
-    $SUDO pkill -f ovsdb-server
+    ovs-appctl -t ovsdb-server exit || :
+
+    echo "Creating database..."
+    DB=$FILE_NAME.db
+    rm -f "$DB"
+    ovsdb-tool create "$DB" "$SCHEMA"
 
     echo "Starting OVSDB..."
-    export PATH=$PATH:/usr/local/share/openvswitch/scripts
-    mkdir -p /usr/local/var/run/openvswitch
-
-    # Run the OVSDB server.
-    echo "Running the OVSDB server..."
-    ovsdb-server --pidfile --detach --log-file \
-        --remote=punix:/usr/local/var/run/openvswitch/db.sock \
-        /usr/local/etc/openvswitch/$FILE_NAME.db
-
-    # Listen for connections.
-    echo "Listening for connections..."
-    ovs-appctl -t ovsdb-server ovsdb-server/add-remote ptcp:6640
+    ovsdb-server --pidfile --detach --log-file --remote=punix:db.sock --remote=ptcp:6640 "$DB"
 fi
 
 # Run the controller.
