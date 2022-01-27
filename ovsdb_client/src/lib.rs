@@ -109,7 +109,7 @@ pub async fn process_ovsdb_inputs(
     mut ctx: context::Context,
     server: String,
     database: String,
-    respond_to: mpsc::Sender<Update<DDValue>>,
+    respond_to: mpsc::Sender<Option<Update<DDValue>>>,
 ) -> Result<(), String> {
     let server_cs = ffi::CString::new(server.as_str()).unwrap();
     let database_cs = ffi::CString::new(database.as_str()).unwrap();
@@ -180,7 +180,7 @@ pub async fn process_ovsdb_inputs(
         };
 
         for update in updates {
-            let send_res = respond_to.send(update).await;
+            let send_res = respond_to.send(Some(update)).await;
             if send_res.is_err() {
                 println!("could not send update from ovsdb client to controller: {:#?}", send_res.err());
             }

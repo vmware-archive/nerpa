@@ -535,7 +535,7 @@ impl ControllerActor {
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
         match msg {
             ControllerActorMessage::InputMessage {_respond_to, hddlog, server, database} => {
-                let (digest_tx, mut rx) = mpsc::channel::<Update<DDValue>>(1);
+                let (digest_tx, mut rx) = mpsc::channel::<Option<Update<DDValue>>>(1);
                 let ovsdb_tx = mpsc::Sender::clone(&digest_tx);
 
                 // Start streaming messages from the dataplane.
@@ -567,8 +567,12 @@ impl ControllerActor {
                 });
 
                 // Process each input.
-                while let Some(inp) = rx.recv().await {
-                    let ddlog_res = self.program.add_input(vec![inp]);
+                while let Some(inp_opt) = rx.recv().await {
+                    if inp_opt.is_none() {
+                        continue;
+                    }
+
+                    let ddlog_res = self.program.add_input(vec![inp_opt.unwrap()]);
                     if ddlog_res.is_ok() {
                         let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
@@ -584,14 +588,14 @@ impl ControllerActor {
 struct DataplaneResponseActor {
     sink: StreamingCallSink<StreamMessageRequest>,
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
-    respond_to: mpsc::Sender<Update<DDValue>>
+    respond_to: mpsc::Sender<Option<Update<DDValue>>>
 }
 
 impl DataplaneResponseActor {
     fn new(
         sink: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
-        respond_to: mpsc::Sender<Update<DDValue>>
+        respond_to: mpsc::Sender<Option<Update<DDValue>>>
     ) -> Self {
         Self { sink, receiver, respond_to }
     }
@@ -632,9 +636,9 @@ impl DataplaneResponseActor {
                 match p4_update_opt.unwrap() {
                     digest(d) => {
                         for data in d.get_data().iter() {
-                            let dd_update = digest_to_ddlog(d.get_digest_id(), data);
+                            let dd_update_opt = digest_to_ddlog(d.get_digest_id(), data);
                             
-                            let channel_res = self.respond_to.send(dd_update).await;
+                            let channel_res = self.respond_to.send(dd_update_opt).await;
                             if channel_res.is_err() {
                                 println!("could not send response over channel: {:#?}", channel_res);
                             }
@@ -644,12 +648,9 @@ impl DataplaneResponseActor {
                         let dd_update_opt = packetin_to_ddlog(p);
                         println!("packetin update: {:#?}", dd_update_opt);
 
-                        if dd_update_opt.is_some() {
-                            let dd_update = dd_update_opt.unwrap();
-                            let channel_res = self.respond_to.send(dd_update).await;
-                            if channel_res.is_err() {
-                                println!("could not send response over channel: {:#?}", channel_res);
-                            }
+                        let channel_res = self.respond_to.send(dd_update_opt).await;
+                        if channel_res.is_err() {
+                            println!("could not send response over channel: {:#?}", channel_res);
                         }
                     }
                     error(e) => println!("received error from p4runtime streaming channel: {:#?}", e),

@@ -28,152 +28,8 @@ use proto::p4types::P4TypeInfo;
 
 use std::fmt::Write;
 
-pub fn write_rs(
-    digests: &[Digest],
-    type_info: &P4TypeInfo,
-    controller_metadata: &[ControllerPacketMetadata],
-    prog_name: &str
-) -> Result<String> {
-    let mut d2d_out = String::new();
-    writeln!(d2d_out, "use proto::p4data::P4Data;")?;
-    writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
-    writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
-    writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
-    writeln!(d2d_out, "use proto::p4runtime::{{PacketIn, PacketMetadata}};")?;
-
-    writeln!(d2d_out, "use {}_ddlog::Relations;", prog_name)?;
-    writeln!(d2d_out, "use {}_ddlog::typedefs::ddlog_std;", prog_name)?;
-    writeln!(d2d_out)?;
-    writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Update<DDValue> {{")?;
-
-    // This function works because P4 Runtime only allows a digest to be a struct with bitstring fields.
-    writeln!(d2d_out, "  let members = digest_data.get_field_struct().get_members();")?;
-    writeln!(d2d_out, "  match digest_id {{")?;
-
-    for d in digests.iter() {
-        let digest_name = d.get_preamble().get_name();
-        let digest_structs = type_info.get_structs().get(digest_name).unwrap();
-
-        writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
-
-        writeln!(d2d_out, "      Update::Insert {{")?;
-        writeln!(d2d_out, "        relid: Relations::{}_dp_{} as RelId,", prog_name, digest_name)?;
-        writeln!(d2d_out, "        v: types__{}_dp::{} {{", prog_name, digest_name)?;
-
-        // Write Update value fields using digest struct members.
-        for (mi, m) in digest_structs.get_members().iter().enumerate() {
-            let member_type_spec = m.get_type_spec();
-
-            if !member_type_spec.has_bitstring() || !member_type_spec.get_bitstring().has_bit() {
-                panic!("digest struct fields can only have bitstrings of type bit");
-            }
-
-            let field_name = m.get_name();
-
-            let field_value = {
-                let bitwidth = member_type_spec.get_bitstring().get_bit().get_bitwidth();
-
-                let num_bits = match bitwidth {
-                    1..=8 => 8,
-                    9..=16 => 16,
-                    17..=32 => 32,
-                    33..=64 => 64,
-                    65..=128 => 128,
-                    _ => panic!("unsupported bitwidth: {}", bitwidth),
-                };
-
-                // Get the bitstring, pad it with zeros, and convert it to the correct uint.
-                format!("NetworkEndian::read_u{}(&pad_left_zeros(members[{}].get_bitstring(), {}))", num_bits, mi, num_bits / 8)
-            };
-
-            writeln!(d2d_out, "          {}: {},", field_name, field_value)?;
-        }
-
-        writeln!(d2d_out, "        }}.into_ddvalue(),")?; // close brace for Update.v
-        writeln!(d2d_out, "      }}")?; // close brace for Update
-        writeln!(d2d_out, "    }},")?; // close brace for match arm
-    }
-    writeln!(d2d_out, "    _ => panic!(\"Invalid digest ID: {{}}\", digest_id)")?;
-
-    writeln!(d2d_out, "  }}")?; // close brace for `match`
-    writeln!(d2d_out, "}}")?; // close brace for `fn`
-
-    let helpers = "
-fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
-    if inp.len() > size {
-        panic!(\"input buffer exceeded provided length\");
-    }
-
-    let mut buf = vec![0; size];
-    let offset = size - inp.len();
-    for i in 0..inp.len() {
-        buf[i + offset] = inp[i];
-    }
-
-    buf
-}
-";
-    writeln!(d2d_out, "{}", helpers)?;
-
-    writeln!(d2d_out, "pub fn packetin_to_ddlog(p: PacketIn) -> Option<Update<DDValue>> {{")?;
-
-    // Filter the controller metadata array to the element with name `packet_in`.
-    // p4c allows there to be only one header with this name/annotation.
-    // If there is a different number of headers, the function outputs None.
-    let packet_metadata_vec: Vec<ControllerPacketMetadata> = controller_metadata
-        .to_vec()
-        .into_iter()
-        .filter(|m| m.get_preamble().get_name() == "packet_in")
-        .collect();
-    println!("controller metadata after filter: {:#?}", packet_metadata_vec);
-    if packet_metadata_vec.len() != 1 {
-        writeln!(d2d_out, "  None")?;
-        writeln!(d2d_out, "}}")?;
-        return Ok(d2d_out);
-    }
-    let packet_metadata = &packet_metadata_vec[0];
-
-    writeln!(d2d_out, "  let payload = p.get_payload();")?;
-    writeln!(d2d_out, "  let metadata = p.get_metadata().to_vec();")?;
-    writeln!(d2d_out, "  Some(Update::Insert{{")?;
-    writeln!(d2d_out, "    relid: Relations::{}_dp_DataplanePacket as RelId,", prog_name)?;
-    writeln!(d2d_out, "    v: types__{}_dp::DataplanePacket {{", prog_name)?;
-    for pm in packet_metadata.get_metadata().iter() {
-        let field_name = pm.get_name();
-
-        let id = pm.get_id();
-        let field_value = {
-            let bitwidth = pm.get_bitwidth();
-            let num_bits = match bitwidth {
-                1..=16 => 16,
-                17..=32 => 32,
-                33..=64 => 64,
-                65..=128 => 128,
-                _ => panic!("unsupported bitwidth: {}", bitwidth),
-            };
-
-            let handle_u8 = if bitwidth <= 8 {" as u8," } else {","};
-
-            let meta_value = format!("metadata.iter().filter(|m| m.get_metadata_id() == {}).cloned().collect::<Vec<PacketMetadata>>()[0].get_value()", id);
-
-            let field_value = format!("NetworkEndian::read_u{}(&pad_left_zeros({}, {})){}", num_bits, meta_value, num_bits / 8, handle_u8);
-
-            field_value
-        };
-
-        writeln!(d2d_out, "      {}: {}", field_name, field_value)?;
-    }
-    writeln!(d2d_out, "      packet: ddlog_std::Vec::from(p.get_payload()),")?;
-    writeln!(d2d_out, "    }}.into_ddvalue(),")?; // close brace for value
-    writeln!(d2d_out, "  }})")?; // close brace for the update
-
-    
-    writeln!(d2d_out, "}}")?; // close brace for `fn`
-    writeln!(d2d_out)?;
-
-    Ok(d2d_out)
-}
-
+/// Writes the Cargo.toml for the dp2ddlog crate.
+/// Generated because the DDlog dependency paths depend on the Nerpa program name.
 pub fn write_toml(
     io_dir: &str,
     prog_name: &str,
@@ -206,4 +62,181 @@ types__{}_dp = {{path = \"{}/types/{}_dp\"}}
         ddlog_path,
         prog_name,
     )
+}
+
+/// Writes the dp2ddlog Rust program.
+/// Using P4Info, generates code to convert digests and packet metadata to input relations.
+pub fn write_rs(
+    digests: &[Digest],
+    type_info: &P4TypeInfo,
+    controller_metadata: &[ControllerPacketMetadata],
+    prog_name: &str
+) -> Result<String> {
+    let mut d2d_out = String::new();
+    writeln!(d2d_out, "use proto::p4data::P4Data;")?;
+    writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
+    writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
+    writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
+    writeln!(d2d_out, "use proto::p4runtime::{{PacketIn, PacketMetadata}};")?;
+
+    writeln!(d2d_out, "use {}_ddlog::Relations;", prog_name)?;
+    writeln!(d2d_out, "use {}_ddlog::typedefs::ddlog_std;", prog_name)?;
+    writeln!(d2d_out)?;
+
+    // unwrap is safe, because write_digest cannot return an error result
+    let digest_out = write_digest(digests, type_info, prog_name).unwrap();
+    writeln!(d2d_out, "{}", digest_out)?;
+
+    // unwrap is safe, because write_packetin cannot return an error result
+    let packetin_out = write_packetin(controller_metadata, prog_name).unwrap();
+    writeln!(d2d_out, "{}", packetin_out)?;
+
+    let helpers = "
+fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
+    if inp.len() > size {
+        panic!(\"input buffer exceeded provided length\");
+    }
+
+    let mut buf = vec![0; size];
+    let offset = size - inp.len();
+    for i in 0..inp.len() {
+        buf[i + offset] = inp[i];
+    }
+
+    buf
+}";
+    writeln!(d2d_out, "{}", helpers)?;
+
+
+    Ok(d2d_out)
+}
+
+fn write_digest(
+    digests: &[Digest],
+    type_info: &P4TypeInfo,
+    prog_name: &str,
+) -> Result<String> {
+    let mut d2d_out = String::new();
+
+    writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Option<Update<DDValue>> {{")?;
+    if digests.len() == 0 {
+        writeln!(d2d_out, "  return None;")?;
+        writeln!(d2d_out, "}}")?;
+        return Ok(d2d_out);
+    }
+
+    // P4 Runtime only allows a digest to be a struct with bitstring fields.
+    writeln!(d2d_out, "  let members = digest_data.get_field_struct().get_members();")?;
+    writeln!(d2d_out, "  match digest_id {{")?;
+    for d in digests.iter() {
+        let digest_name = d.get_preamble().get_name();
+        let digest_structs = type_info.get_structs().get(digest_name).unwrap();
+
+        writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
+
+        writeln!(d2d_out, "      Update::Insert {{")?;
+        writeln!(d2d_out, "        relid: Relations::{}_dp_{} as RelId,", prog_name, digest_name)?;
+        writeln!(d2d_out, "        v: types__{}_dp::{} {{", prog_name, digest_name)?;
+
+        // Write Update value fields using digest struct members.
+        for (mi, m) in digest_structs.get_members().iter().enumerate() {
+            let member_type_spec = m.get_type_spec();
+
+            if !member_type_spec.has_bitstring() || !member_type_spec.get_bitstring().has_bit() {
+                panic!("digest struct fields can only have bitstrings of type bit");
+            }
+
+            let field_name = m.get_name();
+
+            let field_value = {
+                let bitwidth = member_type_spec.get_bitstring().get_bit().get_bitwidth();
+
+                let num_bits = match bitwidth {
+                    1..=16 => 16,
+                    17..=32 => 32,
+                    33..=64 => 64,
+                    65..=128 => 128,
+                    _ => panic!("unsupported bitwidth: {}", bitwidth),
+                };
+
+                let handle_u8 = if bitwidth <= 8 {" as u8" } else {""};
+
+                // Get the bitstring, pad it with zeros, and convert it to the correct uint.
+                format!("NetworkEndian::read_u{}(&pad_left_zeros(members[{}].get_bitstring(), {})){}", num_bits, mi, num_bits / 8, handle_u8)
+            };
+
+            writeln!(d2d_out, "          {}: {},", field_name, field_value)?;
+        }
+
+        writeln!(d2d_out, "        }}.into_ddvalue(),")?; // close brace for Update.v
+        writeln!(d2d_out, "      }}")?; // close brace for Update
+        writeln!(d2d_out, "    }},")?; // close brace for match arm
+    }
+    writeln!(d2d_out, "    _ => panic!(\"Invalid digest ID: {{}}\", digest_id)")?;
+
+    writeln!(d2d_out, "  }}")?; // close brace for `match`
+    writeln!(d2d_out, "}}")?; // close brace for `fn`
+
+    return Ok(d2d_out);
+}
+
+fn write_packetin(
+    controller_metadata: &[ControllerPacketMetadata],
+    prog_name: &str
+) -> Result<String> {
+    let mut d2d_out = String::new();
+
+    writeln!(d2d_out, "pub fn packetin_to_ddlog(p: PacketIn) -> Option<Update<DDValue>> {{")?;
+
+    // Filter the controller metadata array to the element with name `packet_in`.
+    // p4c allows there to be only one header with this name/annotation.
+    // If there is a different number of headers, the function outputs None.
+    let packet_metadata_vec: Vec<ControllerPacketMetadata> = controller_metadata
+        .to_vec()
+        .into_iter()
+        .filter(|m| m.get_preamble().get_name() == "packet_in")
+        .collect();
+    if packet_metadata_vec.len() != 1 {
+        writeln!(d2d_out, "  return None;")?;
+        writeln!(d2d_out, "}}")?;
+        return Ok(d2d_out);
+    }
+    let packet_metadata = &packet_metadata_vec[0];
+
+    writeln!(d2d_out, "  let payload = p.get_payload();")?;
+    writeln!(d2d_out, "  let metadata = p.get_metadata().to_vec();")?;
+    writeln!(d2d_out, "  Some(Update::Insert{{")?;
+    writeln!(d2d_out, "    relid: Relations::{}_dp_DataplanePacket as RelId,", prog_name)?;
+    writeln!(d2d_out, "    v: types__{}_dp::DataplanePacket {{", prog_name)?;
+    for pm in packet_metadata.get_metadata().iter() {
+        let field_name = pm.get_name();
+
+        let id = pm.get_id();
+        let field_value = {
+            let bitwidth = pm.get_bitwidth();
+            let num_bits = match bitwidth {
+                1..=16 => 16,
+                17..=32 => 32,
+                33..=64 => 64,
+                65..=128 => 128,
+                _ => panic!("unsupported bitwidth: {}", bitwidth),
+            };
+
+            let handle_u8 = if bitwidth <= 8 {" as u8" } else {""};
+
+            let meta_value = format!("metadata.iter().filter(|m| m.get_metadata_id() == {}).cloned().collect::<Vec<PacketMetadata>>()[0].get_value()", id);
+
+            let field_value = format!("NetworkEndian::read_u{}(&pad_left_zeros({}, {})){}", num_bits, meta_value, num_bits / 8, handle_u8);
+
+            field_value
+        };
+
+        writeln!(d2d_out, "      {}: {},", field_name, field_value)?;
+    }
+    writeln!(d2d_out, "      packet: ddlog_std::Vec::from(p.get_payload()),")?;
+    writeln!(d2d_out, "    }}.into_ddvalue(),")?; // close brace for value
+    writeln!(d2d_out, "  }})")?; // close brace for the update
+    writeln!(d2d_out, "}}")?; // close brace for `fn`
+
+    return Ok(d2d_out);
 }

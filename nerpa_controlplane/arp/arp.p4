@@ -30,14 +30,12 @@ const bit<9> CPU_PORT = 510;
 const bit<16> ARP_OP_REQ = 0x0001;
 const bit<16> ARP_OP_REPLY = 0x002;
 
-@controller_header("packet_out")
 header Ethernet_t {
     bit<48> dstAddr;
     bit<48> srcAddr;
     bit<16> etherType;
 }
 
-@controller_header("packet_in")
 header Cpu_metadata_t {
     bit<8> fromCpu;
     bit<16> origEtherType;
@@ -72,11 +70,18 @@ header Arp_t {
     bit<32> dstIP;
 }
 
+@controller_header("packet_in")
+header Packetin_t {
+    bit<48> mac;
+    bit<16> port;
+}
+
 struct headers {
     Ethernet_t ethernet;
     Cpu_metadata_t cpu_metadata;
     Ipv4_t ipv4;
     Arp_t arp;
+    Packetin_t packet_in;
 }
 
 struct metadata {}
@@ -155,6 +160,10 @@ control ArpIngress(
 
     action SendToCpu() {
         CpuMetadataEncap();
+
+        hdr.packet_in.port = (bit<16>) standard_metadata.ingress_port;
+        hdr.packet_in.mac = hdr.arp.srcEth;
+
         standard_metadata.egress_spec = CPU_PORT;
     }
 
