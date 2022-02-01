@@ -73,7 +73,9 @@ header Arp_t {
 @controller_header("packet_in")
 header Packetin_t {
     bit<48> mac;
-    bit<16> port;
+    bit<9> port;
+    bit<32> ip;
+    bit<7> pad;
 }
 
 struct headers {
@@ -161,8 +163,9 @@ control ArpIngress(
     action SendToCpu() {
         CpuMetadataEncap();
 
-        hdr.packet_in.port = (bit<16>) standard_metadata.ingress_port;
+        hdr.packet_in.port = standard_metadata.ingress_port;
         hdr.packet_in.mac = hdr.arp.srcEth;
+        hdr.packet_in.ip = hdr.arp.srcIP;
 
         standard_metadata.egress_spec = CPU_PORT;
     }

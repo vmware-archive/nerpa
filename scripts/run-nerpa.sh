@@ -111,4 +111,4 @@ if test -f $FILE_DIR/$FILE_NAME.ovsschema; then
 fi
 
 # Run the controller.
-(cd $NERPA_DIR/nerpa_controller && cargo run -- --ddlog-record=replay.txt $FILE_DIR $FILE_NAME && cd $NERPA_DIR)
+(cd $NERPA_DIR/nerpa_controller && RUST_BACKTRACE=FULL cargo run -- --ddlog-record=replay.txt $FILE_DIR $FILE_NAME && cd $NERPA_DIR)

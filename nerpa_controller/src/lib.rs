@@ -440,7 +440,7 @@ impl SwitchClient {
             Record::Bool(false) => 0,
             Record::Int(i) => i.to_u64().unwrap(),
             // TODO: If required, handle other types.
-            _ => panic!(),
+            _ => panic!("extracting unsupported record: {:#?}", r),
         }
     }
 
