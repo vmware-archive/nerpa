@@ -26,6 +26,7 @@ use std::path::PathBuf;
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=NERPA_DEPS");
 
     let bindings = bindgen::Builder::default()
         .clang_arg("-Iovs/include")
@@ -38,7 +39,10 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
-    
+
+    if let Ok(nerpa_deps) = env::var("NERPA_DEPS") {
+        println!("cargo:rustc-link-search={}/inst/lib", nerpa_deps);
+    }
     println!("cargo:rustc-link-search=."); 
     println!("cargo:rustc-link-search=./ovs/lib/");
     println!("cargo:rustc-link-search=/usr/local/lib/");

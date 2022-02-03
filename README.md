@@ -51,3 +51,18 @@ Building the controller program fails at first. This is due to importing the `*_
 A built Nerpa program can be run using the runtime script. This script (1) configures and runs a P4 software switch; (2) configures and runs the OVSDB management plane; and (3) runs the controller program. Configuring the software switch requires a `commands.txt` file in the same subdirectory. Configuring the OVSDB management plane requires an OVSDB schema file in the same subdirectory, e.g. `nerpa_controlplane/sample/sample.ovsschema`.
 
 The runtime script's usage is the same as the build script: `./scripts/run-nerpa.sh nerpa_controlplane/sample sample`.
+
+### Test
+The snvs sample program includes an automatic test program to check that the MAC learning table functions as expected.  To use it, first build it with:
+```
+(cd nerpa_controlplane/snvs/ && cargo build)
+```
+Then start the behavioral model with the `-s` option to enable the automated tests:
+```
+scripts/run-nerpa.sh -s nerpa_controlplane/snvs snvs
+```
+Once it's started (which takes about 2 seconds), from another console run the tests:
+```
+nerpa_controlplane/snvs/target/debug/test-snvs ipc://bmv2.ipc
+```
+The test will print its progress.  If it succeeds, it will print `Success!`  On failure, it will panic before that point.
