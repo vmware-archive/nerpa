@@ -22,6 +22,11 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
+use byteorder::{
+    ByteOrder,
+    BigEndian,
+};
+
 use differential_datalog::api::HDDlog;
 
 use differential_datalog::{
@@ -31,11 +36,16 @@ use differential_datalog::{
 }; 
 use differential_datalog::ddval::DDValue;
 use differential_datalog::program::Update;
-use differential_datalog::record::{Record, IntoRecord};
+use differential_datalog::record::{
+    CollectionKind,
+    IntoRecord,
+    Name,
+    Record,
+};
 
 use dp2ddlog::{
     digest_to_ddlog,
-    packetin_to_ddlog,
+    packet_in_to_ddlog,
 };
 
 use futures::{
@@ -48,14 +58,19 @@ use grpcio::{
 
 use p4ext::{
     ActionRef,
+    MatchField,
+    MatchType,
     Table
 };
 
 use proto::p4runtime::{
+    Action,
+    Action_Param,
+    FieldMatch,
     MasterArbitrationUpdate,
-    PacketIn,
     StreamMessageRequest,
     StreamMessageResponse,
+    TableAction,
 };
 use proto::p4runtime_grpc::P4RuntimeClient;
 use protobuf::Message;
@@ -224,94 +239,149 @@ impl SwitchClient {
     // Pushes DDlog outputs as table entries in the P4-enabled switch.
     pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
+        let mut packets = Vec::new();
 
         let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
-        for (_rel_id, output_map) in (*delta).clone().into_iter() {
+        for (_, output_map) in (*delta).clone().into_iter() {
             for (value, weight) in output_map {
                 let record = value.clone().into_record();
                 
                 match record {
-                    Record::NamedStruct(name, recs) => {
+                    Record::NamedStruct(output_name, output_records) => {
                         // Check if the record corresponds to the multicast group.
                         // We assume that there will be exactly one relevant DDlog relation,
                         // and that its name includes "multicast".
-                        if name.as_ref().to_lowercase().contains("multicast") {
-                            self.construct_multicast_update(recs.clone(), weight).await;
+                        if output_name.as_ref().to_lowercase().contains("multicast") {
+                            self.construct_multicast_update(output_records.clone(), weight).await;
+                        }
+
+                        // Check for output relations that contain packets as Records.
+                        // Convert those packets to byte-vectors, and add them to the packet queue.
+                        // This queue is sent after updates are pushed to the switch.
+                        if output_name.as_ref().to_lowercase().contains("packet") {
+                            // The output record corresponding to a packet should be a Record::Array.
+                            // Any other output records correspond to PacketMetadata with 'packet_in'.
+                            // TODO: Handle the other output records that are 'packet_in'.granite
+                            for output_record in output_records.iter() {
+                                if let (output_record_name, Record::Array(array_kind, array_records)) = output_record {
+                                    if output_record_name.as_ref().to_lowercase().contains("packet")
+                                    && array_kind == &CollectionKind::Vector {
+                                        let mut packet = Vec::<u8>::new();
+                                        for array_record in array_records.iter() {
+                                            packet.append(&mut Self::record_to_value(array_record, None));
+                                        }
+                                        packets.push(packet);
+                                    }
+                                }
+                            }
                         }
 
                         // Translate the record table name to the P4 table name.
-                        let table = match Self::get_matching_table(name.to_string(), switch.tables.clone()) {
+                        let table = match Self::get_matching_table(output_name.to_string(), switch.tables.clone()) {
                             Some(t) => t,
                             None => continue,
                         };
-                        let table_name = table.preamble.name;
+                        let table_id = table.preamble.id;
 
-                        // Iterate through fields in the record.
-                        // Map all match keys to values.
-                        // If the field is the action, extract the action, name, and parameters.
-                        let mut action_name: Option<String> = Self::get_default_entry_action(&table.actions);
-                        let matches = &mut HashMap::<std::string::String, u64>::new();
-                        let params = &mut HashMap::<std::string::String, u64>::new();
+                        let mut action_opt: Option<TableAction> = None;
+                        let mut field_match_vec = Vec::<FieldMatch>::new();
                         let mut priority: i32 = 0;
-                        for (_, (fname, v)) in recs.iter().enumerate() {
-                            let match_name: String = fname.to_string();
+
+                        // Iterate over all output records, processing action, priority, and match fields.
+                        for (rec_name, record) in output_records.iter() {
+                            let match_name = rec_name.to_string();
 
                             match match_name.as_str() {
                                 "action" => {
-                                    match v {
-                                        Record::NamedStruct(name, arecs) => {
-                                            // Find matching action name from P4 table.
-                                            action_name = Self::get_matching_action_name(name.to_string(), table.actions.clone());
-    
-                                            // Extract param values from action's records.
-                                            for (_, (afname, aval)) in arecs.iter().enumerate() {
-                                                params.insert(afname.to_string(), Self::extract_record_value(aval));
-                                            }
+                                    match record {
+                                        Record::NamedStruct(name, action_recs) => {
+                                            action_opt = Self::record_to_action(
+                                                &name,
+                                                action_recs.to_vec(),
+                                                table.actions.clone(),
+                                            );
                                         },
                                         _ => println!("action was incorrectly formed!")
                                     }
                                 },
                                 "priority" => {
-                                    priority = Self::extract_record_value(v) as i32;
+                                    priority = BigEndian::read_i32(&Self::record_to_value(record, Some(32)));
                                 },
-                                _ => match v {
-                                    Record::NamedStruct(name, _) if name == "ddlog_std::None" => (),
-                                    Record::NamedStruct(name, vec) if name == "ddlog_std::Some" => {
-                                        matches.insert(match_name, Self::extract_record_value(&vec[0].1));
-                                    },
-                                    _ => {
-                                        matches.insert(match_name, Self::extract_record_value(v));
-                                    },
+                                _ => {
+                                    // Find a match field with the matching name.
+                                    let matching_mfs: Vec<MatchField> = table.match_fields
+                                        .iter()
+                                        .filter(|m| m.preamble.name == match_name)
+                                        .cloned()
+                                        .collect();
+                                    if matching_mfs.len() != 1 {
+                                        continue;
+                                    }
+                                    let mf = &matching_mfs[0];
+
+                                    let fm_opt = Self::record_to_match(record, mf);
+                                    if fm_opt.is_some() {
+                                        field_match_vec.push(fm_opt.unwrap());
+                                    }
                                 },
                             }
                         }
 
                         // If we found a table and action, construct a P4 table entry update.
-                        if let Some(action_name) = action_name {
+                        if let Some(table_action) = action_opt {
                             let update = p4ext::build_table_entry_update(
                                 proto::p4runtime::Update_Type::INSERT,
-                                table_name.as_str(),
-                                action_name.as_str(),
-                                params,
-                                matches,
+                                table_id,
+                                table_action,
+                                field_match_vec,
                                 priority,
-                                self.device_id,
-                                &self.target,
-                                &self.client,
-                            ).unwrap_or_else(|err| panic!("could not build table update: {}", err));
+                            );
                             updates.push(update);
                         }
-                    }
+                    },
                     _ => {
-                        println!("record was not named struct");
+                        println!("Output Record was not NamedStruct");
+                        continue;
                     }
                 }
             }
         }
 
-        p4ext::write(updates, self.device_id, self.role_id, &self.target, &self.client)
+        let write_res = p4ext::write(
+            updates,
+            self.device_id,
+            self.role_id,
+            &self.target,
+            &self.client,
+        );
+        if write_res.is_err() {
+            return write_res;
+        }
+
+        // Send packets to the switch, if found in the output relation.
+        if packets.len() > 0 {
+            // Establish a connection to the dataplane.
+            use futures::SinkExt;
+
+            let (mut sink, receiver) = self.client.stream_channel().unwrap();
+
+            for payload in packets {
+                let mut packet_out = proto::p4runtime::PacketOut::new();
+                packet_out.set_payload(payload);
+
+                let mut req = StreamMessageRequest::new();
+                req.set_packet(packet_out);
+
+                let req_res = sink.send((req, grpcio::WriteFlags::default())).await;
+                if req_res.is_err() {
+                    panic!("failed to send request over stream channel: {:#?}", req_res.err());
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn construct_multicast_update(
@@ -338,9 +408,9 @@ impl SwitchClient {
         for (k, v) in recs.iter() {
             let rec_name = k.as_ref().to_lowercase();
             if rec_name.contains("id") {
-                mcast_id = Self::extract_record_value(v) as u32;
+                mcast_id = BigEndian::read_u32(&Self::record_to_value(v, Some(32)));
             } else if rec_name.contains("port") {
-                mcast_port = Self::extract_record_value(v) as u32;
+                mcast_port = BigEndian::read_u32(&Self::record_to_value(v, Some(32)));
             } else {
                 println!("multicast relation field named {} did not include port or id", rec_name);
             }
@@ -433,15 +503,229 @@ impl SwitchClient {
         }
     }
 
-    fn extract_record_value(r: &Record) -> u64 {
-        use num_traits::cast::ToPrimitive;
-        match r {
-            Record::Bool(true) => 1,
-            Record::Bool(false) => 0,
-            Record::Int(i) => i.to_u64().unwrap(),
-            // TODO: If required, handle other types.
-            _ => panic!("extracting unsupported record: {:#?}", r),
+    // Convert a DDlog Record and P4Info Actions to a P4Runtime TableAction.
+    fn record_to_action(
+        record_name: &Name,
+        record_actions: Vec<(Name, Record)>,
+        action_refs: Vec<ActionRef>,
+    ) -> Option<TableAction> {
+        // Find the matching action reference in the actions, formatted as per P4Info.
+        // If no match exists, early-return None.
+        let action_ref_opt: Option<ActionRef> = {
+            let mut action_ref_opt: Option<ActionRef> = None;
+
+            for action_ref in action_refs.iter() {
+                let action_name = &action_ref.action.preamble.name;
+                let action_vec = action_name
+                    .split('.')
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>();
+                
+                let action_substr_opt = action_vec.last();
+                if action_substr_opt.is_some() {
+                    if record_name.contains(action_substr_opt.unwrap()) {
+                        action_ref_opt = Some(action_ref.clone());
+                    }
+                }
+            }
+
+            action_ref_opt
+        };
+
+        if action_ref_opt.is_none() {
+            return None;
         }
+
+        // Store the values corresponding to each parameter in the action.
+        // Iterate through action param records, and map each name to a value as a byte-vector.
+        let mut action_params_map = HashMap::<String, Vec<u8>>::new();
+        for (ra_name, ra_record) in record_actions.iter() {
+            action_params_map.insert(
+                ra_name.to_string(),
+                Self::record_to_value(ra_record, None)
+            );
+        }
+
+        let action = action_ref_opt.unwrap().action;
+        let action_id = action.preamble.id;
+
+        // Convert the DDlog Record to P4Runtime Action_Params.
+        let mut params_vec = Vec::<Action_Param>::new();
+        for param in action.params {
+            let mut action_param = Action_Param::new();
+            action_param.set_param_id(param.preamble.id);
+
+            let param_value = action_params_map[&param.preamble.name].clone();
+            action_param.set_value(param_value);
+
+            params_vec.push(action_param);
+        }
+
+        // Define the Action and TableAction.
+        let mut action = Action::new();
+        action.set_action_id(action_id);
+        action.set_params(protobuf::RepeatedField::from_vec(params_vec));
+
+        let mut table_action = TableAction::new();
+        table_action.set_action(action);
+        
+        Some(table_action)
+    }
+
+    // Convert a DDlog Record, using P4Info MatchFields, to a P4Runtime FieldMatch.
+    fn record_to_match(
+        r: &Record,
+        match_field: &MatchField,
+    ) -> Option<FieldMatch> {
+        let bit_width = match_field.bit_width;
+        let bit_width_opt = Some(bit_width);
+
+        let mut field_match = FieldMatch::new();
+        field_match.set_field_id(match_field.preamble.id);
+
+        match match_field.match_type {
+            MatchType::Exact => {
+                // In an Exact match, we convert the record value to a byte-vector.
+                let mut exact_match = proto::p4runtime::FieldMatch_Exact::new();
+                exact_match.set_value(Self::record_to_value(r, bit_width_opt));
+                field_match.set_exact(exact_match);
+            },
+            MatchType::Lpm => {
+                let mut lpm_match = proto::p4runtime::FieldMatch_LPM::new();
+
+                // The value for an LPM match should be a Tuple.
+                // If not, return None.
+                if let Record::Tuple(t) = r {
+                    if t.len() != 2 {
+                        println!("match field LPM Tuple had len {}, expected 2", t.len());
+                        return None;
+                    }
+                    
+                    let value = Self::record_to_value(&t[0], bit_width_opt);
+                    lpm_match.set_value(value);
+
+                    let prefix_vec = Self::record_to_value(&t[1], bit_width_opt);
+                    let prefix_len: i32 = BigEndian::read_i32(&prefix_vec);
+                    lpm_match.set_prefix_len(prefix_len);
+
+                    field_match.set_lpm(lpm_match);
+                } else {
+                    println!("Record for a Field Match of type LPM must be a Tuple");
+                    return None;
+                }
+            },
+            MatchType::Ternary => {
+                let mut ternary_match = proto::p4runtime::FieldMatch_Ternary::new();
+
+                // The value for a Ternary match should be a Tuple.
+                // If not, return None.
+                if let Record::Tuple(t) = r {
+                    if t.len() != 2 {
+                        println!("match field Ternary Tuple had len {}, expected 2", t.len());
+                        return None;
+                    }
+
+                    // TODO: Check if we need to left-pad value/mask.
+                    let value = Self::record_to_value(&t[0], bit_width_opt);
+                    ternary_match.set_value(value);
+
+                    let mask = Self::record_to_value(&t[1], bit_width_opt);
+                    ternary_match.set_mask(mask);
+                } else {
+                    println!("Record for a Field Match of type Ternary must be a Tuple");
+                    return None;
+                }
+
+                field_match.set_ternary(ternary_match);
+            },
+            MatchType::Range => {
+                let mut range_match = proto::p4runtime::FieldMatch_Range::new();
+
+                // The value for a Range match should be a Tuple. If not, return None.
+                if let Record::Tuple(t) = r {
+                    if t.len() != 2 {
+                        println!("match field Range Tuple had len {}, expected 2", t.len());
+                        return None;
+                    }
+
+                    let low = Self::record_to_value(&t[0], bit_width_opt);
+                    range_match.set_low(low);
+
+                    let high = Self::record_to_value(&t[1], bit_width_opt);
+                    range_match.set_high(high);
+                } else {
+                    println!("Record for a Field Match of type Range must be a Tuple");
+                    return None;
+                }
+
+                field_match.set_range(range_match);
+            },
+            MatchType::Optional => {
+                let mut optional_match = proto::p4runtime::FieldMatch_Optional::new();
+
+                // The value for an Optional match should be a NamedStruct. If not, return None.
+                if let Record::NamedStruct(record_name, record_value) = r {
+                    let value = match record_name.to_string().as_str() {
+                        "ddlog_std::Some" => Self::record_to_value(&record_value[0].1, bit_width_opt),
+                        "ddlog_std::None" => Vec::<u8>::new(),
+                        _ => {
+                            return None;
+                        }
+                    };
+
+                    optional_match.set_value(value);
+                } else {
+                    println!("Record for a Field Match of type Optional must be a NamedStruct");
+                    return None;
+                }
+
+                field_match.set_optional(optional_match);
+            },
+            // Includes unspecified and other types.
+            _ => {
+                let mut other = protobuf::well_known_types::Any::new();
+
+                let value = Self::record_to_value(r, bit_width_opt);
+                other.set_value(value);
+                field_match.set_other(other);
+
+                return None;
+            }
+        }
+        
+        return Some(field_match);
+    }
+
+    fn record_to_value(
+        r: &Record,
+        bit_width_opt: Option<i32>,
+    ) -> Vec<u8> {
+        let mut v = Vec::<u8>::new();
+        // TODO: Handle additional possible Record values.
+        match r {
+            Record::Bool(b) => v.push(*b as u8),
+            Record::Int(i) => {
+                let (_, int_bytes) = i.to_bytes_be();
+                v = int_bytes;
+            },
+            _ => panic!("attempted to extract value from unsupported record type: {:#?}", r),
+        }
+
+        // If a bit-width was passed, left-pad the appropriate number of zeros.
+        if bit_width_opt.is_some() {
+            let bit_width = bit_width_opt.unwrap() as usize;
+
+            // Compute the appropriate number of 0s to prepend.
+            let num_total_bytes = bit_width / 8 + (bit_width % 8 != 0) as usize;
+            let num_curr_bytes = v.len();
+            let num_zero_bytes = num_total_bytes - num_curr_bytes;
+            
+            let mut padded_v = vec![0; num_zero_bytes];
+            padded_v.append(&mut v);
+            v = padded_v;
+        }
+
+        return v;
     }
 
     fn get_matching_table(record_name: String, tables: Vec<Table>) -> Option<Table> {
@@ -456,42 +740,6 @@ impl SwitchClient {
         }
 
         None
-    }
-
-    // Finds and returns the name of the Action in 'actions' whose
-    // name's final component is 'record_name', or None if no such
-    // action exists.
-    fn get_matching_action_name(record_name: String, actions: Vec<ActionRef>) -> Option<String> {
-        for action_ref in actions {
-            let an = action_ref.action.preamble.name;
-            let av: Vec<String> = an.split('.').map(|s| s.to_string()).collect();
-            let asub = av.last().unwrap();
-
-            if record_name.contains(asub) {
-                return Some(an);
-            }
-        }
-
-        None
-    }
-
-    // If 'actions' has exactly one action that may appear in table
-    // entries, and that action has no parameters, returns its name.
-    // Otherwise, returns None.
-    //
-    // This is useful because there's no reason to make the programmer
-    // specify the action explicitly in this case.
-    fn get_default_entry_action(actions: &Vec<ActionRef>) -> Option<String> {
-        let mut best = None;
-        for ar in actions {
-            if ar.may_be_entry {
-                if best.is_some() || !ar.action.params.is_empty() {
-                    return None
-                }
-                best = Some(ar);
-            }
-        }
-        best.map(|ar| ar.action.preamble.name.clone())
     }
 }
 
@@ -645,7 +893,7 @@ impl DataplaneResponseActor {
                         }
                     },
                     packet(p) => {
-                        let dd_update_opt = packetin_to_ddlog(p);
+                        let dd_update_opt = packet_in_to_ddlog(p);
                         println!("packetin update: {:#?}", dd_update_opt);
 
                         let channel_res = self.respond_to.send(dd_update_opt).await;

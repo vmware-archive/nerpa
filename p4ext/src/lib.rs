@@ -283,7 +283,7 @@ impl From<&p4info::Documentation> for Documentation {
 
 #[derive(Clone, Debug, Default)]
 pub struct Preamble {
-    id: u32,
+    pub id: u32,
     pub name: String,
     alias: String,
     annotations: Annotations,
@@ -307,7 +307,7 @@ impl From<&p4info::Preamble> for Preamble {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-enum MatchType {
+pub enum MatchType {
     Unspecified,
     Exact,
     Lpm,
@@ -347,8 +347,8 @@ pub struct MatchField {
     // Preamble but it includes everything in the preamble except
     // 'alias'.  It seems more uniform to just use Preamble here.
     pub preamble: Preamble,
-    bit_width: i32,
-    match_type: MatchType,
+    pub bit_width: i32,
+    pub match_type: MatchType,
     type_name: Option<String>,
     // unknown_fields: 
 }
@@ -858,98 +858,27 @@ fn encode_value(value: u64, bit_width: i32) -> Vec<u8> {
     enc_val[start_idx..].to_vec()
 }
 
-pub fn build_table_entry(
-    table_name: &str,
-    action_name: &str,
-    params_values: &HashMap<String, u64>,
-    match_fields_map: &HashMap<String, u64>,
-    priority: i32,
-    device_id: u64,
-    target: &str,
-    client: &P4RuntimeClient
-) -> Result<proto::p4runtime::TableEntry, P4Error> {
-    let pipeline = get_pipeline_config(device_id, target, client);
-    let switch : Switch = pipeline.get_p4info().into();
-
-    let tables : Vec<Table> = switch.tables
-                                .into_iter()
-                                .filter(|t| t.preamble.name == table_name)
-                                .collect();
-    if tables.len() != 1 {
-        return Err(P4Error{
-            message: format!("found {} matching tables, expected 1", tables.len())
-        });
-    }
-
-    let table = &tables[0];
-    let actions : Vec<&ActionRef> = (&table.actions)
-                                        .into_iter()
-                                        .filter(|a| a.action.preamble.name == action_name)
-                                        .collect();
-    if actions.len() != 1 {
-        return Err(P4Error { 
-            message: format!("found {} matching actions, expected 1", actions.len())
-        });
-    }
-
-    let action = actions[0].action.to_proto_runtime(params_values);
-    let mut table_action : TableAction = TableAction::new();
-    table_action.set_action(action);
-    
-    let mut field_matches = RepeatedField::<FieldMatch>::new();
-    for field in &table.match_fields {
-        let name : &str = &field.preamble.name;
-        match match_fields_map.get(name) {
-            Some(v) => field_matches.push(field.to_proto_runtime((*v).into())),
-            None => if field.match_type == MatchType::Exact {
-                return Err(P4Error { message: format!("no field matching name {}", name)})
-            },
-        }
-    }
-
-    let mut table_entry = TableEntry::new();
-    table_entry.set_table_id(table.preamble.id);
-    table_entry.set_action(table_action);
-    table_entry.set_priority(priority);
-    table_entry.set_field_match(field_matches);
-
-    Ok(table_entry)
-}
-
 pub fn build_table_entry_update(
     update_type: proto::p4runtime::Update_Type,
-    table_name: &str,
-    action_name: &str,
-    params_values: &HashMap<String, u64>,
-    match_fields_map: &HashMap<String, u64>,
-    priority: i32,
-    device_id: u64,
-    target: &str,
-    client: &P4RuntimeClient,
-) -> Result<proto::p4runtime::Update, P4Error> {
-    let result = build_table_entry(
-        table_name,
-        action_name,
-        params_values,
-        match_fields_map,
-        priority,
-        device_id,
-        target,
-        client,
-    );
-    match result {
-        Ok(t) => {
-            let mut entity = proto::p4runtime::Entity::new();
-            entity.set_table_entry(t);
+    table_id: u32,
+    table_action: proto::p4runtime::TableAction,
+    field_matches: Vec<proto::p4runtime::FieldMatch>,
+    priority: i32, 
+) -> proto::p4runtime::Update {
+    let mut table_entry = proto::p4runtime::TableEntry::new();
+    table_entry.set_table_id(table_id);
+    table_entry.set_action(table_action);
+    table_entry.set_field_match(protobuf::RepeatedField::from_vec(field_matches));
+    table_entry.set_priority(priority);
 
-            let mut update = proto::p4runtime::Update::new();
-            update.set_field_type(update_type);
-            update.set_entity(entity);
+    let mut entity = proto::p4runtime::Entity::new();
+    entity.set_table_entry(table_entry);
 
-            Ok(update)
-        },
-        Err(e) => Err(P4Error{message: format!("could not build table entry ({})", e)})
-    }
+    let mut update = proto::p4runtime::Update::new();
+    update.set_field_type(update_type);
+    update.set_entity(entity);
+
+    update
 }
 
 pub fn write(

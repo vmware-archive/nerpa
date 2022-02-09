@@ -78,12 +78,18 @@ header Packetin_t {
     bit<7> pad;
 }
 
+@controller_header("packet_out")
+header Packetout_t {
+    // TODO: Populate necessary fields.
+}
+
 struct headers {
     Ethernet_t ethernet;
     Cpu_metadata_t cpu_metadata;
     Ipv4_t ipv4;
     Arp_t arp;
     Packetin_t packet_in;
+    Packetout_t packet_out;
 }
 
 struct metadata {}

@@ -24,7 +24,7 @@ output relation OutputPacket(
     packet: Vec<bit<8>>
 )
 
-// OutputPacket(packet) :- arp_dp::DataplanePacket(.packet = packet).
+OutputPacket(packet) :- arp_dp::PacketIn(.packet = packet).
 
 
 // TODO: only do this when adding a new mac-port mapping, keyed by mac to port.
@@ -32,35 +32,33 @@ arp_dp::ForwardL2(
     mac,
     arp_dp::ForwardL2ActionSetEgress{port}
 ) :-
-    arp_dp::DataplanePacket(
+    arp_dp::PacketIn(
         .mac = mac,
         .port = port,
         .ip = ip,
         .packet = packet).
 
-/*
 // TODO: only do this when adding a new ip-mac mapping, keyed by ip to mac.
 arp_dp::Arp(
     (ip, 32),
-    1,
+    0,
     arp_dp::ArpActionArpReply{mac}
 ) :-
-    arp_dp::DataplanePacket(
+    arp_dp::PacketIn(
         .mac = mac,
         .port = port,
         .ip = ip,
         .packet = packet).
 
-// TODO: only do this when adding a new ip-mac mapping, keyed by ip to mac.
+// TODO: Only apply this rule when adding a new IP address to MAC address mapping.
 arp_dp::IPv4Lpm(
     (ip, 32),
-    1,
+    0,
     arp_dp::IPv4LpmActionIPv4Forward{mac, port}
 ) :-
-    arp_dp::DataplanePacket(
+    arp_dp::PacketIn(
         .mac = mac,
         .port = port,
         .ip = ip,
         .packet = packet,
     ).
-*/

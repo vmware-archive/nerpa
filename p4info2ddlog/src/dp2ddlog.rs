@@ -77,7 +77,7 @@ pub fn write_rs(
     writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
     writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
     writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
-    writeln!(d2d_out, "use proto::p4runtime::{{PacketIn, PacketMetadata}};")?;
+    writeln!(d2d_out, "use proto::p4runtime::{{PacketIn, PacketMetadata, PacketOut}};")?;
 
     writeln!(d2d_out, "use {}_ddlog::Relations;", prog_name)?;
     writeln!(d2d_out, "use {}_ddlog::typedefs::ddlog_std;", prog_name)?;
@@ -87,9 +87,12 @@ pub fn write_rs(
     let digest_out = write_digest(digests, type_info, prog_name).unwrap();
     writeln!(d2d_out, "{}", digest_out)?;
 
-    // unwrap is safe, because write_packetin cannot return an error result
-    let packetin_out = write_packetin(controller_metadata, prog_name).unwrap();
+    // unwrap is safe, because write_packet cannot return an error result
+    let packetin_out = write_packet(controller_metadata, prog_name, true).unwrap();
     writeln!(d2d_out, "{}", packetin_out)?;
+
+    let packetout_out = write_packet(controller_metadata, prog_name, false).unwrap();
+    writeln!(d2d_out, "{}", packetout_out)?;
 
     let helpers = "
 fn pad_left_zeros(inp: &[u8], size: usize) -> Vec<u8> {
@@ -180,13 +183,20 @@ fn write_digest(
     return Ok(d2d_out);
 }
 
-fn write_packetin(
+fn write_packet(
     controller_metadata: &[ControllerPacketMetadata],
-    prog_name: &str
+    prog_name: &str,
+    is_packet_in: bool,
 ) -> Result<String> {
     let mut d2d_out = String::new();
 
-    writeln!(d2d_out, "pub fn packetin_to_ddlog(p: PacketIn) -> Option<Update<DDValue>> {{")?;
+    // Handle packet_in and packet_out.
+    let (filter, inp_type) = match is_packet_in {
+        true => ("packet_in", "PacketIn"),
+        false => ("packet_out", "PacketOut")
+    };
+
+    writeln!(d2d_out, "pub fn {}_to_ddlog(p: {}) -> Option<Update<DDValue>> {{", filter, inp_type)?;
 
     // Filter the controller metadata array to the element with name `packet_in`.
     // p4c allows there to be only one header with this name/annotation.
@@ -194,7 +204,7 @@ fn write_packetin(
     let packet_metadata_vec: Vec<ControllerPacketMetadata> = controller_metadata
         .to_vec()
         .into_iter()
-        .filter(|m| m.get_preamble().get_name() == "packet_in")
+        .filter(|m| m.get_preamble().get_name() == filter)
         .collect();
     if packet_metadata_vec.len() != 1 {
         writeln!(d2d_out, "  return None;")?;
@@ -206,8 +216,8 @@ fn write_packetin(
     writeln!(d2d_out, "  let payload = p.get_payload();")?;
     writeln!(d2d_out, "  let metadata = p.get_metadata().to_vec();")?;
     writeln!(d2d_out, "  Some(Update::Insert{{")?;
-    writeln!(d2d_out, "    relid: Relations::{}_dp_DataplanePacket as RelId,", prog_name)?;
-    writeln!(d2d_out, "    v: types__{}_dp::DataplanePacket {{", prog_name)?;
+    writeln!(d2d_out, "    relid: Relations::{}_dp_{} as RelId,", prog_name, inp_type)?;
+    writeln!(d2d_out, "    v: types__{}_dp::{} {{", prog_name, inp_type)?;
     for pm in packet_metadata.get_metadata().iter() {
         let field_name = pm.get_name();
 

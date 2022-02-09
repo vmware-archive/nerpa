@@ -405,13 +405,14 @@ pub fn p4info_to_ddlog(
     for cm in controller_metadata.iter() {
         // The name 'packet_in' corresponds to messages from the dataplane to the controller.
         let cm_name = cm.get_preamble().get_name();
-        if !cm_name.eq("packet_in") {
-            continue;
-        }
+        let relation_name = match cm_name {
+            "packet_in" => "PacketIn",
+            "packet_out" => "PacketOut",
+            _ => continue,
+        };
 
         let cm_meta = cm.get_metadata();
-        // println!("cm metadata: {:#?}", cm_meta);
-        writeln!(output, "input relation DataplanePacket(")?;
+        writeln!(output, "input relation {}(", relation_name)?;
         for (_i, cmm) in cm_meta.iter().enumerate() {
             writeln!(output, "    {}: bit<{}>,", cmm.get_name(), cmm.get_bitwidth())?;
         }
