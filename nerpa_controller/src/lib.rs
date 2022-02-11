@@ -169,6 +169,7 @@ pub struct SwitchClient {
     device_id: u64,
     role_id: u64,
     target: String,
+    packet_meta_field_to_id_bw: HashMap<String, (u32, i32)>,
 }
 
 impl SwitchClient {
@@ -193,12 +194,33 @@ impl SwitchClient {
             &client
         );
 
+        // Load a P4info struct from file to cache any necessary data structures.
+        let mut p4info_file = File::open(OsStr::new(&p4info))
+            .unwrap_or_else(|err| panic!("{}: could not open P4Info ({})", p4info, err));
+        let p4info_struct: proto::p4info::P4Info = Message::parse_from_reader(&mut p4info_file)
+            .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info, err));
+
+        // Map packet metadata field names to (packet_id, packet_bit_width) tuples.
+        // We do this in the constructor, to avoid computation per packet sent to the dataplane.
+        let mut packet_meta_field_to_id_bw = HashMap::new();
+        for cm in p4info_struct.get_controller_packet_metadata().iter() {
+            if cm.get_preamble().get_name().eq("packet_out") {
+                for m in cm.get_metadata().iter() {
+                    packet_meta_field_to_id_bw.insert(
+                        m.get_name().to_string(),
+                        (m.get_id(), m.get_bitwidth()),
+                    );
+                }
+            }
+        }
+
         Self {
             client,
             p4info,
             device_id,
             role_id,
             target,
+            packet_meta_field_to_id_bw,
         }
     }
 
@@ -239,7 +261,7 @@ impl SwitchClient {
     // Pushes DDlog outputs as table entries in the P4-enabled switch.
     pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
-        let mut packets = Vec::new();
+        let mut packet_outs = Vec::new();
 
         let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
@@ -262,19 +284,43 @@ impl SwitchClient {
                         // This queue is sent after updates are pushed to the switch.
                         if output_name.as_ref().to_lowercase().contains("packet") {
                             // The output record corresponding to a packet should be a Record::Array.
-                            // Any other output records correspond to PacketMetadata with 'packet_in'.
-                            // TODO: Handle the other output records that are 'packet_in'.granite
+                            // Any other output records correspond to fields in the 'packet_out' header.
+                            // These are stored as PacketMetadata.
+                            let mut payload = Vec::new();
+                            let mut metadata_vec = Vec::new();
+
                             for output_record in output_records.iter() {
                                 if let (output_record_name, Record::Array(array_kind, array_records)) = output_record {
-                                    if output_record_name.as_ref().to_lowercase().contains("packet")
+                                    if output_record_name
+                                        .as_ref()
+                                        .to_lowercase()
+                                        .contains("packet")
                                     && array_kind == &CollectionKind::Vector {
-                                        let mut packet = Vec::<u8>::new();
                                         for array_record in array_records.iter() {
-                                            packet.append(&mut Self::record_to_value(array_record, None));
+                                            payload.append(&mut Self::record_to_value(array_record, None));
                                         }
-                                        packets.push(packet);
                                     }
+                                } else {
+                                    let (meta_record_name, meta_record) = output_record;
+                                    let meta_record_key = meta_record_name.to_string();
+                                    let (metadata_id, metadata_bw) = self.packet_meta_field_to_id_bw[&meta_record_key];
+                                    let metadata_value = Self::record_to_value(meta_record, Some(metadata_bw));
+
+                                    let mut metadata = proto::p4runtime::PacketMetadata::new();
+                                    metadata.set_metadata_id(metadata_id);
+                                    metadata.set_value(metadata_value);
+
+                                    metadata_vec.push(metadata);
                                 }
+                            }
+
+                            // If a non-zero payload was found, construct and append a PacketOut to the packet queue.
+                            if payload.len() > 0 {
+                                let mut packet_out = proto::p4runtime::PacketOut::new();
+                                packet_out.set_payload(payload);
+                                packet_out.set_metadata(protobuf::RepeatedField::from_vec(metadata_vec));
+
+                                packet_outs.push(packet_out);
                             }
                         }
 
@@ -360,17 +406,32 @@ impl SwitchClient {
             return write_res;
         }
 
-        // Send packets to the switch, if found in the output relation.
-        if packets.len() > 0 {
-            // Establish a connection to the dataplane.
+        // Send packets found in output relations to the switch.
+        if packet_outs.len() > 0 {
+            // Establish a connection to the switch.
             use futures::SinkExt;
+            let (mut sink, _receiver) = self.client.stream_channel().unwrap();
 
-            let (mut sink, receiver) = self.client.stream_channel().unwrap();
+            // Send a master arbitration update to establish this as backup with election id 1.
+            // The Tokio actor handling messages from the dataplane has a StreamChannel with election id 0.
+            use proto::p4runtime::Uint128;
+            let mut election_id = Uint128::new();
+            election_id.set_high(0);
+            election_id.set_low(1);
 
-            for payload in packets {
-                let mut packet_out = proto::p4runtime::PacketOut::new();
-                packet_out.set_payload(payload);
+            let mut upd = MasterArbitrationUpdate::new();
+            upd.set_device_id(self.device_id);
+            upd.set_election_id(election_id);
 
+            let mut req = StreamMessageRequest::new();
+            req.set_arbitration(upd);
+            let req_res = sink.send((req, grpcio::WriteFlags::default())).await;
+            if req_res.is_err() {
+                panic!("failed to configure streamchannel through master arbitration update for backup: {:#?}", req_res.err());
+            }
+
+            // Send packets to the switch, panicking on error.
+            for packet_out in packet_outs {
                 let mut req = StreamMessageRequest::new();
                 req.set_packet(packet_out);
 
@@ -378,6 +439,11 @@ impl SwitchClient {
                 if req_res.is_err() {
                     panic!("failed to send request over stream channel: {:#?}", req_res.err());
                 }
+            }
+
+            let sink_close_res = sink.close().await;
+            if sink_close_res.is_err() {
+                println!("error closing sink: {:#?}", sink_close_res.err());
             }
         }
 

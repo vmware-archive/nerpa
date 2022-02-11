@@ -20,12 +20,7 @@ SOFTWARE.
 
 import arp_dp as arp_dp
 
-output relation OutputPacket(
-    packet: Vec<bit<8>>
-)
-
-OutputPacket(packet) :- arp_dp::PacketIn(.packet = packet).
-
+arp_dp::PacketOut(0, 0, packet) :- arp_dp::PacketIn(.packet = packet).
 
 // TODO: only do this when adding a new mac-port mapping, keyed by mac to port.
 arp_dp::ForwardL2(

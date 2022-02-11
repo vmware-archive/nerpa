@@ -397,23 +397,20 @@ pub fn p4info_to_ddlog(
         writeln!(output, ")")?;
     }
 
-    // Format the controller metadata as input relations.
-    // Write the formatted input relation to the output butter.
-    let controller_metadata = p4info.get_controller_packet_metadata();
-    // println!("controller metadata: {:#?}", controller_metadata);
-    // XXX: Should there be only one such relation?
-    for cm in controller_metadata.iter() {
+    // Format the controller metadata as relations.
+    // Write the formatted relation to the output butter.
+    for cm in p4info.get_controller_packet_metadata().iter() {
         // The name 'packet_in' corresponds to messages from the dataplane to the controller.
         let cm_name = cm.get_preamble().get_name();
-        let relation_name = match cm_name {
-            "packet_in" => "PacketIn",
-            "packet_out" => "PacketOut",
+        let (relation_type, relation_name) = match cm_name {
+            "packet_in" => ("input", "PacketIn"),
+            "packet_out" => ("output", "PacketOut"),
             _ => continue,
         };
 
         let cm_meta = cm.get_metadata();
-        writeln!(output, "input relation {}(", relation_name)?;
-        for (_i, cmm) in cm_meta.iter().enumerate() {
+        writeln!(output, "{} relation {}(", relation_type, relation_name)?;
+        for cmm in cm_meta.iter() {
             writeln!(output, "    {}: bit<{}>,", cmm.get_name(), cmm.get_bitwidth())?;
         }
         writeln!(output, "    packet: Vec<bit<8>>")?;

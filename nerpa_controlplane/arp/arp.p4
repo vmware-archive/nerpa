@@ -80,7 +80,9 @@ header Packetin_t {
 
 @controller_header("packet_out")
 header Packetout_t {
-    // TODO: Populate necessary fields.
+    // TODO: Add from_cpu field.
+    bit<9> port;
+    bit<7> pad;
 }
 
 struct headers {
