@@ -73,14 +73,14 @@ header Arp_t {
 @controller_header("packet_in")
 header Packetin_t {
     bit<48> mac;
-    bit<9> port;
     bit<32> ip;
+    bit<9> port;
     bit<7> pad;
+    bit<16> opcode;
 }
 
 @controller_header("packet_out")
 header Packetout_t {
-    // TODO: Add from_cpu field.
     bit<9> port;
     bit<7> pad;
 }
@@ -103,6 +103,14 @@ parser ArpParser(
     inout standard_metadata_t standard_metadata
 ) {
     state start {
+        transition select(standard_metadata.ingress_port) {
+            CPU_PORT: parse_packet_out;
+            default: parse_ethernet;
+        }
+    }
+
+    state parse_packet_out {
+        packet.extract(hdr.packet_out);
         transition parse_ethernet;
     }
 
@@ -170,12 +178,12 @@ control ArpIngress(
 
     action SendToCpu() {
         CpuMetadataEncap();
+        standard_metadata.egress_spec = CPU_PORT;
 
         hdr.packet_in.port = standard_metadata.ingress_port;
         hdr.packet_in.mac = hdr.arp.srcEth;
         hdr.packet_in.ip = hdr.arp.srcIP;
-
-        standard_metadata.egress_spec = CPU_PORT;
+        hdr.packet_in.opcode = hdr.arp.opcode;
     }
 
     action ArpReply(bit<48> mac) {
@@ -271,14 +279,20 @@ control ArpIngress(
         if (standard_metadata.ingress_port == CPU_PORT) {
             CpuMetadataDecap();
         }
+        // Apply the ARP table for an ARP request.
         else if (hdr.arp.isValid() && hdr.arp.opcode == ARP_OP_REQ && standard_metadata.ingress_port != CPU_PORT) {
             Arp.apply();
         }
+        // Send any different type of ARP packet to the CPU.
         else if (hdr.arp.isValid() && standard_metadata.ingress_port != CPU_PORT) {
             SendToCpu();
-        } else if (hdr.ipv4.isValid()) {
+        }
+        // Apply the Ipv4 table for an IPv4 packet.
+        else if (hdr.ipv4.isValid()) {
             IPv4Lpm.apply();
-        } else if (hdr.ethernet.isValid() && !hdr.ipv4.isValid()) {
+        }
+        // Apply the L2 forwarding table for an ethernet packet.
+        else if (hdr.ethernet.isValid() && !hdr.ipv4.isValid()) {
             ForwardL2.apply();
         }
     }

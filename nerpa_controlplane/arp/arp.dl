@@ -20,9 +20,29 @@ SOFTWARE.
 
 import arp_dp as arp_dp
 
-arp_dp::PacketOut(0, 0, packet) :- arp_dp::PacketIn(.packet = packet).
+// Normally, the controller would check if the packet was originally sent from the CPU to the switch,
+// and avoid processing such a packet. The P4 program as written can never send a packet from the CPU
+// back to it.
+// So, we only have to confirm that the opcode is either an ARP request or ARP reply.
+arp_dp::PacketOut(0, 0, packet) :-
+    arp_dp::PacketIn(
+        .packet = packet,
+        .opcode = opcode,
+    ),
+    opcode == 1 or opcode == 2.
 
-// TODO: only do this when adding a new mac-port mapping, keyed by mac to port.
+// Cache mappings from MAC address to port and from IP address to MAC.
+output relation MacToPort(
+    mac: bit<48>,
+    port: bit<9>
+)
+
+output relation IpToMac(
+    ip: bit<32>,
+    mac: bit<48>
+)
+
+// Update the L2 forwarding table, when the MAC address has not been mapped to a port.
 arp_dp::ForwardL2(
     mac,
     arp_dp::ForwardL2ActionSetEgress{port}
@@ -31,9 +51,10 @@ arp_dp::ForwardL2(
         .mac = mac,
         .port = port,
         .ip = ip,
-        .packet = packet).
+        .packet = packet),
+    not MacToPort-1(mac, _).
 
-// TODO: only do this when adding a new ip-mac mapping, keyed by ip to mac.
+// Update the ARP table, when the IP address has not been mapped to a MAC address.
 arp_dp::Arp(
     (ip, 32),
     0,
@@ -43,9 +64,10 @@ arp_dp::Arp(
         .mac = mac,
         .port = port,
         .ip = ip,
-        .packet = packet).
+        .packet = packet),
+    not IpToMac-1(ip, _).
 
-// TODO: Only apply this rule when adding a new IP address to MAC address mapping.
+// Update the IPv4 LPM table, when the IP address has not been mapped to a MAC address.
 arp_dp::IPv4Lpm(
     (ip, 32),
     0,
@@ -56,4 +78,24 @@ arp_dp::IPv4Lpm(
         .port = port,
         .ip = ip,
         .packet = packet,
-    ).
+    ),
+    not IpToMac-1(ip, _).
+
+// Cache new mappings from MAC address to port and from IP address to MAC address.
+MacToPort(mac, port) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet
+    ),
+    not MacToPort-1(mac, _).
+
+IpToMac(ip, mac) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet
+    ),
+    not IpToMac-1(ip, _).
