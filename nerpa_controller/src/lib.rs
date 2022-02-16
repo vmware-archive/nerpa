@@ -315,7 +315,7 @@ impl SwitchClient {
                             }
 
                             // If a non-zero payload was found, construct and append a PacketOut to the packet queue.
-                            if payload.len() > 0 {
+                            if !payload.is_empty() {
                                 let mut packet_out = proto::p4runtime::PacketOut::new();
                                 packet_out.set_payload(payload);
                                 packet_out.set_metadata(protobuf::RepeatedField::from_vec(metadata_vec));
@@ -344,7 +344,7 @@ impl SwitchClient {
                                     match record {
                                         Record::NamedStruct(name, action_recs) => {
                                             action_opt = Self::record_to_action(
-                                                &name,
+                                                name,
                                                 action_recs.to_vec(),
                                                 table.actions.clone(),
                                             );
@@ -407,7 +407,7 @@ impl SwitchClient {
         }
 
         // Send packets found in output relations to the switch.
-        if packet_outs.len() > 0 {
+        if !packet_outs.is_empty() {
             // Establish a connection to the switch.
             use futures::SinkExt;
             let (mut sink, _receiver) = self.client.stream_channel().unwrap();
@@ -588,8 +588,8 @@ impl SwitchClient {
                     .collect::<Vec<String>>();
                 
                 let action_substr_opt = action_vec.last();
-                if action_substr_opt.is_some() {
-                    if record_name.contains(action_substr_opt.unwrap()) {
+                if let Some(action_substr) = action_substr_opt {
+                    if record_name.contains(action_substr) {
                         action_ref_opt = Some(action_ref.clone());
                     }
                 }
@@ -598,9 +598,7 @@ impl SwitchClient {
             action_ref_opt
         };
 
-        if action_ref_opt.is_none() {
-            return None;
-        }
+        let action_ref = action_ref_opt.as_ref()?;
 
         // Store the values corresponding to each parameter in the action.
         // Iterate through action param records, and map each name to a value as a byte-vector.
@@ -612,12 +610,12 @@ impl SwitchClient {
             );
         }
 
-        let action = action_ref_opt.unwrap().action;
+        let action = &action_ref.action;
         let action_id = action.preamble.id;
 
         // Convert the DDlog Record to P4Runtime Action_Params.
         let mut params_vec = Vec::<Action_Param>::new();
-        for param in action.params {
+        for param in &action.params {
             let mut action_param = Action_Param::new();
             action_param.set_param_id(param.preamble.id);
 
@@ -759,7 +757,7 @@ impl SwitchClient {
             }
         }
         
-        return Some(field_match);
+        Some(field_match)
     }
 
     fn record_to_value(
@@ -778,8 +776,8 @@ impl SwitchClient {
         }
 
         // If a bit-width was passed, left-pad the appropriate number of zeros.
-        if bit_width_opt.is_some() {
-            let bit_width = bit_width_opt.unwrap() as usize;
+        if let Some(bit_width_uncast) = bit_width_opt {
+            let bit_width = bit_width_uncast as usize;
 
             // Compute the appropriate number of 0s to prepend.
             let num_total_bytes = bit_width / 8 + (bit_width % 8 != 0) as usize;
@@ -791,7 +789,7 @@ impl SwitchClient {
             v = padded_v;
         }
 
-        return v;
+        v
     }
 
     fn get_matching_table(record_name: String, tables: Vec<Table>) -> Option<Table> {
