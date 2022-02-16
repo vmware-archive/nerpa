@@ -82,14 +82,6 @@ if test -f $FILE_NAME.ovsschema; then
     python3 ovsdb2ddlog2rust --schema-file=$FILE_DIR/$FILE_NAME.ovsschema -p nerpa_ --output-file src/context/nerpa_rels.rs
     cargo build
     cd $FILE_DIR
-
-    # Create the database from OVSDB schema, if it does not exist.
-    # Set up OVSDB. This assumes the Linux default directory.
-    OVSDB_FN=/usr/local/etc/openvswitch/$FILE_NAME.db
-    if test ! -f $OVSDB_FN; then
-        export PATH=$PATH:/usr/local/share/openvswitch/scripts
-        ovsdb-tool create $OVSDB_FN $FILE_DIR/$FILE_NAME.ovsschema
-    fi
 fi
 
 echo "Building controller crate..."
