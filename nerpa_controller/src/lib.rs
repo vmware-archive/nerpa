@@ -169,6 +169,8 @@ pub struct SwitchClient {
     device_id: u64,
     role_id: u64,
     target: String,
+    // Using P4 Info, map each PacketMetadata field to its id and bitwidth.
+    // This is used as a cache for metadata for P4 Runtime PacketOuts.
     packet_meta_field_to_id_bw: HashMap<String, (u32, i32)>,
 }
 
@@ -273,10 +275,10 @@ impl SwitchClient {
                 match record {
                     Record::NamedStruct(output_name, output_records) => {
                         // Check if the record corresponds to the multicast group.
-                        // We assume that there will be exactly one relevant DDlog relation,
-                        // and that its name includes "multicast".
+                        // We assume that there a relevant DDlog relation's name includes "multicast".
+                        // A DDlog relation that does not update multicast should not include "multicast" in its name.
                         if output_name.as_ref().to_lowercase().contains("multicast") {
-                            self.construct_multicast_update(output_records.clone(), weight).await;
+                            self.update_multicast(output_records.clone(), weight).await;
                         }
 
                         // Check for output relations that contain packets as Records.
@@ -290,6 +292,8 @@ impl SwitchClient {
                             let mut metadata_vec = Vec::new();
 
                             for output_record in output_records.iter() {
+                                // One output record must be a NamedStruct corresponding to the packet.
+                                // We convert its Array to a Vec<u8> and use it as the payload in a P4 Runtime PacketOut.
                                 if let (output_record_name, Record::Array(array_kind, array_records)) = output_record {
                                     if output_record_name
                                         .as_ref()
@@ -300,7 +304,10 @@ impl SwitchClient {
                                             payload.append(&mut Self::record_to_value(array_record, None));
                                         }
                                     }
-                                } else {
+                                }
+                                // All other records correspond to PacketMetadata fields.
+                                // These are fields in the P4 struct with the "packet_out" header.
+                                else {
                                     let (meta_record_name, meta_record) = output_record;
                                     let meta_record_key = meta_record_name.to_string();
                                     let (metadata_id, metadata_bw) = self.packet_meta_field_to_id_bw[&meta_record_key];
@@ -403,6 +410,7 @@ impl SwitchClient {
             &self.client,
         );
         if write_res.is_err() {
+            // TODO: Log an error.
             return write_res;
         }
 
@@ -450,15 +458,21 @@ impl SwitchClient {
         Ok(())
     }
 
-    async fn construct_multicast_update(
+    /// Updates the multicast group entry using P4 Runtime.
+    ///
+    /// # Arguments
+    /// * `recs` - A vector of tuples of (Name, Record). The second element in a NamedStruct.
+    /// Expected to have length 2, one record representing the ID and the other the port.
+    /// The ID record should be an Int. Its name should include "id" (not case-sensitive).
+    /// The port record name should be an Int. Its name should include "port" (not case-sensitive).
+    ///
+    /// * `weight` - The weight from the DDlog output record.
+    /// A positive weight represents an insert/modify. A negative weight represents a delete.
+    async fn update_multicast(
         &mut self,
         recs: Vec<(Cow<'static, str>, Record)>,
         weight: isize,
     ) {
-        // Extract multicast group ID and port value.
-        // We expect there to be two records, one representing the ID and one the port.
-        // The ID record name  should include "id" (not case-sensitive).
-        // The port record name  should include "port" (not case-sensitive).
         if recs.len() != 2 {
             println!("multicast relation should include exactly 2 fields!");
             return;
