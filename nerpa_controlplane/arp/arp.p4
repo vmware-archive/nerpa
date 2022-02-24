@@ -21,6 +21,8 @@ SOFTWARE.
 #include <core.p4>
 #include <v1model.p4>
 
+#include "../headers.p4"
+
 const bit<16> TYPE_ARP = 0x0806;
 const bit<16> TYPE_CPU_METADATA = 0x081b;
 const bit<16> TYPE_IPV4 = 0x800;
@@ -29,46 +31,6 @@ const bit<9> CPU_PORT = 510;
 
 const bit<16> ARP_OP_REQ = 0x0001;
 const bit<16> ARP_OP_REPLY = 0x002;
-
-header Ethernet_t {
-    bit<48> dstAddr;
-    bit<48> srcAddr;
-    bit<16> etherType;
-}
-
-header Cpu_metadata_t {
-    bit<8> fromCpu;
-    bit<16> origEtherType;
-    bit<16> srcPort;
-}
-
-header Ipv4_t {
-    bit<4>    version;
-    bit<4>    ihl;
-    bit<8>    diffserv;
-    bit<16>   totalLen; // Update length.
-    bit<16>   identification;
-    bit<3>    flags;
-    bit<13>   fragOffset;
-    bit<8>    ttl;
-    bit<8>    protocol;
-    bit<16>   hdrChecksum; // Update this after cache hit.
-    bit<32> srcAddr; // Swap source and destinction MAC addresses
-    bit<32> dstAddr; //  after the cache hit.
-}
-
-header Arp_t {
-    bit<16> hwType;
-    bit<16> protoType;
-    bit<8> hwAddrLen;
-    bit<8> protoAddrLen;
-    bit<16> opcode;
-    // assumes hardware type is ethernet and protocol is IP
-    bit<48> srcEth;
-    bit<32> srcIP;
-    bit<48> dstEth;
-    bit<32> dstIP;
-}
 
 @controller_header("packet_in")
 header Packetin_t {

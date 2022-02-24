@@ -79,14 +79,16 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     ffi::OsStr,
+    fmt,
     fs::File,
     sync::Arc,
 };
 use tokio::sync::{oneshot, mpsc};
+use tracing::{debug, error, info, instrument};
 
 // Controller serves as a handle for the Tokio tasks.
 // The Tokio task can either process DDlog inputs or push outputs to the switch.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Controller {
     sender: mpsc::Sender<ControllerActorMessage>,
 }
@@ -106,6 +108,7 @@ impl Controller {
     }
 
     // Streams inputs from OVSDB and from the data plane.
+    #[instrument]
     pub async fn stream_inputs(
         &self,
         hddlog: Arc<HDDlog>,
@@ -124,13 +127,14 @@ impl Controller {
 
         let message_res = self.sender.send(msg).await;
         if message_res.is_err() {
-            println!("could not send message to controller actor: {:#?}", message_res);
+            error!("could not send message to controller actor: {:#?}", message_res);
         }
 
         recv.await.expect("Actor task has been killed");
     }
 }
 
+#[derive(Debug)]
 pub struct ControllerProgram {
     hddlog: Arc<HDDlog>,
 }
@@ -140,6 +144,7 @@ impl ControllerProgram {
         Self{hddlog}
     }
 
+    #[tracing::instrument]
     pub fn add_input(
         &mut self,
         updates:Vec<Update<DDValue>>
@@ -149,7 +154,7 @@ impl ControllerProgram {
         match self.hddlog.apply_updates(&mut updates.into_iter()) {
             Ok(_) => {},
             Err(e) => {
-                println!("applying updates had following error: {:#?}", e);
+                error!("applying updates had following error: {:#?}", e);
                 self.hddlog.transaction_rollback()?;
                 return Err(e);
             }
@@ -163,8 +168,18 @@ impl ControllerProgram {
     }
 }
 
+pub struct P4RC(P4RuntimeClient);
+
+impl fmt::Debug for P4RC {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("P4RuntimeClient")
+         .finish()
+    }
+}
+
+#[derive(Debug)]
 pub struct SwitchClient {
-    pub client: P4RuntimeClient,
+    pub client: P4RC,
     p4info: String,
     device_id: u64,
     role_id: u64,
@@ -216,8 +231,10 @@ impl SwitchClient {
             }
         }
 
+        let p4rc = P4RC(client);
+
         Self {
-            client,
+            client: p4rc,
             p4info,
             device_id,
             role_id,
@@ -249,7 +266,7 @@ impl SwitchClient {
                 self.device_id,
                 self.role_id,
                 &self.target,
-                &self.client,
+                &self.client.0,
             ).await;
 
             if config_res.is_err() {
@@ -261,11 +278,12 @@ impl SwitchClient {
     }
 
     // Pushes DDlog outputs as table entries in the P4-enabled switch.
+    #[instrument]
     pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
         let mut packet_outs = Vec::new();
 
-        let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client);
+        let pipeline = p4ext::get_pipeline_config(self.device_id, &self.target, &self.client.0);
         let switch: p4ext::Switch = pipeline.get_p4info().into();
 
         for (_, output_map) in (*delta).clone().into_iter() {
@@ -356,7 +374,7 @@ impl SwitchClient {
                                                 table.actions.clone(),
                                             );
                                         },
-                                        _ => println!("action was incorrectly formed!")
+                                        _ => debug!("action relation was not NamedStruct")
                                     }
                                 },
                                 "priority" => {
@@ -395,7 +413,7 @@ impl SwitchClient {
                         }
                     },
                     _ => {
-                        println!("Output Record was not NamedStruct");
+                        debug!("output record was not NamedStruct");
                         continue;
                     }
                 }
@@ -407,18 +425,19 @@ impl SwitchClient {
             self.device_id,
             self.role_id,
             &self.target,
-            &self.client,
+            &self.client.0,
         );
         if write_res.is_err() {
-            // TODO: Log an error.
+            error!("could not write updates to P4 Runtime: {:#?}",  write_res.as_ref().err());
             return write_res;
         }
 
         // Send packets found in output relations to the switch.
         if !packet_outs.is_empty() {
+            // TODO: Move this connection to be established on the struct.
             // Establish a connection to the switch.
             use futures::SinkExt;
-            let (mut sink, _receiver) = self.client.stream_channel().unwrap();
+            let (mut sink, _receiver) = self.client.0.stream_channel().unwrap();
 
             // Send a master arbitration update to establish this as backup with election id 1.
             // The Tokio actor handling messages from the dataplane has a StreamChannel with election id 0.
@@ -435,23 +454,23 @@ impl SwitchClient {
             req.set_arbitration(upd);
             let req_res = sink.send((req, grpcio::WriteFlags::default())).await;
             if req_res.is_err() {
-                panic!("failed to configure streamchannel through master arbitration update for backup: {:#?}", req_res.err());
+                error!("failed to configure streamchannel through master arbitration update for backup: {:#?}", req_res.err());
             }
 
-            // Send packets to the switch, panicking on error.
+            // Send packets to the switch.
             for packet_out in packet_outs {
                 let mut req = StreamMessageRequest::new();
                 req.set_packet(packet_out);
 
                 let req_res = sink.send((req, grpcio::WriteFlags::default())).await;
                 if req_res.is_err() {
-                    panic!("failed to send request over stream channel: {:#?}", req_res.err());
+                    error!("failed to send request over stream channel: {:#?}", req_res.err());
                 }
             }
 
             let sink_close_res = sink.close().await;
             if sink_close_res.is_err() {
-                println!("error closing sink: {:#?}", sink_close_res.err());
+                error!("error closing sink: {:#?}", sink_close_res.err());
             }
         }
 
@@ -474,7 +493,7 @@ impl SwitchClient {
         weight: isize,
     ) {
         if recs.len() != 2 {
-            println!("multicast relation should include exactly 2 fields!");
+            error!("multicast relation should include exactly 2 fields!");
             return;
         }
 
@@ -492,17 +511,17 @@ impl SwitchClient {
             } else if rec_name.contains("port") {
                 mcast_port = BigEndian::read_u32(&Self::record_to_value(v, Some(32)));
             } else {
-                println!("multicast relation field named {} did not include port or id", rec_name);
+                error!("multicast relation field named {} did not include port or id", rec_name);
             }
         }
 
         if mcast_id == 0 {
-            println!("multicast relation does not contain an 'id' field");
+            error!("multicast relation does not contain an 'id' field");
             return;
         }
 
         if mcast_port == u32::MAX {
-            println!("multicast relation does not contain a 'port' field");
+            error!("multicast relation does not contain a 'port' field");
             return;
         }
 
@@ -512,7 +531,7 @@ impl SwitchClient {
         let mcast_entries = p4ext::read(
             vec![p4ext::build_multicast_read(0)],
             self.device_id,
-            &self.client
+            &self.client.0,
         ).await.unwrap();
 
         // We find the replicas for the current multicast group.
@@ -576,10 +595,10 @@ impl SwitchClient {
             self.device_id,
             self.role_id,
             &self.target,
-            &self.client
+            &self.client.0,
         );
         if write_res.is_err() {
-            println!("could not push multicast update to switch: {:#?}", write_res.err());
+            error!("could not push multicast update to switch: {:#?}", write_res.err());
         }
     }
 
@@ -611,6 +630,10 @@ impl SwitchClient {
 
             action_ref_opt
         };
+
+        if action_ref_opt.is_none() {
+            debug!("could not find action matching record name: {:#?}", record_name.as_ref());
+        }
 
         let action_ref = action_ref_opt.as_ref()?;
 
@@ -675,7 +698,7 @@ impl SwitchClient {
                 // If not, return None.
                 if let Record::Tuple(t) = r {
                     if t.len() != 2 {
-                        println!("match field LPM Tuple had len {}, expected 2", t.len());
+                        error!("match field LPM Tuple had len {}, expected 2", t.len());
                         return None;
                     }
                     
@@ -688,7 +711,7 @@ impl SwitchClient {
 
                     field_match.set_lpm(lpm_match);
                 } else {
-                    println!("Record for a Field Match of type LPM must be a Tuple");
+                    error!("Record for a Field Match of type LPM must be a Tuple");
                     return None;
                 }
             },
@@ -699,7 +722,7 @@ impl SwitchClient {
                 // If not, return None.
                 if let Record::Tuple(t) = r {
                     if t.len() != 2 {
-                        println!("match field Ternary Tuple had len {}, expected 2", t.len());
+                        error!("match field Ternary Tuple had len {}, expected 2", t.len());
                         return None;
                     }
 
@@ -710,7 +733,7 @@ impl SwitchClient {
                     let mask = Self::record_to_value(&t[1], bit_width_opt);
                     ternary_match.set_mask(mask);
                 } else {
-                    println!("Record for a Field Match of type Ternary must be a Tuple");
+                    error!("Record for a Field Match of type Ternary must be a Tuple");
                     return None;
                 }
 
@@ -722,7 +745,7 @@ impl SwitchClient {
                 // The value for a Range match should be a Tuple. If not, return None.
                 if let Record::Tuple(t) = r {
                     if t.len() != 2 {
-                        println!("match field Range Tuple had len {}, expected 2", t.len());
+                        error!("match field Range Tuple had len {}, expected 2", t.len());
                         return None;
                     }
 
@@ -732,7 +755,7 @@ impl SwitchClient {
                     let high = Self::record_to_value(&t[1], bit_width_opt);
                     range_match.set_high(high);
                 } else {
-                    println!("Record for a Field Match of type Range must be a Tuple");
+                    error!("Record for a Field Match of type Range must be a Tuple");
                     return None;
                 }
 
@@ -753,7 +776,7 @@ impl SwitchClient {
 
                     optional_match.set_value(value);
                 } else {
-                    println!("Record for a Field Match of type Optional must be a NamedStruct");
+                    error!("Record for a Field Match of type Optional must be a NamedStruct");
                     return None;
                 }
 
@@ -786,7 +809,7 @@ impl SwitchClient {
                 let (_, int_bytes) = i.to_bytes_be();
                 v = int_bytes;
             },
-            _ => panic!("attempted to extract value from unsupported record type: {:#?}", r),
+            _ => error!("attempted to extract value from unsupported record type: {:#?}", r),
         }
 
         // If a bit-width was passed, left-pad the appropriate number of zeros.
@@ -866,13 +889,14 @@ impl ControllerActor {
 
                 // Start streaming messages from the dataplane.
                 // Set the configuration as a notification per-digest.
+                // TODO: Retry the configuration if it errors.
                 let config_res = self.switch_client.configure_digests(0, 1, 1).await;
                 if config_res.is_err() {
-                    panic!("could not configure digests: {:#?}", config_res);
+                    error!("could not configure digests: {:#?}", config_res);
                 }
 
                 // Start the dataplane message actor.
-                let (sink, receiver) = self.switch_client.client.stream_channel().unwrap();
+                let (sink, receiver) = self.switch_client.client.0.stream_channel().unwrap();
                 let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_tx);
                 tokio::spawn(async move { digest_actor.run().await });
 
@@ -902,7 +926,7 @@ impl ControllerActor {
                     if ddlog_res.is_ok() {
                         let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
-                            println!("could not push digest output relation to switch: {:#?}", p4_res.err());
+                            error!("could not push digest output relation to switch: {:#?}", p4_res.err());
                         }
                     }
                 };
@@ -949,11 +973,11 @@ impl DataplaneResponseActor {
     // Each digest is converted into the appropriate DDlog input relation.
     pub async fn handle_dataplane_message(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
         match res {
-            Err(e) => println!("received GRPC error from p4runtime streaming channel: {:#?}", e),
+            Err(e) => error!("received GRPC error from p4runtime streaming channel: {:#?}", e),
             Ok(r) => {
                 let p4_update_opt = r.update;
                 if p4_update_opt.is_none() {
-                    println!("received empty response from p4runtime streaming channel");
+                    debug!("received empty response from p4runtime streaming channel");
                 }
 
                 use proto::p4runtime::StreamMessageResponse_oneof_update::*;
@@ -966,22 +990,22 @@ impl DataplaneResponseActor {
                             
                             let channel_res = self.respond_to.send(dd_update_opt).await;
                             if channel_res.is_err() {
-                                println!("could not send response over channel: {:#?}", channel_res);
+                                error!("could not send response over channel: {:#?}", channel_res);
                             }
                         }
                     },
                     packet(p) => {
                         let dd_update_opt = packet_in_to_ddlog(p);
-                        println!("packetin update: {:#?}", dd_update_opt);
+                        info!("received packetin update: {:#?}", dd_update_opt);
 
                         let channel_res = self.respond_to.send(dd_update_opt).await;
                         if channel_res.is_err() {
-                            println!("could not send response over channel: {:#?}", channel_res);
+                            error!("could not send response over channel: {:#?}", channel_res);
                         }
                     }
-                    error(e) => println!("received error from p4runtime streaming channel: {:#?}", e),
+                    error(e) => error!("received error from p4runtime streaming channel: {:#?}", e),
                     // no action for arbitration, idle timeout, or other
-                    m => println!("received message from p4runtime streaming channel: {:#?}", m),
+                    m => info!("received message from p4runtime streaming channel: {:#?}", m),
                 };
             }
         }

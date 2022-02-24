@@ -1,5 +1,10 @@
+# Create a multicast group with group ID 1.
 mc_mgrp_create 1
+# Create multicast nodes.
 mc_node_create 0 3 4
+# Associate the nodes to the group.
 mc_node_associate 1 0
+# Set an L2 forwarding rule for the created multicast group.
 table_add ArpIngress.ForwardL2 SetMulticastGroup ff:ff:ff:ff:ff:ff => 1
+# Add IPv4 route.
 table_add ArpIngress.IPv4Lpm IPv4Route 10.0.1.0/24 => 7

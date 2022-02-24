@@ -146,6 +146,7 @@ proto = {{path = \"../proto\"}}
 protobuf = \"2.22.0\"
 protobuf-codegen = \"2.22.0\"
 tokio = {{ version = \"1.2.0\", features = [\"full\"]}}
+tracing = \"0.1\"
 "
     )
 }
