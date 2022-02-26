@@ -49,6 +49,7 @@ use dp2ddlog::{
 };
 
 use futures::{
+    SinkExt,
     StreamExt,
 };
 use grpcio::{
@@ -84,6 +85,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{oneshot, mpsc};
+use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info, instrument};
 
 // Controller serves as a handle for the Tokio tasks.
@@ -177,6 +179,15 @@ impl fmt::Debug for P4RC {
     }
 }
 
+pub struct PacketSink(StreamingCallSink<StreamMessageRequest>);
+
+impl fmt::Debug for PacketSink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PacketSink")
+         .finish()
+    }
+}
+
 #[derive(Debug)]
 pub struct SwitchClient {
     pub client: P4RC,
@@ -187,10 +198,11 @@ pub struct SwitchClient {
     // Using P4 Info, map each PacketMetadata field to its id and bitwidth.
     // This is used as a cache for metadata for P4 Runtime PacketOuts.
     packet_meta_field_to_id_bw: HashMap<String, (u32, i32)>,
+    packet_sink: PacketSink,
 }
 
 impl SwitchClient {
-    pub fn new(
+    pub async fn new(
         client: P4RuntimeClient,
         p4info: String,
         opaque: String,
@@ -231,7 +243,46 @@ impl SwitchClient {
             }
         }
 
+        // Establish a connection to the switch to send packets.
+        let (mut sink, _receiver) = client.stream_channel().unwrap();
+        // Send a master arbitration update to establish this as backup with election id 1.
+        // The Tokio actor handling messages from the dataplane has a StreamChannel with election id 0.
+        use proto::p4runtime::Uint128;
+        let mut election_id = Uint128::new();
+        election_id.set_high(0);
+        election_id.set_low(1);
+
+        let mut upd = MasterArbitrationUpdate::new();
+        upd.set_device_id(device_id);
+        upd.set_election_id(election_id);
+
+        let mut req = StreamMessageRequest::new();
+        req.set_arbitration(upd);
+
+        // Send the master arbitration update request to the switch.
+        // Retry using exponential backoff.
+        // TODO: Decompose this retry into a separate function.
+        let mut retries = 5;
+        let mut wait = 1000; // milliseconds
+        loop {
+            match sink.send((req.clone(), grpcio::WriteFlags::default())).await {
+                Err(e) => {
+                    if retries > 0 {
+                        error!("failed to configure backup stream through master arbitration: {:#?}", e);
+
+                        retries -= 1;
+                        sleep(Duration::from_secs(wait)).await;
+                        wait *= 2;
+                    }
+                },
+                Ok(_) => break,
+            }
+        };
+
+        // Wrap types from external crates in newtypes.
         let p4rc = P4RC(client);
+        let packet_sink = PacketSink(sink);
+
 
         Self {
             client: p4rc,
@@ -240,6 +291,7 @@ impl SwitchClient {
             role_id,
             target,
             packet_meta_field_to_id_bw,
+            packet_sink,
         }
     }
 
@@ -434,43 +486,15 @@ impl SwitchClient {
 
         // Send packets found in output relations to the switch.
         if !packet_outs.is_empty() {
-            // TODO: Move this connection to be established on the struct.
-            // Establish a connection to the switch.
-            use futures::SinkExt;
-            let (mut sink, _receiver) = self.client.0.stream_channel().unwrap();
-
-            // Send a master arbitration update to establish this as backup with election id 1.
-            // The Tokio actor handling messages from the dataplane has a StreamChannel with election id 0.
-            use proto::p4runtime::Uint128;
-            let mut election_id = Uint128::new();
-            election_id.set_high(0);
-            election_id.set_low(1);
-
-            let mut upd = MasterArbitrationUpdate::new();
-            upd.set_device_id(self.device_id);
-            upd.set_election_id(election_id);
-
-            let mut req = StreamMessageRequest::new();
-            req.set_arbitration(upd);
-            let req_res = sink.send((req, grpcio::WriteFlags::default())).await;
-            if req_res.is_err() {
-                error!("failed to configure streamchannel through master arbitration update for backup: {:#?}", req_res.err());
-            }
-
             // Send packets to the switch.
             for packet_out in packet_outs {
                 let mut req = StreamMessageRequest::new();
                 req.set_packet(packet_out);
 
-                let req_res = sink.send((req, grpcio::WriteFlags::default())).await;
+                let req_res = self.packet_sink.0.send((req, grpcio::WriteFlags::default())).await;
                 if req_res.is_err() {
                     error!("failed to send request over stream channel: {:#?}", req_res.err());
                 }
-            }
-
-            let sink_close_res = sink.close().await;
-            if sink_close_res.is_err() {
-                error!("error closing sink: {:#?}", sink_close_res.err());
             }
         }
 
@@ -953,8 +977,6 @@ impl DataplaneResponseActor {
     // Runs the actor indefinitely and handles each received message.
     async fn run(&mut self) {
         // Send a master arbitration update. This lets the actor properly stream responses from the dataplane.
-        use futures::SinkExt;
-
         let mut update = MasterArbitrationUpdate::new();
         update.set_device_id(0);
         let mut smr = StreamMessageRequest::new();

@@ -135,7 +135,7 @@ async fn run_controller(
         device_id,
         role_id,
         target,
-    );
+    ).await;
 
     // Run the DDlog program.
     let (mut hddlog, initial_contents) = run(1, false).unwrap();
