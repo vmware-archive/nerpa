@@ -32,7 +32,6 @@ use itertools::Itertools;
 use proto::p4info;
 
 use proto::p4runtime::{
-    FieldMatch,
     ForwardingPipelineConfig,
     ForwardingPipelineConfig_Cookie,
     GetForwardingPipelineConfigRequest,
@@ -44,8 +43,6 @@ use proto::p4runtime::{
     SetForwardingPipelineConfigRequest_Action,
     StreamMessageRequest,
     StreamMessageResponse,
-    TableAction,
-    TableEntry,
     Uint128,
     WriteRequest
 };
@@ -283,7 +280,7 @@ impl From<&p4info::Documentation> for Documentation {
 
 #[derive(Clone, Debug, Default)]
 pub struct Preamble {
-    id: u32,
+    pub id: u32,
     pub name: String,
     alias: String,
     annotations: Annotations,
@@ -307,7 +304,7 @@ impl From<&p4info::Preamble> for Preamble {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-enum MatchType {
+pub enum MatchType {
     Unspecified,
     Exact,
     Lpm,
@@ -347,8 +344,8 @@ pub struct MatchField {
     // Preamble but it includes everything in the preamble except
     // 'alias'.  It seems more uniform to just use Preamble here.
     pub preamble: Preamble,
-    bit_width: i32,
-    match_type: MatchType,
+    pub bit_width: i32,
+    pub match_type: MatchType,
     type_name: Option<String>,
     // unknown_fields: 
 }
@@ -385,53 +382,6 @@ impl From<&p4info::MatchField> for MatchField {
             },
             type_name: None, // XXX
         }
-    }
-}
-
-impl MatchField {
-    fn to_proto_runtime(&self, val: u64) -> proto::p4runtime::FieldMatch {
-        let mut field_match = proto::p4runtime::FieldMatch::new();
-        field_match.set_field_id(self.preamble.id);
-        let v = encode_value(val.into(), self.bit_width);
-
-        // v = std::vec::Vec::new();
-        // TODO: Determine if this is the right approach here.
-        match self.match_type {
-            MatchType::Exact => {
-                let mut exact_match = proto::p4runtime::FieldMatch_Exact::new();
-                exact_match.set_value(v);
-                field_match.set_exact(exact_match);
-            }, 
-            MatchType::Lpm => {
-                let mut lpm_match = proto::p4runtime::FieldMatch_LPM::new();
-                lpm_match.set_value(v);
-                field_match.set_lpm(lpm_match);
-            },
-            MatchType::Ternary => {
-                let mut ternary_match = proto::p4runtime::FieldMatch_Ternary::new();
-                ternary_match.set_value(v);
-                field_match.set_ternary(ternary_match);
-            },
-            MatchType::Range => {
-                let mut range_match = proto::p4runtime::FieldMatch_Range::new();
-                range_match.set_low(v[0..0].to_vec());
-                range_match.set_high(v[1..1].to_vec());
-                field_match.set_range(range_match);
-            },
-            MatchType::Optional => {
-                let mut optional_match = proto::p4runtime::FieldMatch_Optional::new();
-                optional_match.set_value(v);
-                field_match.set_optional(optional_match);
-            }
-            // Unspecified and Other
-            _ => {
-                let mut other = protobuf::well_known_types::Any::new();
-                other.set_value(v);
-                field_match.set_other(other);
-            }
-        }
-        
-        field_match
     }
 }
 
@@ -490,16 +440,6 @@ impl Display for Param {
     }
 }
 
-impl Param {
-    fn to_proto_runtime(&self, val: u64) -> proto::p4runtime::Action_Param {
-        let mut runtime_param = proto::p4runtime::Action_Param::new();
-        runtime_param.set_param_id(self.preamble.id);
-        runtime_param.set_value(encode_value(val, self.bit_width));
-        
-        runtime_param
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Action {
     pub preamble: Preamble,
@@ -512,25 +452,6 @@ impl From<&p4info::Action> for Action {
             preamble: a.get_preamble().into(),
             params: a.get_params().iter().map(|x| x.into()).collect(),
         }
-    }
-}
-
-impl Action {
-    fn to_proto_runtime(
-        &self,
-        params_values: &HashMap<String, u64>
-    ) -> proto::p4runtime::Action {
-        let mut runtime_action = proto::p4runtime::Action::new();
-        runtime_action.set_action_id(self.preamble.id);
-
-        let params_vec = self.params
-                        .iter()
-                        .map(|x| x.to_proto_runtime(params_values[&x.preamble.name]))
-                        .collect();
-        let params = protobuf::RepeatedField::from_vec(params_vec);
-        runtime_action.set_params(params);
-        
-        runtime_action
     }
 }
 
@@ -841,115 +762,27 @@ pub fn list_tables(device_id: u64, target: &str, client: &P4RuntimeClient) {
     }
 }
 
-fn encode_value(value: u64, bit_width: i32) -> Vec<u8> {
-    // P4Runtime expects a byte-vector (u8) in big-endian order.
-    // Its length must be the following number of bytes: (bit_width + 7) / 8.
-    // Since we are passed a 32-bit value, we must return a subvector of this value's byte vector, with the required number of bytes.
-    // The used fields have bit-width of at most 12, so the indexing scheme below works safely.
-
-    // TODO: Extend function to take larger values (e.g. 128-bit), and redesign indexing approach.
-
-    let mut enc_val: Vec<u8> = vec![];
-    enc_val.write_u64::<BigEndian>(value).unwrap();
-
-    let num_bytes : usize = ((bit_width + 7) / 8) as usize;
-    let start_idx : usize = enc_val.len() - num_bytes;
-
-    enc_val[start_idx..].to_vec()
-}
-
-pub fn build_table_entry(
-    table_name: &str,
-    action_name: &str,
-    params_values: &HashMap<String, u64>,
-    match_fields_map: &HashMap<String, u64>,
-    priority: i32,
-    device_id: u64,
-    target: &str,
-    client: &P4RuntimeClient
-) -> Result<proto::p4runtime::TableEntry, P4Error> {
-    let pipeline = get_pipeline_config(device_id, target, client);
-    let switch : Switch = pipeline.get_p4info().into();
-
-    let tables : Vec<Table> = switch.tables
-                                .into_iter()
-                                .filter(|t| t.preamble.name == table_name)
-                                .collect();
-    if tables.len() != 1 {
-        return Err(P4Error{
-            message: format!("found {} matching tables, expected 1", tables.len())
-        });
-    }
-
-    let table = &tables[0];
-    let actions : Vec<&ActionRef> = (&table.actions)
-                                        .into_iter()
-                                        .filter(|a| a.action.preamble.name == action_name)
-                                        .collect();
-    if actions.len() != 1 {
-        return Err(P4Error { 
-            message: format!("found {} matching actions, expected 1", actions.len())
-        });
-    }
-
-    let action = actions[0].action.to_proto_runtime(params_values);
-    let mut table_action : TableAction = TableAction::new();
-    table_action.set_action(action);
-    
-    let mut field_matches = RepeatedField::<FieldMatch>::new();
-    for field in &table.match_fields {
-        let name : &str = &field.preamble.name;
-        match match_fields_map.get(name) {
-            Some(v) => field_matches.push(field.to_proto_runtime((*v).into())),
-            None => if field.match_type == MatchType::Exact {
-                return Err(P4Error { message: format!("no field matching name {}", name)})
-            },
-        }
-    }
-
-    let mut table_entry = TableEntry::new();
-    table_entry.set_table_id(table.preamble.id);
-    table_entry.set_action(table_action);
-    table_entry.set_priority(priority);
-    table_entry.set_field_match(field_matches);
-
-    Ok(table_entry)
-}
-
 pub fn build_table_entry_update(
     update_type: proto::p4runtime::Update_Type,
-    table_name: &str,
-    action_name: &str,
-    params_values: &HashMap<String, u64>,
-    match_fields_map: &HashMap<String, u64>,
-    priority: i32,
-    device_id: u64,
-    target: &str,
-    client: &P4RuntimeClient,
-) -> Result<proto::p4runtime::Update, P4Error> {
-    let result = build_table_entry(
-        table_name,
-        action_name,
-        params_values,
-        match_fields_map,
-        priority,
-        device_id,
-        target,
-        client,
-    );
-    match result {
-        Ok(t) => {
-            let mut entity = proto::p4runtime::Entity::new();
-            entity.set_table_entry(t);
+    table_id: u32,
+    table_action: proto::p4runtime::TableAction,
+    field_matches: Vec<proto::p4runtime::FieldMatch>,
+    priority: i32, 
+) -> proto::p4runtime::Update {
+    let mut table_entry = proto::p4runtime::TableEntry::new();
+    table_entry.set_table_id(table_id);
+    table_entry.set_action(table_action);
+    table_entry.set_field_match(protobuf::RepeatedField::from_vec(field_matches));
+    table_entry.set_priority(priority);
 
-            let mut update = proto::p4runtime::Update::new();
-            update.set_field_type(update_type);
-            update.set_entity(entity);
+    let mut entity = proto::p4runtime::Entity::new();
+    entity.set_table_entry(table_entry);
 
-            Ok(update)
-        },
-        Err(e) => Err(P4Error{message: format!("could not build table entry ({})", e)})
-    }
+    let mut update = proto::p4runtime::Update::new();
+    update.set_field_type(update_type);
+    update.set_entity(entity);
+
+    update
 }
 
 pub fn write(

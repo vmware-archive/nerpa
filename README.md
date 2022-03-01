@@ -47,6 +47,10 @@ Once these files are written, the Nerpa program can be built through the build s
 
 Building the controller program fails at first. This is due to importing the `*_ddlog::run` function in `nerpa_controller/src/main.rs`. That import must change with the Nerpa program's name.
 
+If you are building a new Nerpa program after building a different example (ex., `nerpa_controlplane/previous/`), you may run into Cargo build errors due to conflicting dependencies. One potential source of errors may be the previous program's DDlog crate. Removing it can resolve these issues:
+
+`rm -rf nerpa_controlplane/previous/previous_ddlog`. 
+
 ### Run
 A built Nerpa program can be run using the runtime script. This script (1) configures and runs a P4 software switch; (2) configures and runs the OVSDB management plane; and (3) runs the controller program. Configuring the software switch requires a `commands.txt` file in the same subdirectory. Configuring the OVSDB management plane requires an OVSDB schema file in the same subdirectory, e.g. `nerpa_controlplane/sample/sample.ovsschema`.
 
@@ -66,3 +70,12 @@ Once it's started (which takes about 2 seconds), from another console run the te
 nerpa_controlplane/snvs/target/debug/test-snvs ipc://bmv2.ipc
 ```
 The test will print its progress.  If it succeeds, it will print `Success!`  On failure, it will panic before that point.
+
+## Writing a Nerpa Program
+
+### Assumptions
+The Nerpa programming framework embeds some assumptions about the structure within P4 and DDlog programs. These are documented below.
+
+* Multicast: a DDlog output relation meant to push multicast group IDs to the switch must contain "multicast" in its name (not case-sensitive). A multicast relation must have two records, one representing the group ID and one representing the port. The group ID record name should include "id" (not case-sensitive). The port record name should include "port" (not case-sensitive).
+
+* PacketOut: a DDlog output relation can contain packets to send as [PacketOut messages](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-packet-i_o) over the P4 Runtime API. Such a relation must be a `NamedStruct`, and its name must contain "packet" (not case-sensitive). One of its output Records must represent the packet to send as an `Array`; its name should include "packet" (not case-sensitive). All other fields represent packet metadata fields in the PacketOut struct (the P4 struct with controller header `packet_out`). 

@@ -1,0 +1,10 @@
+# Generated ddlog
+*_ddlog/
+*_dp.dl
+*_mp.dl
+
+# Generated P4
+arp.json
+arp.p4i
+arp.p4info.bin
+arp.p4info.txt

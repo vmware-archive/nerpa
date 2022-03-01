@@ -1,0 +1,101 @@
+/*
+Copyright (c) 2022 VMware, Inc.
+SPDX-License-Identifier: MIT
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+import arp_dp as arp_dp
+
+// Normally, the controller would check if the packet was originally sent from the CPU to the switch,
+// and avoid processing such a packet. The P4 program as written can never send a packet from the CPU
+// back to it.
+// So, we only have to confirm that the opcode is either an ARP request or ARP reply.
+arp_dp::PacketOut(0, 0, packet) :-
+    arp_dp::PacketIn(
+        .packet = packet,
+        .opcode = opcode,
+    ),
+    opcode == 1 or opcode == 2.
+
+// Cache mappings from MAC address to port and from IP address to MAC.
+output relation MacToPort(
+    mac: bit<48>,
+    port: bit<9>
+)
+
+output relation IpToMac(
+    ip: bit<32>,
+    mac: bit<48>
+)
+
+// Update the L2 forwarding table, when the MAC address has not been mapped to a port.
+arp_dp::ForwardL2(
+    mac,
+    arp_dp::ForwardL2ActionSetEgress{port}
+) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet),
+    not MacToPort-1(mac, _).
+
+// Update the ARP table, when the IP address has not been mapped to a MAC address.
+arp_dp::Arp(
+    (ip, 32),
+    0,
+    arp_dp::ArpActionArpReply{mac}
+) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet),
+    not IpToMac-1(ip, _).
+
+// Update the IPv4 LPM table, when the IP address has not been mapped to a MAC address.
+arp_dp::IPv4Lpm(
+    (ip, 32),
+    0,
+    arp_dp::IPv4LpmActionIPv4Forward{mac, port}
+) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet,
+    ),
+    not IpToMac-1(ip, _).
+
+// Cache new mappings from MAC address to port and from IP address to MAC address.
+MacToPort(mac, port) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet
+    ),
+    not MacToPort-1(mac, _).
+
+IpToMac(ip, mac) :-
+    arp_dp::PacketIn(
+        .mac = mac,
+        .port = port,
+        .ip = ip,
+        .packet = packet
+    ),
+    not IpToMac-1(ip, _).
