@@ -62,7 +62,6 @@ if test ! -f "$FILE_NAME.dl"; then
 fi
 
 echo "Compiling DDlog crate..."
-rm -rf ${FILE_NAME}_ddlog &&
 ddlog -i $FILE_NAME.dl &&
 (cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
 

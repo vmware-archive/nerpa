@@ -47,6 +47,10 @@ Once these files are written, the Nerpa program can be built through the build s
 
 Building the controller program fails at first. This is due to importing the `*_ddlog::run` function in `nerpa_controller/src/main.rs`. That import must change with the Nerpa program's name.
 
+If you are building a new Nerpa program after building a different example (ex., `nerpa_controlplane/previous/`), you may run into Cargo build errors due to conflicting dependencies. One potential source of errors may be the previous program's DDlog crate. Removing it can resolve these issues:
+
+`rm -rf nerpa_controlplane/previous/previous_ddlog`. 
+
 ### Run
 A built Nerpa program can be run using the runtime script. This script (1) configures and runs a P4 software switch; (2) configures and runs the OVSDB management plane; and (3) runs the controller program. Configuring the software switch requires a `commands.txt` file in the same subdirectory. Configuring the OVSDB management plane requires an OVSDB schema file in the same subdirectory, e.g. `nerpa_controlplane/sample/sample.ovsschema`.
 
