@@ -1000,6 +1000,7 @@ impl DataplaneResponseActor {
                 let p4_update_opt = r.update;
                 if p4_update_opt.is_none() {
                     debug!("received empty response from p4runtime streaming channel");
+                    return;
                 }
 
                 use proto::p4runtime::StreamMessageResponse_oneof_update::*;
@@ -1018,7 +1019,7 @@ impl DataplaneResponseActor {
                     },
                     packet(p) => {
                         let dd_update_opt = packet_in_to_ddlog(p);
-                        info!("received packetin update: {:#?}", dd_update_opt);
+                        debug!("received packetin update: {:#?}", dd_update_opt);
 
                         let channel_res = self.respond_to.send(dd_update_opt).await;
                         if channel_res.is_err() {
@@ -1027,7 +1028,7 @@ impl DataplaneResponseActor {
                     }
                     error(e) => error!("received error from p4runtime streaming channel: {:#?}", e),
                     // no action for arbitration, idle timeout, or other
-                    m => info!("received message from p4runtime streaming channel: {:#?}", m),
+                    m => debug!("received message from p4runtime streaming channel: {:#?}", m),
                 };
             }
         }
