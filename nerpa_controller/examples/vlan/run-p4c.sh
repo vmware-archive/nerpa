@@ -1,1 +1,0 @@
-p4c --target bmv2 --arch v1model --p4runtime-files vlan.p4info.bin,vlan.p4info.txt vlan.p4
