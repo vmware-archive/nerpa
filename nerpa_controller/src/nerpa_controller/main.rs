@@ -42,7 +42,7 @@ use std::fs::File;
 // Import the function to run a DDlog program.
 // Note that the crate name changes with the Nerpa program's name.
 // The Nerpa programmer must rename this import.
-use snvs_ddlog::run;
+use arp_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {
@@ -135,7 +135,7 @@ async fn run_controller(
         device_id,
         role_id,
         target,
-    );
+    ).await;
 
     // Run the DDlog program.
     let (mut hddlog, initial_contents) = run(1, false).unwrap();

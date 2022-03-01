@@ -94,7 +94,7 @@ if $SIM_IFACES; then
 else
     SWITCH_FLAGS+=" -i 0@veth1 -i 1@veth3 -i 2@veth5 -i 3@veth7"
 fi
-GRPC_FLAGS="--grpc-server-addr 0.0.0.0:50051 --cpu-port 1010"
+GRPC_FLAGS="--grpc-server-addr 0.0.0.0:50051 --cpu-port 510"
 
 $SUDO $SWITCH_GRPC_EXEC $SWITCH_FLAGS -- $GRPC_FLAGS & sleep 2 
 
@@ -134,4 +134,4 @@ if test -f "$SCHEMA"; then
 fi
 
 # Run the controller.
-(cd $NERPA_DIR/nerpa_controller && cargo run -- --ddlog-record=replay.txt $FILE_DIR $FILE_NAME && cd $NERPA_DIR)
+(cd $NERPA_DIR/nerpa_controller && RUST_BACKTRACE=FULL cargo run -- --ddlog-record=replay.txt $FILE_DIR $FILE_NAME && cd $NERPA_DIR)

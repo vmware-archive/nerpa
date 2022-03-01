@@ -22,7 +22,10 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt::Write;
-use std::fs::File;
+use std::fs::{
+    File,
+    metadata
+};
 use std::io::{BufRead, BufReader};
 use std::io::Write as IoWrite;
 use std::path::Path;
@@ -32,13 +35,14 @@ const TOML_FN: &str = "../nerpa_controller/Cargo.toml";
 pub fn write_toml(
     io_dir: &str,
     prog_name: &str,
-    digest_path_opt: Option<&str>,
+    dp_path_opt: Option<&str>,
 ) -> Result<()> {
     let types_dp_name = format!("types__{}_dp", prog_name);
     let reserved_keys: HashSet<&str> = [
         "differential_datalog",
-        "digest2ddlog",
+        "dp2ddlog",
         "types",
+        "ovsdb_client",
         types_dp_name.as_str(),
         prog_name,
     ].iter().cloned().collect();
@@ -54,8 +58,14 @@ pub fn write_toml(
     writeln!(toml_out, "types = {{path = \"{}/{}_ddlog/types\"}}", io_dir, prog_name)?;
     writeln!(toml_out, "types__{}_dp = {{path = \"{}/{}_ddlog/types/{}_dp\"}}", prog_name, io_dir, prog_name, prog_name)?;
 
-    if !digest_path_opt.is_none() {
-        writeln!(toml_out, "digest2ddlog = {{path = \"{}\"}}", digest_path_opt.unwrap())?;
+    if !dp_path_opt.is_none() {
+        writeln!(toml_out, "dp2ddlog = {{path = \"{}\"}}", dp_path_opt.unwrap())?;
+    }
+
+    // If the program directory contains an OVS schemafile, we add the ovsdb client dependency.
+    let ovs_schema_fn = format!("{}/{}.ovsschema", io_dir, prog_name);
+    if metadata(ovs_schema_fn.as_str()).is_ok() {
+        writeln!(toml_out, "ovsdb_client = {{path = \"../ovsdb_client\"}}")?;
     }
 
     let toml_fn_os = OsStr::new(&TOML_FN);
@@ -136,6 +146,7 @@ proto = {{path = \"../proto\"}}
 protobuf = \"2.22.0\"
 protobuf-codegen = \"2.22.0\"
 tokio = {{ version = \"1.2.0\", features = [\"full\"]}}
+tracing = \"0.1\"
 "
     )
 }

@@ -49,7 +49,7 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name(CRATE_ARG)
-                .help("path to directory for digest2ddlog helper crate (optional)")
+                .help("path to directory for dp2ddlog helper crate (optional)")
                 .required(false)
                 .index(3),
         )
