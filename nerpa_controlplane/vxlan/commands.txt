@@ -1,0 +1,9 @@
+# Set up initial rules for VXLAN tunneling.
+table_add VxlanTerm VxlanDecap 00:04:00:00:01:01 =>
+table_add L2Forward Forward 00:04:00:00:01:01 => 1
+table_add VxlanSegment SetVni 10.0.0.0/8 => 22
+table_add VxlanNexthop SetIpv4Nexthop 00:04:00:00:02:01 => 192.168.11.254
+table_add VxlanRouting Route 192.168.11.254 => 2
+
+table_add Vtep SetVtepIp 00:04:00:00:01:01 => 192.168.11.1
+table_add SendFrame RewriteMacs 192.168.11.254 => 00:aa:00:01:00:02 00:aa:00:02:00:03

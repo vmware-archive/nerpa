@@ -170,7 +170,7 @@ control VxlanIngress(
 
     table VxlanTerm {
         key = {
-            hdr.inner_ethernet.dstAddr: exact;
+            hdr.inner_ethernet.dstAddr: exact @name("dst");
         }
 
         actions = {
@@ -185,7 +185,7 @@ control VxlanIngress(
 
     table L2Forward {
         key = {
-            hdr.inner_ethernet.dstAddr: exact;
+            hdr.inner_ethernet.dstAddr: exact @name("dst");
         }
 
         actions = {
@@ -203,7 +203,7 @@ control VxlanIngress(
 
     table VxlanSegment {
         key = {
-            hdr.ipv4.dstAddr: lpm;
+            hdr.ipv4.dstAddr: lpm @name("dst");
         }
 
         actions = {
@@ -214,7 +214,7 @@ control VxlanIngress(
 
     table VxlanNexthop {
         key = {
-            hdr.ethernet.dstAddr: exact;
+            hdr.ethernet.dstAddr: exact @name("dst");
         }
 
         actions = {
@@ -228,7 +228,7 @@ control VxlanIngress(
 
     table Vtep {
         key = {
-            hdr.ethernet.srcAddr: exact;
+            hdr.ethernet.srcAddr: exact @name("src");
         }
 
         actions = {
@@ -242,7 +242,7 @@ control VxlanIngress(
 
     table VxlanRouting {
         key = {
-            meta.nexthop: exact;
+            meta.nexthop: exact @name("nexthop");
         }
 
         actions = {
@@ -282,7 +282,7 @@ control VxlanEgress(
 
     table SendFrame {
         key = {
-            hdr.ipv4.dstAddr: exact;
+            hdr.ipv4.dstAddr: exact @name("dst");
         }
 
         actions = {
