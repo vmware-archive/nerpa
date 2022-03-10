@@ -1,3 +1,14 @@
+/*!
+Controller between the DDlog control plane and P4 data plane.
+
+In the Nerpa programming framework, the control plane is incremental
+and uses a [Differential Datalog](https://github.com/vmware/differential-datalog)
+program. The data plane is programmed in [P4](https://p4.org/) and
+the [P4 Runtime API](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html).
+This crate interfaces between the two. It converts DDlog output relations
+into the appropriate type of P4 entry, and sends that to the switch.
+*/
+#![warn(missing_docs)]
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
@@ -22,10 +33,7 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use byteorder::{
-    ByteOrder,
-    BigEndian,
-};
+use byteorder::{ByteOrder, BigEndian};
 
 use differential_datalog::api::HDDlog;
 
@@ -43,19 +51,10 @@ use differential_datalog::record::{
     Record,
 };
 
-use dp2ddlog::{
-    digest_to_ddlog,
-    packet_in_to_ddlog,
-};
+use dp2ddlog::{digest_to_ddlog, packet_in_to_ddlog};
 
-use futures::{
-    SinkExt,
-    StreamExt,
-};
-use grpcio::{
-    ClientDuplexReceiver,
-    StreamingCallSink,
-};
+use futures::{SinkExt, StreamExt};
+use grpcio::{ClientDuplexReceiver, StreamingCallSink};
 
 use p4ext::{
     ActionRef,
@@ -86,16 +85,24 @@ use std::{
 };
 use tokio::sync::{oneshot, mpsc};
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, instrument};
 
-// Controller serves as a handle for the Tokio tasks.
-// The Tokio task can either process DDlog inputs or push outputs to the switch.
+/// Public handle for the Tokio tasks.
+/// The Tokio task either processes DDlog inputs or push outputs to the switch.
 #[derive(Clone, Debug)]
 pub struct Controller {
+    /// Sends messages to a asynchronously running actor.
     sender: mpsc::Sender<ControllerActorMessage>,
 }
 
 impl Controller {
+    /// Creates a new handle for Tokio tasks.
+    ///
+    /// Passes `switch_client` and `hddlog` to a `ControllerActor`, which allows interaction with the P4 switch and DDlog program, respectively. Runs the actor asynchronously.
+    ///
+    /// # Arguments
+    /// * `switch_client` - P4 Runtime client with extra information.
+    /// * `hddlog` - DDlog program.
     pub fn new(
         switch_client: SwitchClient,
         hddlog: Arc<HDDlog>,
@@ -109,7 +116,14 @@ impl Controller {
         Ok(Self{sender})
     }
 
-    // Streams inputs from OVSDB and from the data plane.
+    /// Streams inputs from OVSDB and from the data plane.
+    ///
+    /// Sends a message to the `ControllerActor` including `hddlog`, `server`, and `database`. These arguments are passed to an external OVSDB client crate. On receipt, it starts streaming inputs.
+    ///
+    /// # Arguments
+    /// * `hddlog` - DDlog program.
+    /// * `server` - Filepath for OVSDB server.
+    /// * `database` - Name of OVSDB.
     #[instrument]
     pub async fn stream_inputs(
         &self,
@@ -136,18 +150,29 @@ impl Controller {
     }
 }
 
+/// Handle to the running DDlog program.
 #[derive(Debug)]
 pub struct ControllerProgram {
     hddlog: Arc<HDDlog>,
 }
 
 impl ControllerProgram {
+    /// Returns a handle to a DDlog program.
+    ///
+    /// # Arguments
+    /// * `hddlog` - DDlog program.
     pub fn new(hddlog: Arc<HDDlog>) -> Self {
         Self{hddlog}
     }
 
+    /// Applies `updates` to the DDlog program.
+    ///
+    /// Starts a new transaction and attempts to apply updates. If successful, it commits the transaction. Else, it rolls the transaction back and returns an error.
+    ///
+    /// # Arguments
+    /// * `updates` - vector of Updates to apply to the DDlog program.
     #[tracing::instrument]
-    pub fn add_input(
+    pub fn apply_updates(
         &mut self,
         updates:Vec<Update<DDValue>>
     ) -> Result<DeltaMap<DDValue>, String> {
@@ -164,12 +189,11 @@ impl ControllerProgram {
 
         self.hddlog.transaction_commit_dump_changes()
     }
-
-    pub fn stop(&mut self) {
-        self.hddlog.stop().unwrap();
-    }
 }
 
+/// A P4 Runtime client.
+///
+/// This is a "newtype" style struct, so we can define `Debug` on it.
 pub struct P4RC(P4RuntimeClient);
 
 impl fmt::Debug for P4RC {
@@ -179,6 +203,9 @@ impl fmt::Debug for P4RC {
     }
 }
 
+/// A sink to send messages to the P4 Runtime API over StreamChannel.
+///
+///  This is a "newtype" style struct, so we can define `Debug` on it.
 pub struct PacketSink(StreamingCallSink<StreamMessageRequest>);
 
 impl fmt::Debug for PacketSink {
@@ -188,8 +215,12 @@ impl fmt::Debug for PacketSink {
     }
 }
 
+/// A client to interface with the P4 Runtime switch.
+///
+/// Includes extra information to configure the switch and to send packets to the switch without unnecessary extra computation. 
 #[derive(Debug)]
 pub struct SwitchClient {
+    /// The P4 Runtime Client as a newtype for debugging.
     pub client: P4RC,
     p4info: String,
     device_id: u64,
@@ -202,6 +233,19 @@ pub struct SwitchClient {
 }
 
 impl SwitchClient {
+    /// Returns a P4 Runtime switch client, with extra information for easier communication.
+    ///
+    /// `action`, `device_id`, `role_id` are all passed to the P4 Runtime API's `SetForwardingPipelineConfig` RPC. They are described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc>.
+    ///
+    /// # Arguments
+    /// * `client` - P4 Runtime client.
+    /// * `p4info` - Filepath for P4info binary file.
+    /// * `opaque` - Filepath for JSON representation of compiled P4 program.
+    /// * `cookie` - Metadata used by the control plane to identify a forwarding pipeline configuration.
+    /// * `action` - Action to set the forwarding pipeline, as described at <>.
+    /// * `device_id` - ID of the P4-enabled device.
+    /// * `role_id` - ID of the P4-enabled device.
+    /// * `target` - hardware/software entity hosting P4 Runtime. Used for logging.
     pub async fn new(
         client: P4RuntimeClient,
         p4info: String,
@@ -295,20 +339,28 @@ impl SwitchClient {
         }
     }
 
-    // Configures the level of digest notification on the switch, using the P4 Runtime API.
+    /// Configures the digest notification level on the switch.
+    ///
+    /// The fields in a `DigestEntry` `config` are described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry>.
+    ///
+    /// # Arguments
+    /// * `max_timeout_ns`: maximum server buffering delay in nanoseconds for an outstanding digest.
+    /// * `max_list_size`: maximum number of digest messages in a single Protobuf message from the server.
+    /// * `ack_timeout_ns`: time in nanoseconds for the server to wait for acknowledgement.
     pub async fn configure_digests(
         &mut self,
         max_timeout_ns: i64,
         max_list_size: i32,
         ack_timeout_ns: i64,
     ) -> Result<(), p4ext::P4Error> {
-        // Read P4info from file.
+        // Read P4Info from file.
         let p4info_str: &str = &self.p4info;
         let mut p4info_file = File::open(OsStr::new(p4info_str))
             .unwrap_or_else(|err| panic!("{}: could not open P4Info ({})", p4info_str, err));
         let p4info: proto::p4info::P4Info = Message::parse_from_reader(&mut p4info_file)
             .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info_str, err));
-
+        
+        // Write the digest config for each digest. 
         for d in p4info.get_digests().iter() {
             let config_res = p4ext::write_digest_config(
                 d.get_preamble().get_id(),
@@ -321,15 +373,22 @@ impl SwitchClient {
                 &self.client.0,
             ).await;
 
-            if config_res.is_err() {
-                return config_res;
+            match config_res {
+                Ok(_) => {},
+                Err(e) => {
+                    error!("writing digest config had following error: {:#?}", e);
+                    return Err(e);
+                }
             }
         }
 
         Ok(())
     }
 
-    // Pushes DDlog outputs as table entries in the P4-enabled switch.
+    /// Pushes DDlog outputs as table entries in the P4-enabled switch.
+    ///
+    /// Arguments:
+    /// * `delta` - DDlog output relations.
     #[instrument]
     pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
         let mut updates = Vec::new();
@@ -626,7 +685,14 @@ impl SwitchClient {
         }
     }
 
-    // Convert a DDlog Record and P4Info Actions to a P4Runtime TableAction.
+    /// Convert a DDlog Record and P4Info Actions to a P4Runtime TableAction.
+    ///
+    /// `record_name` and `record_actions` are a destructured `Record::NamedStruct` and represent P4 actions.
+    ///
+    /// # Arguments
+    /// * `record_name` - the top-level Name of a `NamedStruct`.
+    /// * `record_actions` - the Records of a `NamedStruct`, corresponding to P4 Actions.
+    /// * `action_refs` - the actions in a P4 table. 
     fn record_to_action(
         record_name: &Name,
         record_actions: Vec<(Name, Record)>,
@@ -697,7 +763,11 @@ impl SwitchClient {
         Some(table_action)
     }
 
-    // Convert a DDlog Record, using P4Info MatchFields, to a P4Runtime FieldMatch.
+    /// Convert a DDlog Record, using P4Info MatchFields, to a P4Runtime FieldMatch.
+    ///
+    /// # Arguments
+    /// * `r` - the Record representing a field match.
+    /// * `match_field` - the P4 Info for the field match.
     fn record_to_match(
         r: &Record,
         match_field: &MatchField,
@@ -813,14 +883,19 @@ impl SwitchClient {
                 let value = Self::record_to_value(r, bit_width_opt);
                 other.set_value(value);
                 field_match.set_other(other);
-
-                return None;
             }
         }
         
         Some(field_match)
     }
 
+    /// Converts a DDlog record's value into a byte vector.
+    ///
+    /// Only supports numeric types (like boolean and integer).
+    ///
+    /// # Arguments
+    /// * `r` - the record to convert.
+    /// * `bit_width_opt` - the value's bit width, optionally, used to size the byte vector.
     fn record_to_value(
         r: &Record,
         bit_width_opt: Option<i32>,
@@ -853,6 +928,13 @@ impl SwitchClient {
         v
     }
 
+    /// Gets a table with the provided name.
+    ///
+    /// Note that the record name is generated by `p4info2ddlog` from the P4 table.
+    ///
+    /// # Arguments
+    /// * `record_name` - DDlog record name, corresponding to the P4 table.
+    /// * `tables` - all P4 tables, from P4info.
     fn get_matching_table(record_name: String, tables: Vec<Table>) -> Option<Table> {
         for t in tables {
             let tn = &t.preamble.name;
@@ -868,23 +950,38 @@ impl SwitchClient {
     }
 }
 
+/// Processes DDlog input relations and pushes them to the P4 switch.
 struct ControllerActor {
+    /// Receives messages from the public-facing handle.
     receiver: mpsc::Receiver<ControllerActorMessage>,
+    /// Client for the P4-enabled switch.
     switch_client: SwitchClient,
+    /// Handle to the running DDlog program.
     program: ControllerProgram,
 }
 
+/// Message from the controller actor.
 #[derive(Debug)]
 enum ControllerActorMessage {
     InputMessage {
+        /// Oneshot channel used to keep the actor running.
         _respond_to: oneshot::Sender<DeltaMap<DDValue>>,
+        /// Running DDlog program.
         hddlog: Arc<HDDlog>,
+        /// Filepath to OVSDB server.
         server: String,
+        /// Name of OVS database.
         database: String,
     },
 }
 
 impl ControllerActor {
+    /// Returns a new actor, that processes DDlog inputs and pushes them to the P4 switch.
+    ///
+    /// # Arguments
+    /// * `receiver` - receives messages from the public controller handle.
+    /// * `switch_client` - client for the P4 switch.
+    /// * `program` - handle for the DDlog program.
     fn new(
         receiver: mpsc::Receiver<ControllerActorMessage>,
         switch_client: SwitchClient,
@@ -897,14 +994,17 @@ impl ControllerActor {
         }
     }
 
-    // Runs the actor indefinitely and handles each received message.
+    /// Runs the actor indefinitely. Handles each received message.
     async fn run(&mut self) {
         while let Some(msg) = self.receiver.recv().await {
             self.handle_message(msg).await;
         }
     }
 
-    // Handle messages to the ControllerActor, calling the appropriate logic based on its branch.
+    /// Handles messages to the controller actor.
+    /// 
+    /// # Arguments
+    /// * `msg` - message from the public controller actor.
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
         match msg {
             ControllerActorMessage::InputMessage {_respond_to, hddlog, server, database} => {
@@ -919,7 +1019,7 @@ impl ControllerActor {
                     error!("could not configure digests: {:#?}", config_res);
                 }
 
-                // Start the dataplane message actor.
+                // Start the dataplane response actor.
                 let (sink, receiver) = self.switch_client.client.0.stream_channel().unwrap();
                 let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_tx);
                 tokio::spawn(async move { digest_actor.run().await });
@@ -946,12 +1046,14 @@ impl ControllerActor {
                         continue;
                     }
 
-                    let ddlog_res = self.program.add_input(vec![inp_opt.unwrap()]);
+                    let ddlog_res = self.program.apply_updates(vec![inp_opt.unwrap()]);
                     if ddlog_res.is_ok() {
                         let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
                         if p4_res.is_err() {
                             error!("could not push digest output relation to switch: {:#?}", p4_res.err());
                         }
+                    } else {
+                        error!("could not apply input relation to ddlog program: {:#?}", ddlog_res.err());
                     }
                 };
             },
@@ -959,13 +1061,23 @@ impl ControllerActor {
     }
 }
 
+/// Processes responses from the dataplane.
 struct DataplaneResponseActor {
+    /// Sends message to the data plane.
     sink: StreamingCallSink<StreamMessageRequest>,
+    /// Receives messages from the data plane.
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
+    /// Sends DDlog updates to the controller actor.
     respond_to: mpsc::Sender<Option<Update<DDValue>>>
 }
 
 impl DataplaneResponseActor {
+    /// Returns actor that processes responses from the data plane.
+    ///
+    /// # Arguments
+    /// `sink` - sends messages to the data plane.
+    /// `receiver` - receives messages from the data plane.
+    /// `respond_to` - sends DDlog updates to the controller actor.
     fn new(
         sink: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
@@ -974,7 +1086,7 @@ impl DataplaneResponseActor {
         Self { sink, receiver, respond_to }
     }
 
-    // Runs the actor indefinitely and handles each received message.
+    /// Runs the actor indefinitely. Handles each received message. 
     async fn run(&mut self) {
         // Send a master arbitration update. This lets the actor properly stream responses from the dataplane.
         let mut update = MasterArbitrationUpdate::new();
@@ -991,8 +1103,10 @@ impl DataplaneResponseActor {
         }
     }
 
-    // Handles dataplane messages based on their type.
-    // Each digest is converted into the appropriate DDlog input relation.
+    /// Handles dataplane messages. Converts received digests into DDlog inputs.
+    ///
+    /// # Arguments
+    /// `res` - result from the dataplane.
     pub async fn handle_dataplane_message(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
         match res {
             Err(e) => error!("received GRPC error from p4runtime streaming channel: {:#?}", e),

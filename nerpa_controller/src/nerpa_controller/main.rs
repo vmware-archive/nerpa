@@ -1,3 +1,7 @@
+/*!
+Command-line interface to start the Nerpa controller.
+*/
+#![warn(missing_docs)]
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
@@ -23,31 +27,23 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use clap::{
-    App,
-    Arg
-};
-use grpcio::{
-    ChannelBuilder,
-    EnvBuilder
-};
-use nerpa_controller::{
-    Controller,
-    SwitchClient
-};
+use clap::{App, Arg};
+use grpcio::{ChannelBuilder, EnvBuilder};
+use nerpa_controller::{Controller, SwitchClient};
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 use std::fs::File;
 
-// Import the function to run a DDlog program.
-// Note that the crate name changes with the Nerpa program's name.
-// The Nerpa programmer must rename this import.
-use arp_ddlog::run;
+/// Import the function to run a DDlog program.
+/// This crate name changes with the Nerpa program's name.
+/// The Nerpa programmer must rename this import to avoid a build error.
+use vxlan_ddlog::run;
 
 #[tokio::main]
+/// Runs Nerpa controller program.
 pub async fn main() {
-    const FILE_DIR_ARG: &str = "FILE_DIR";
-    const FILE_NAME_ARG: &str = "FILE_NAME";
+    const FILE_DIR_ARG: &str = "file-directory";
+    const FILE_NAME_ARG: &str = "file-name";
     const DDLOG_RECORD: &str = "ddlog-record";
 
     let matches = App::new("nerpa_controller")
@@ -55,13 +51,13 @@ pub async fn main() {
         .about("Starts the controller program")
         .arg(
             Arg::with_name(FILE_DIR_ARG)
-                .help("path to directory with input files (*.p4info.bin, *.json, *.dl)")
+                .help("Directory path with input files (*.p4info.bin, *.json, *.dl)")
                 .required(true)
                 .index(1),
         )
         .arg(
             Arg::with_name(FILE_NAME_ARG)
-                .help("file name before the extension: {program}.p4info.bin, {program}.dl")
+                .help("Filename before the extension: {file-name}.p4info.bin, {file-name}.dl")
                 .required(true)
                 .index(2),
         )
@@ -77,12 +73,12 @@ pub async fn main() {
     // Validate CLI arguments.
     let file_dir_opt = matches.value_of(FILE_DIR_ARG);
     if file_dir_opt.is_none() {
-        panic!("missing required argument: FILE_DIR");
+        panic!("missing required argument: file-directory");
     }
 
     let file_name_opt = matches.value_of(FILE_NAME_ARG);
     if file_name_opt.is_none() {
-        panic!("missing required argument: FILE_NAME");
+        panic!("missing required argument: file-name");
     }
 
     let mut record_file = matches.value_of_os(DDLOG_RECORD).map(
@@ -98,7 +94,12 @@ pub async fn main() {
     run_controller(file_dir, file_name, &mut record_file).await
 }
 
-
+/// Runs the Nerpa controller program and necessary software dependencies: the P4 Runtime switch, DDlog program, and, optionally, OVSDB.
+///
+/// # Arguments:
+/// * `file_dir`: Filepath to the directory containing the compiled P4 program.
+/// * `file_name`: Name of the P4 and DDlog files, preceding the file extension.
+/// * `record_file`: Optional file to record DDlog arguments.
 async fn run_controller(
     file_dir: String,
     file_name: String,
