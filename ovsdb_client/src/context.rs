@@ -31,39 +31,45 @@ use differential_datalog::program::Update;
 use std::ffi;
 use std::sync::Arc;
 
+/// Context to interact with OVSDB.
 #[repr(C)]
 pub struct Context {
+    /// Running DDlog program.
     prog: Arc<HDDlog>,
-    pub delta: DeltaMap<DDValue>, /* Accumulated delta to send to OVSDB. */
-
-    /* Database info.
-     *
-     * The '*_relations' vectors contain DDlog relation names.
-     * 'prefix' is the prefix for the DDlog module containing relations. */
-    
+    /// Accumulated delta to send to OVSDB.
+    pub delta: DeltaMap<DDValue>,
+    /// Prefix for the DDlog module containing relations.
     prefix: String,
+    /// DDlog input relation names.
     input_relations: Vec<String>,
 
-    /* OVSDB connection. */
     // TODO: Add client-sync on struct.
+    /// State of OVSDB connection.
     pub state: Option<ConnectionState>,
 
-    /* Database info. */
+    /// Database name.
     db_name: String,
 }
 
+/// State of OVSDB connection.
 #[allow(dead_code)]
 #[derive(PartialEq)]
 pub enum ConnectionState {
-    /* Initial state before output-only data has been requested. */
+    /// Initial state before output-only data has been requested.
     Initial,
-    /* Output-only data requested. Waiting for reply. */
+    /// Output-only data requested. Waiting for reply.
     OutputOnlyDataRequested,
-    /* Output-only data received. Any request now would be to update data. */
+    /// Output-only data received. Any request now would be to update data.
     Update,
 }
 
 impl Context {
+    /// Returns context to interact with OVSDB.
+    ///
+    /// # Arguments
+    /// * `prog` - running DDlog program.
+    /// * `delta` - initial outputs from DDlog program.
+    /// * `name` - name for the OVS database.
     pub fn new(
         prog: Arc<HDDlog>,
         delta: DeltaMap<DDValue>,
@@ -92,6 +98,10 @@ impl Context {
 
     /// Processes a TXN_REPLY event from OVSDB.
     ///
+    /// # Arguments
+    /// * `cs` - raw pointer to live OVSDB connection.
+    /// * `reply` - transaction reply from OVSDB.
+    ///
     /// # Safety
     ///
     /// This function is marked unsafe because it dereferences a possibly null raw pointer.
@@ -107,12 +117,12 @@ impl Context {
             );
         }
 
-        /* Dereferencing 'reply' is safe due to the nil check. */
+        // Dereferencing 'reply' is safe because of the null check.
         let reply_type = (*reply).type_;
 
         if reply_type == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
-            /* Convert the jsonrpc_msg to a *mut c_char.
-             * Represent it in a Rust string for debugging, and free the C string. */
+            // Convert the jsonrpc_msg to a *mut c_char.
+            // Represent it in a Rust string for debugging, and free the C string.
             let reply_s = {
                 let reply_cs = ovsdb_sys::jsonrpc_msg_to_string(reply);
                 let reply_s = format!("received database error: {:#?}", reply_cs);
@@ -121,7 +131,7 @@ impl Context {
                 reply_s
             };
 
-            /* 'ovsdb_cs_force_reconnect' does not check for a null pointer. */
+            // 'ovsdb_cs_force_reconnect' does not check for a null pointer.
             if cs.is_null() {
                 return Err(
                     "needs non-nil client sync to force reconnect after txn reply error".to_string()
@@ -144,7 +154,7 @@ impl Context {
 
                 self.state = Some(ConnectionState::Update);
             },
-            Some(ConnectionState::Update) => {}, /* Nothing to do. */
+            Some(ConnectionState::Update) => {}, // Nothing to do.
             None => {
                 return Err(
                     "found invalid state while processing transaction reply".to_string()
@@ -155,6 +165,10 @@ impl Context {
         Ok(())
     }
 
+    /// Returns DDlog updates, parsed from OVSDB events.
+    ///
+    /// # Arguments
+    /// * `events`: events received from OVSDB.
     pub fn parse_updates(
         &self,
         events: Vec<ovsdb_sys::ovsdb_cs_event>,
