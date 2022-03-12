@@ -3,7 +3,7 @@ Controller between the DDlog control plane and P4 data plane.
 
 In the Nerpa programming framework, the control plane is incremental
 and uses a [Differential Datalog](https://github.com/vmware/differential-datalog)
-program. The data plane is programmed in [P4](https://p4.org/) and
+program. The data plane is programmed in [P4](https://p4.org/) and uses
 the [P4 Runtime API](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html).
 This crate interfaces between the two. It converts DDlog output relations
 into the appropriate type of P4 entry, and sends that to the switch.
@@ -191,7 +191,7 @@ impl ControllerProgram {
     }
 }
 
-/// A P4 Runtime client.
+/// P4 Runtime client.
 ///
 /// This is a "newtype" style struct, so we can define `Debug` on it.
 pub struct P4RC(P4RuntimeClient);
@@ -203,7 +203,7 @@ impl fmt::Debug for P4RC {
     }
 }
 
-/// A sink to send messages to the P4 Runtime API over StreamChannel.
+/// Sink to send messages using the P4 Runtime API over StreamChannel.
 ///
 ///  This is a "newtype" style struct, so we can define `Debug` on it.
 pub struct PacketSink(StreamingCallSink<StreamMessageRequest>);
@@ -215,7 +215,7 @@ impl fmt::Debug for PacketSink {
     }
 }
 
-/// A client to interface with the P4 Runtime switch.
+/// Client to interface with the P4 Runtime switch.
 ///
 /// Includes extra information to configure the switch and to send packets to the switch without unnecessary extra computation. 
 #[derive(Debug)]
@@ -235,7 +235,7 @@ pub struct SwitchClient {
 impl SwitchClient {
     /// Returns a P4 Runtime switch client, with extra information for easier communication.
     ///
-    /// `action`, `device_id`, `role_id` are all passed to the P4 Runtime API's `SetForwardingPipelineConfig` RPC. They are described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc>.
+    /// `action`, `device_id`, `role_id` are all passed to the P4 Runtime API's [`SetForwardingPipelineConfig` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc).
     ///
     /// # Arguments
     /// * `client` - P4 Runtime client.
@@ -341,7 +341,7 @@ impl SwitchClient {
 
     /// Configures the digest notification level on the switch.
     ///
-    /// The fields in a `DigestEntry` `config` are described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry>.
+    /// The `DigestEntry` configuration is described [here](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry).
     ///
     /// # Arguments
     /// * `max_timeout_ns`: maximum server buffering delay in nanoseconds for an outstanding digest.
@@ -392,7 +392,7 @@ impl SwitchClient {
 
     /// Pushes DDlog outputs as table entries in the P4-enabled switch.
     ///
-    /// Arguments:
+    /// # Arguments
     /// * `delta` - DDlog output relations.
     #[instrument]
     pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
@@ -568,13 +568,13 @@ impl SwitchClient {
     /// Updates the multicast group entry using P4 Runtime.
     ///
     /// # Arguments
-    /// * `recs` - A vector of tuples of (Name, Record). The second element in a NamedStruct.
+    /// * `recs` - Vector of tuples of (Name, Record). The second element in a NamedStruct.
     /// Expected to have length 2, one record representing the ID and the other the port.
     /// The ID record should be an Int. Its name should include "id" (not case-sensitive).
     /// The port record name should be an Int. Its name should include "port" (not case-sensitive).
     ///
     /// * `weight` - The weight from the DDlog output record.
-    /// A positive weight represents an insert/modify. A negative weight represents a delete.
+    /// Positive weight represents an insert/modify. Negative weight represents a delete.
     async fn update_multicast(
         &mut self,
         recs: Vec<(Cow<'static, str>, Record)>,
@@ -1080,9 +1080,9 @@ impl DataplaneResponseActor {
     /// Returns actor that processes responses from the data plane.
     ///
     /// # Arguments
-    /// `sink` - sends messages to the data plane.
-    /// `receiver` - receives messages from the data plane.
-    /// `respond_to` - sends DDlog updates to the controller actor.
+    /// * `sink` - sends messages to the data plane.
+    /// * `receiver` - receives messages from the data plane.
+    /// * `respond_to` - sends DDlog updates to the controller actor.
     fn new(
         sink: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
@@ -1111,7 +1111,7 @@ impl DataplaneResponseActor {
     /// Handles dataplane messages. Converts received digests into DDlog inputs.
     ///
     /// # Arguments
-    /// `res` - result from the dataplane.
+    /// * `res` - result from the dataplane.
     pub async fn handle_dataplane_message(&self, res: Result<StreamMessageResponse, grpcio::Error>) {
         match res {
             Err(e) => error!("received GRPC error from p4runtime streaming channel: {:#?}", e),

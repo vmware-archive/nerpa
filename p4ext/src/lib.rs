@@ -32,8 +32,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use byteorder::{BigEndian, WriteBytesExt};
-
 use futures::{SinkExt, StreamExt};
 
 use grpcio::{ChannelBuilder, EnvBuilder, WriteFlags};
@@ -54,7 +52,6 @@ use proto::p4runtime::{
     SetForwardingPipelineConfigRequest_Action,
     StreamMessageRequest,
     StreamMessageResponse,
-    Uint128,
     WriteRequest
 };
 
@@ -70,12 +67,10 @@ use std::ffi::OsStr;
 use std::fmt::{self, Display};
 use std::fs;
 use std::process::Command;
-use std::str::FromStr;
 use std::string::String;
 use std::sync::Arc;
 
-/// An annotation's location within a `.p4` file.
-/// Described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-sourcelocation-message>.
+/// An annotation's [location](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-sourcelocation-message>) within a `.p4` file.
 #[derive(Clone, Debug, Default)]
 pub struct SourceLocation {
     file: String,
@@ -106,8 +101,7 @@ impl Display for SourceLocation {
     }
 }
 
-/// An expression value, used within a structured annotation.
-/// Its format is described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-structured-annotations>.
+/// An [expression](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-structured-annotations) in a structured annotation.
 #[derive(Clone, Debug)]
 pub enum Expression {
     /// String value.
@@ -156,8 +150,7 @@ impl Display for KeyValuePair {
     }
 }
 
-/// Possible values of an annotation for a P4 Runtime value.
-/// Described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-structured-annotations>.
+/// Possible [annotation values](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-structured-annotations) for a P4 Runtime entity.
 #[derive(Clone, Debug)]
 pub enum AnnotationValue {
     /// Empty content can be in an unstructured annotation.
@@ -192,8 +185,7 @@ impl From<&p4types::StructuredAnnotation> for AnnotationValue {
     }
 }
 
-/// Stores annotations in a preamble. Maps name to value and optional location.
-/// Defined at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-preamble-message>.
+/// Annotations in a [preamble](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-preamble-message). Maps name to value and optional location.
 #[derive(Clone, Debug, Default)]
 pub struct Annotations(HashMap<String, (Option<SourceLocation>, AnnotationValue)>);
 
@@ -302,8 +294,7 @@ impl From<&p4info::Documentation> for Documentation {
     }
 }
 
-/// Describes a P4 entity.
-/// Defined at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-preamble-message>.
+/// [Preamble](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-preamble-message) describes a P4 entity.
 #[derive(Clone, Debug, Default)]
 pub struct Preamble {
     /// Unique instance ID for a P4 entity.
@@ -331,8 +322,7 @@ impl From<&p4info::Preamble> for Preamble {
     }
 }
 
-/// An enumeration of possible PSA match kinds.
-/// Described at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-match-format>.
+/// An enumeration of possible PSA match kinds. Described [here](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-match-format).
 #[derive(Clone, PartialEq, Eq)]
 pub enum MatchType {
     /// Unspecified.
@@ -376,7 +366,7 @@ impl Display for MatchType {
 }
 
 /// Data used to construct a lookup key matched in a table.
-/// Based on the definition within <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table>.
+/// Based on the definition [here](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table).
 /// Public fields are used by external crates to convert data to/from the `MatchField` format.
 #[derive(Clone, Debug)]
 pub struct MatchField {
@@ -446,8 +436,7 @@ fn parse_type_name(pnto: Option<&p4types::P4NamedType>) -> Option<String> {
     pnto.map(|pnt| pnt.name.clone())
 }
 
-/// Runtime parameter provided by the control plane for an action.
-/// Defined within <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-action>.
+/// [Runtime parameter](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-action) provided by the control plane for an action.
 #[derive(Clone, Debug, Default)]
 pub struct Param {
     /// The protobuf representation of Param doesn't include a
@@ -484,8 +473,7 @@ impl Display for Param {
     }
 }
 
-/// Action in a match-action table.
-/// Defined at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-action>.
+/// [Action](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-action) in a match-action table.
 #[derive(Clone, Debug, Default)]
 pub struct Action {
     /// Action ID, name, and alias.
@@ -518,7 +506,7 @@ impl Display for Action {
 }
 
 /// Represents a possible action in a table with additional information.
-/// Described within <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table>.
+/// Described within [this](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table).
 #[derive(Clone, Debug, Default)]
 pub struct ActionRef {
     /// The action.
@@ -561,8 +549,7 @@ impl Display for ActionRef {
     }
 }
 
-/// Match-action table.
-/// Defined at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table>.
+/// Match-action [table](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table).
 #[derive(Clone, Debug, Default)]
 pub struct Table {
     /// Table ID, name, and alias.
@@ -751,8 +738,7 @@ impl TestSetup {
 
 /// Set configuration for the forwarding pipeline.
 ///
-/// Calls the `SetForwardingPipelineConfig` RPC.
-/// Defined at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc>.
+/// Calls the [`SetForwardingPipelineConfig` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc).
 ///
 /// # Arguments
 /// * `p4info_str` - filepath for the p4info binary file.
@@ -818,8 +804,7 @@ pub fn set_pipeline_config(
 
 /// Returns configuration for the forwarding pipeline.
 ///
-/// Calls the `GetForwardingPipelineConfig` RPC.
-/// Defined at <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-getforwardingpipelineconfig-rpc>.
+/// Calls the [`GetForwardingPipelineConfig` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-getforwardingpipelineconfig-rpc).
 ///
 /// Panics if unable to get configuration from the provided device.
 ///
@@ -853,10 +838,7 @@ pub fn get_pipeline_config(
     pipeline.clone()
 }
 
-/// Build an update for a table entry.
-///
-/// A table entry is described at
-/// <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table-entry>.
+/// Build an update for a [table entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-table-entry).
 /// 
 /// # Arguments
 /// * `update_type` - the type of update: insert, modify, or delete.
@@ -889,8 +871,7 @@ pub fn build_table_entry_update(
 
 /// Write updates to the switch.
 ///
-/// Calls the `Write` RPC, defined at
-/// <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-write-rpc>.
+/// Calls the [`Write` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-write-rpc>).
 ///
 /// # Arguments
 /// * `updates` - updates to be written.
@@ -918,8 +899,7 @@ pub fn write(
 
 /// Retrieves one or more P4 entities.
 ///
-/// Calls the `Read RPC`, defined at
-/// <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-read-rpc>.
+/// Calls the [`Read RPC`](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-read-rpc).
 ///
 /// # Arguments
 /// * `entities` - a list of P4 entities, each acting as a query filter.
@@ -949,9 +929,8 @@ pub async fn read(
 /// Returns the response for a request over the streaming channel.
 ///
 /// Calls the `StreamChannel` RPC. This API call is
-/// used for session management and packet I/O, among other things.
-/// Possible uses are described at 
-/// <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-p4runtime-stream-messages>.
+/// used for session management and packet I/O,
+/// among other [stream messages](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-p4runtime-stream-messages).
 ///
 /// # Arguments
 /// * `request` - request to send over the channel.
@@ -973,8 +952,7 @@ pub async fn stream_channel_request(
 
 /// Sends a master arbitration update to the switch.
 ///
-/// Sets the controller as master. Described at
-/// <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-client-arbitration-and-controller-replication>.
+/// Sets the controller as master. Described [here](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-client-arbitration-and-controller-replication).
 ///
 /// # Arguments
 /// * `device_id` - ID for the P4 device.
@@ -992,10 +970,7 @@ pub async fn master_arbitration_update(
     stream_channel_request(request, client).await
 }
 
-/// Builds an update for a digest entry.
-/// 
-/// A `DigestEntry` is described at
-/// <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry>.
+/// Builds an update for a [digest entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry).
 ///
 /// # Arguments
 /// * `digest_id` - ID of the P4 device.
@@ -1030,7 +1005,7 @@ pub fn build_digest_entry_update(
 /// Returns an update to write a multicast group.
 /// This output can be directly passed to `write`.
 ///
-/// Described within <https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-multicastgroupentry>.
+/// Part of a [multicast group entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-multicastgroupentry).
 ///
 /// # Arguments
 /// * `update_type` - one of insert, modify, or delete.
@@ -1060,6 +1035,8 @@ pub fn build_multicast_write(
 
 /// Returns an entity to read a multicast group.
 /// This output can be wrapped in a `Vec` and passed to `read`.
+///
+/// Part of a [multicast group entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-multicastgroupentry).
 ///
 /// # Arguments
 /// * `group_id` - ID of the multicast group to read.

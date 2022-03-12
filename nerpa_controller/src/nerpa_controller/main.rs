@@ -1,7 +1,3 @@
-/*!
-Command-line interface to start the Nerpa controller.
-*/
-#![warn(missing_docs)]
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
@@ -34,13 +30,9 @@ use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 use std::fs::File;
 
-/// Import the function to run a DDlog program.
-/// This crate name changes with the Nerpa program's name.
-/// The Nerpa programmer must rename this import to avoid a build error.
 use vxlan_ddlog::run;
 
 #[tokio::main]
-/// Runs Nerpa controller program.
 pub async fn main() {
     const FILE_DIR_ARG: &str = "file-directory";
     const FILE_NAME_ARG: &str = "file-name";
@@ -94,12 +86,6 @@ pub async fn main() {
     run_controller(file_dir, file_name, &mut record_file).await
 }
 
-/// Runs the Nerpa controller program and necessary software dependencies: the P4 Runtime switch, DDlog program, and, optionally, OVSDB.
-///
-/// # Arguments:
-/// * `file_dir`: Filepath to the directory containing the compiled P4 program.
-/// * `file_name`: Name of the P4 and DDlog files, preceding the file extension.
-/// * `record_file`: Optional file to record DDlog arguments.
 async fn run_controller(
     file_dir: String,
     file_name: String,
