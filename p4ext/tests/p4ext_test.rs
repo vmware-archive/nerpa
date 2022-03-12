@@ -28,7 +28,7 @@ rusty_fork_test! {
     fn set_get_pipeline() {
         let setup = p4ext::TestSetup::new();
 
-        p4ext::set_pipeline(
+        p4ext::set_pipeline_config(
             &setup.p4info,
             &setup.opaque,
             &setup.cookie,
@@ -48,7 +48,7 @@ rusty_fork_test! {
 #[tokio::test]
 async fn write_read() {
     let setup = p4ext::TestSetup::new();
-    p4ext::set_pipeline(
+    p4ext::set_pipeline_config(
         &setup.p4info,
         &setup.opaque,
         &setup.cookie,
@@ -89,7 +89,7 @@ async fn write_read() {
 #[tokio::test]
 async fn stream_channel() {
     let setup = p4ext::TestSetup::new();
-    p4ext::set_pipeline(
+    p4ext::set_pipeline_config(
         &setup.p4info,
         &setup.opaque,
         &setup.cookie,

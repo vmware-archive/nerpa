@@ -242,9 +242,9 @@ impl SwitchClient {
     /// * `p4info` - Filepath for P4info binary file.
     /// * `opaque` - Filepath for JSON representation of compiled P4 program.
     /// * `cookie` - Metadata used by the control plane to identify a forwarding pipeline configuration.
-    /// * `action` - Action to set the forwarding pipeline, as described at <>.
+    /// * `action` - Action to set the forwarding pipeline.
     /// * `device_id` - ID of the P4-enabled device.
-    /// * `role_id` - ID of the P4-enabled device.
+    /// * `role_id` - the controller's desired
     /// * `target` - hardware/software entity hosting P4 Runtime. Used for logging.
     pub async fn new(
         client: P4RuntimeClient,
@@ -256,7 +256,7 @@ impl SwitchClient {
         role_id: u64,
         target: String,
     ) -> Self {
-        p4ext::set_pipeline(
+        p4ext::set_pipeline_config(
             &p4info,
             &opaque,
             &cookie,
@@ -359,27 +359,32 @@ impl SwitchClient {
             .unwrap_or_else(|err| panic!("{}: could not open P4Info ({})", p4info_str, err));
         let p4info: proto::p4info::P4Info = Message::parse_from_reader(&mut p4info_file)
             .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info_str, err));
-        
-        // Write the digest config for each digest. 
-        for d in p4info.get_digests().iter() {
-            let config_res = p4ext::write_digest_config(
-                d.get_preamble().get_id(),
-                max_timeout_ns,
-                max_list_size,
-                ack_timeout_ns,
-                self.device_id,
-                self.role_id,
-                &self.target,
-                &self.client.0,
-            ).await;
 
-            match config_res {
-                Ok(_) => {},
-                Err(e) => {
-                    error!("writing digest config had following error: {:#?}", e);
-                    return Err(e);
-                }
-            }
+        // Write updates for each digest.
+        let mut digest_updates = Vec::new();
+        for d in p4info.get_digests().iter() {
+            digest_updates.push(
+                p4ext::build_digest_entry_update(
+                    d.get_preamble().get_id(),
+                    max_timeout_ns,
+                    max_list_size,
+                    ack_timeout_ns
+                )
+            );
+        }
+
+        let digest_res = p4ext::write(
+            digest_updates,
+            self.device_id,
+            self.role_id,
+            &self.target,
+            &self.client.0
+        );
+
+        if digest_res.is_err() {
+            let e = digest_res.err().unwrap(); // safe because of `is_err` check
+            error!("writing digest updates failed with error: {:#?}", e);
+            return Err(e);
         }
 
         Ok(())
