@@ -1,3 +1,12 @@
+/*!
+Generates DDlog relations and crate TOML files from P4info.
+
+Because Nerpa uses Differential Datalog for the control plane,
+associated dependencies must be regenerated based on the
+DDlog program, and the TOML file dependencies are renamed. This
+crate provides the utility functions for those conversions.
+*/
+#![warn(missing_docs)]
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
@@ -191,6 +200,13 @@ fn p4data_to_ddlog_type(
     }
 }
 
+/// Converts P4 program information to DDlog relations. Generates external crates.
+///
+/// # Arguments
+/// * `io_dir_arg` - filepath to directory containing P4 and DDlog files. Assumed non-None.
+/// * `prog_name_arg` - name of the Nerpa program. Assumed non-None.
+/// * `crate_arg` - filepath to directory for `dp2ddlog` helper crate.
+/// * `pipeline_arg` - name of P4 pipeline for conversion.
 pub fn p4info_to_ddlog(
     io_dir_arg: Option<&str>,
     prog_name_arg: Option<&str>,

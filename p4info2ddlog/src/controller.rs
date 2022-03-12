@@ -32,6 +32,12 @@ use std::path::Path;
 
 const TOML_FN: &str = "../nerpa_controller/Cargo.toml";
 
+/// Writes the TOML for the nerpa controller.
+///
+/// # Arguments
+/// * `io_dir` - filepath to directory with P4 and DDlog files.
+/// * `prog_name` - name of the Nerpa program.
+/// * `dp_path_opt` - filepath to the dp2ddlog crate, if provided.
 pub fn write_toml(
     io_dir: &str,
     prog_name: &str,
@@ -131,6 +137,7 @@ path = \"src/lib.rs\"
 [[bin]]
 name = \"nerpa-controller\"
 path = \"src/nerpa_controller/main.rs\"
+doc = false
 
 [build-dependencies]
 protoc-grpcio = \"3.0.0\"

@@ -28,8 +28,13 @@ use proto::p4types::P4TypeInfo;
 
 use std::fmt::Write;
 
-/// Writes the Cargo.toml for the dp2ddlog crate.
+/// Writes the TOML file for the dp2ddlog crate.
+///
 /// Generated because the DDlog dependency paths depend on the Nerpa program name.
+///
+/// # Arguments
+/// * `io_dir` - filepath to directory with P4 and DDlog files.
+/// * `prog_name` - name of the Nerpa program.
 pub fn write_toml(
     io_dir: &str,
     prog_name: &str,
@@ -64,8 +69,15 @@ types__{}_dp = {{path = \"{}/types/{}_dp\"}}
     )
 }
 
-/// Writes the dp2ddlog Rust program.
+/// Writes the `dp2ddlog` Rust program.
+///
 /// Using P4Info, generates code to convert digests and packet metadata to input relations.
+///
+/// # Arguments
+/// * `digests` - all digests used in the P4 program.
+/// * `type_info` - type information from the P4 program.
+/// * `controller_metadata` - all P4 program structs with a `packet_in` or `packet_out` header.
+/// * `prog_name` - the Nerpa program name.
 pub fn write_rs(
     digests: &[Digest],
     type_info: &P4TypeInfo,

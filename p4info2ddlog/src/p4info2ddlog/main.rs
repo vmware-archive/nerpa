@@ -61,7 +61,6 @@ fn main() -> Result<()> {
                 .short("p"),
         )
         .get_matches();
-    
     p4info_to_ddlog(
         matches.value_of(FILE_DIR_ARG),
         matches.value_of(FILE_NAME_ARG),
