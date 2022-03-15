@@ -58,7 +58,7 @@ impl Annotation for Annotations {
     }
 }
 
-// Returns the ddlog type to use for a 'bitwidth'-bit P4 value
+// Return the ddlog type to use for a 'bitwidth'-bit P4 value
 // annotated with 'annotations'.
 fn p4_basic_type(bitwidth: i32, annotations: &Annotations) -> String {
     if bitwidth == 1 && annotations.has_annotation("@nerpa_bool") {
@@ -200,23 +200,20 @@ fn p4data_to_ddlog_type(
     }
 }
 
-/// Converts P4 program information to DDlog relations. Generates external crates.
+/// Convert P4 program information to DDlog relations. Generate external crates.
 ///
 /// # Arguments
-/// * `io_dir_arg` - filepath to directory containing P4 and DDlog files. Assumed non-None.
-/// * `prog_name_arg` - name of the Nerpa program. Assumed non-None.
+/// * `file_dir` - filepath to directory containing P4 and DDlog files.
+/// * `file_name` - name of the Nerpa program.
 /// * `crate_arg` - filepath to directory for `dp2ddlog` helper crate.
 /// * `pipeline_arg` - name of P4 pipeline for conversion.
 pub fn p4info_to_ddlog(
-    io_dir_arg: Option<&str>,
-    prog_name_arg: Option<&str>,
+    file_dir: &str,
+    file_name: &str,
     crate_arg: Option<&str>,
     pipeline_arg: Option<&str>,
 ) -> Result<()> {
-    let io_dir = io_dir_arg.unwrap();
-    let prog_name = prog_name_arg.unwrap();
-
-    let p4info_fn = format!("{}/{}.p4info.bin", io_dir, prog_name);
+    let p4info_fn = format!("{}/{}.p4info.bin", file_dir, file_name);
     let p4info = read_p4info(OsStr::new(&p4info_fn))?;
 
     let pipelines = get_pipelines(p4info.clone(), pipeline_arg)?;
@@ -433,7 +430,7 @@ pub fn p4info_to_ddlog(
         writeln!(output, ")")?;
     }
 
-    let output_fn = format!("{}/{}_dp.dl", io_dir, prog_name);
+    let output_fn = format!("{}/{}_dp.dl", file_dir, file_name);
     let output_filename_os = OsStr::new(&output_fn);
     let output_filename = output_filename_os.to_string_lossy();
     File::create(output_filename_os)
@@ -443,8 +440,8 @@ pub fn p4info_to_ddlog(
 
     // Update dependencies in the `nerpa_controller` crate.
     controller::write_toml(
-        io_dir,
-        prog_name,
+        file_dir,
+        file_name,
         crate_arg,
     )?;
 
@@ -468,7 +465,7 @@ pub fn p4info_to_ddlog(
         p4info.get_digests(),
         p4info.get_type_info(),
         p4info.get_controller_packet_metadata(),
-        prog_name
+        file_name
     )?;
 
     File::create(crate_rs_os)
@@ -479,7 +476,7 @@ pub fn p4info_to_ddlog(
     // Write the crate `.toml`.
     let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
     let crate_toml_os = OsStr::new(&crate_toml_fn);
-    let crate_toml_output = dp2ddlog::write_toml(io_dir, prog_name);
+    let crate_toml_output = dp2ddlog::write_toml(file_dir, file_name);
 
     File::create(crate_toml_os)
         .with_context(|| format!("{}: create failed", crate_toml_fn))?

@@ -28,7 +28,7 @@ use proto::p4types::P4TypeInfo;
 
 use std::fmt::Write;
 
-/// Writes the TOML file for the dp2ddlog crate.
+/// Write the TOML file for the dp2ddlog crate.
 ///
 /// Generated because the DDlog dependency paths depend on the Nerpa program name.
 ///
@@ -69,7 +69,7 @@ types__{}_dp = {{path = \"{}/types/{}_dp\"}}
     )
 }
 
-/// Writes the `dp2ddlog` Rust program.
+/// Write the `dp2ddlog` Rust program.
 ///
 /// Using P4Info, generates code to convert digests and packet metadata to input relations.
 ///

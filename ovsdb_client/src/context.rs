@@ -33,12 +33,13 @@ use std::sync::Arc;
 
 /// Context to interact with OVSDB.
 #[repr(C)]
-pub struct Context {
+pub struct OvsdbContext {
     /// Running DDlog program.
     prog: Arc<HDDlog>,
     /// Accumulated delta to send to OVSDB.
     pub delta: DeltaMap<DDValue>,
     /// Prefix for the DDlog module containing relations.
+    // Relation names are translated: `prefix` and `relation_name` becomes `prefix_relation_name`.
     prefix: String,
     /// DDlog input relation names.
     input_relations: Vec<String>,
@@ -63,8 +64,8 @@ pub enum ConnectionState {
     Update,
 }
 
-impl Context {
-    /// Returns context to interact with OVSDB.
+impl OvsdbContext {
+    /// Return context to interact with OVSDB.
     ///
     /// # Arguments
     /// * `prog` - running DDlog program.
@@ -96,7 +97,7 @@ impl Context {
         }
     }
 
-    /// Processes a TXN_REPLY event from OVSDB.
+    /// Process a TXN_REPLY event from OVSDB.
     ///
     /// # Arguments
     /// * `cs` - raw pointer to live OVSDB connection.
@@ -165,7 +166,7 @@ impl Context {
         Ok(())
     }
 
-    /// Returns DDlog updates, parsed from OVSDB events.
+    /// Process events from OVSDB. Convert them into DDlog updates.
     ///
     /// # Arguments
     /// * `events`: events received from OVSDB.

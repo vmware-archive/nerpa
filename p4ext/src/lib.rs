@@ -101,9 +101,9 @@ impl Display for SourceLocation {
     }
 }
 
-/// An [expression](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-structured-annotations) in a structured annotation.
+/// Values in an [expression](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-structured-annotations) in a structured annotation.
 #[derive(Clone, Debug)]
-pub enum Expression {
+pub enum ExpressionValue {
     /// String value.
     String(String),
     /// Integer value.
@@ -112,31 +112,31 @@ pub enum Expression {
     Bool(bool),
 }
 
-impl From<&p4types::Expression> for Expression {
+impl From<&p4types::Expression> for ExpressionValue {
     fn from(e: &p4types::Expression) -> Self {
         use p4types::Expression_oneof_value::*;
         match e.value {
-            Some(string_value(ref s)) => Expression::String(s.clone()),
-            Some(int64_value(i)) => Expression::Integer(i),
-            Some(bool_value(b)) => Expression::Bool(b),
+            Some(string_value(ref s)) => ExpressionValue::String(s.clone()),
+            Some(int64_value(i)) => ExpressionValue::Integer(i),
+            Some(bool_value(b)) => ExpressionValue::Bool(b),
             None => todo!(),
         }
     }
 }
 
-impl Display for Expression {
+impl Display for ExpressionValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::String(s) => write!(f, "\"{}\"", s.escape_debug()),
-            Expression::Integer(i) => write!(f, "{}", i),
-            Expression::Bool(b) => write!(f, "{}", b),
+            ExpressionValue::String(s) => write!(f, "\"{}\"", s.escape_debug()),
+            ExpressionValue::Integer(i) => write!(f, "{}", i),
+            ExpressionValue::Bool(b) => write!(f, "{}", b),
         }
     }
 }
 
-/// Possible data type in a structured annotation. Maps a name to a value.
+/// Maps a name to a value. Possible data type in a structured annotation.
 #[derive(Clone, Debug)]
-pub struct KeyValuePair(String, Expression);
+pub struct KeyValuePair(String, ExpressionValue);
 
 impl From<&p4types::KeyValuePair> for KeyValuePair {
     fn from(kvp: &p4types::KeyValuePair) -> Self {
@@ -158,7 +158,7 @@ pub enum AnnotationValue {
     /// An unstructured annotation can be free-form.
     Unstructured(String),
     /// One of two forms for an expression list.
-    Expressions(Vec<Expression>),
+    Expressions(Vec<ExpressionValue>),
     /// One of two forms for an expression list.
     KeyValuePairs(Vec<KeyValuePair>),
 }
@@ -370,9 +370,10 @@ impl Display for MatchType {
 /// Public fields are used by external crates to convert data to/from the `MatchField` format.
 #[derive(Clone, Debug)]
 pub struct MatchField {
-    /// The protobuf representation of MatchField doesn't include a
-    /// Preamble but it includes everything in the preamble except
-    /// 'alias'.  It seems more uniform to just use Preamble here.
+    /// Field ID and name.
+    // The protobuf representation of MatchField doesn't include a
+    // Preamble, but it includes everything in the preamble except
+    // 'alias'.  It seems more uniform to just use Preamble here.
     pub preamble: Preamble,
     /// Size in bits of the match field.
     pub bit_width: i32,
@@ -438,18 +439,19 @@ fn parse_type_name(pnto: Option<&p4types::P4NamedType>) -> Option<String> {
 
 /// [Runtime parameter](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-action) provided by the control plane for an action.
 #[derive(Clone, Debug, Default)]
-pub struct Param {
-    /// The protobuf representation of Param doesn't include a
-    /// Preamble but it includes everything in the preamble except
-    /// 'alias'.  It seems more uniform to just use Preamble here.
+pub struct ActionParam {
+    /// Param ID and name.
+    // The protobuf representation of Param doesn't include a
+    // Preamble but it includes everything in the preamble except
+    // 'alias'.  It seems more uniform to just use Preamble here.
     pub preamble: Preamble,
     bit_width: i32,
     type_name: Option<String>,
 }
 
-impl From<&p4info::Action_Param> for Param {
+impl From<&p4info::Action_Param> for ActionParam {
     fn from(ap: &p4info::Action_Param) -> Self {
-        Param {
+        ActionParam {
             preamble: Preamble {
                 id: ap.id,
                 name: ap.name.clone(),
@@ -467,7 +469,7 @@ impl From<&p4info::Action_Param> for Param {
     }
 }
 
-impl Display for Param {
+impl Display for ActionParam {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: bit<{}>", self.preamble.name, self.bit_width)
     }
@@ -480,7 +482,7 @@ pub struct Action {
     pub preamble: Preamble,
     /// Runtime parameters when modifying/inserting a table entry
     /// with this action, provided by the control plane.
-    pub params: Vec<Param>,
+    pub params: Vec<ActionParam>,
 }
 
 impl From<&p4info::Action> for Action {
@@ -615,7 +617,7 @@ impl Display for Table {
     }
 }
 
-/// A switch is represented by a vector of tables.
+/// Represents a P4-programmable switch.
 pub struct Switch {
     /// Tables within a switch.
     pub tables: Vec<Table>,
@@ -655,7 +657,7 @@ pub struct TestSetup {
     /// Filepath for p4info binary file.
     pub p4info: String,
     /// Filepath for compiled P4 program as JSON.
-    pub opaque: String,
+    pub json: String,
     /// Opaque data to identify a pipeline config.
     pub cookie: String,
     /// Requested configuration action.
@@ -681,7 +683,7 @@ pub struct TestSetup {
 }
 
 impl TestSetup {
-    /// Sets up a switch for testing.
+    /// Set up a switch for testing.
     pub fn new() -> Self {
         let deps_var = "NERPA_DEPS";
         let switch_path = "behavioral-model/targets/simple_switch_grpc/simple_switch_grpc";
@@ -721,7 +723,7 @@ impl TestSetup {
 
         Self {
             p4info: "examples/vlan/vlan.p4info.bin".to_string(),
-            opaque: "examples/vlan/vlan.json".to_string(),
+            json: "examples/vlan/vlan.json".to_string(),
             cookie: "".to_string(),
             action: "verify-and-commit".to_string(),
             device_id: 0,
@@ -738,11 +740,11 @@ impl TestSetup {
 
 /// Set configuration for the forwarding pipeline.
 ///
-/// Calls the [`SetForwardingPipelineConfig` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc).
+/// This calls the [`SetForwardingPipelineConfig` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-setforwardingpipelineconfig-rpc).
 ///
 /// # Arguments
 /// * `p4info_str` - filepath for the p4info binary file.
-/// * `opaque_str` - filepath for the compiled P4 program's JSON representation.
+/// * `json_str` - filepath for the compiled P4 program's JSON representation.
 /// * `cookie_str` - cookie for the forwarding config.
 /// * `action_str` - action for the forwarding pipeline.
 /// * `device_id` - ID of the P4-enabled device.
@@ -751,7 +753,7 @@ impl TestSetup {
 /// * `client` - P4 Runtime client.
 pub fn set_pipeline_config(
     p4info_str: &str,
-    opaque_str: &str,
+    json_str: &str,
     cookie_str: &str,
     action_str: &str,
     device_id: u64,
@@ -765,17 +767,17 @@ pub fn set_pipeline_config(
     let p4info = Message::parse_from_reader(&mut p4info_file)
         .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info_str, err));
 
-    let opaque_filename = OsStr::new(opaque_str);
-    let opaque = fs::read(opaque_filename).unwrap_or_else(|err| {
+    let json_filename = OsStr::new(json_str);
+    let json = fs::read(json_filename).unwrap_or_else(|err| {
         panic!(
-            "{}: could not read opaque data ({})",
-            opaque_filename.to_string_lossy(),
+            "{}: could not read json data ({})",
+            json_filename.to_string_lossy(),
             err
         )
     });
 
     let mut config = ForwardingPipelineConfig::new();
-    config.set_p4_device_config(opaque);
+    config.set_p4_device_config(json);
     config.set_p4info(p4info);
 
     if cookie_str != "" {
@@ -802,7 +804,7 @@ pub fn set_pipeline_config(
         .unwrap_or_else(|err| panic!("{}: failed to set forwarding pipeline ({})", target, err));
 }
 
-/// Returns configuration for the forwarding pipeline.
+/// Retrieve configuration for the forwarding pipeline.
 ///
 /// Calls the [`GetForwardingPipelineConfig` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-getforwardingpipelineconfig-rpc).
 ///
@@ -869,7 +871,7 @@ pub fn build_table_entry_update(
     update
 }
 
-/// Write updates to the switch.
+/// Write a set of table updates to the switch.
 ///
 /// Calls the [`Write` RPC](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-write-rpc>).
 ///
@@ -897,7 +899,7 @@ pub fn write(
     }
 }
 
-/// Retrieves one or more P4 entities.
+/// Retrieve one or more P4 entities.
 ///
 /// Calls the [`Read RPC`](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-read-rpc).
 ///
@@ -926,7 +928,7 @@ pub async fn read(
     }
 }
 
-/// Returns the response for a request over the streaming channel.
+/// Return the response for a request over the streaming channel.
 ///
 /// Calls the `StreamChannel` RPC. This API call is
 /// used for session management and packet I/O,
@@ -950,9 +952,9 @@ pub async fn stream_channel_request(
     receiver.next().await.unwrap()
 }
 
-/// Sends a master arbitration update to the switch.
+/// Send a master arbitration update to the switch.
 ///
-/// Sets the controller as master. Described [here](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-client-arbitration-and-controller-replication).
+/// Set the controller as master. Described [here](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-client-arbitration-and-controller-replication).
 ///
 /// # Arguments
 /// * `device_id` - ID for the P4 device.
@@ -970,7 +972,7 @@ pub async fn master_arbitration_update(
     stream_channel_request(request, client).await
 }
 
-/// Builds an update for a [digest entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry).
+/// Build an update for a [digest entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-digestentry).
 ///
 /// # Arguments
 /// * `digest_id` - ID of the P4 device.
@@ -1002,8 +1004,8 @@ pub fn build_digest_entry_update(
     update
 }
 
-/// Returns an update to write a multicast group.
-/// This output can be directly passed to `write`.
+/// Return an update that modifies a multicast group.
+/// The update can be directly passed to `write`.
 ///
 /// Part of a [multicast group entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-multicastgroupentry).
 ///
@@ -1033,8 +1035,8 @@ pub fn build_multicast_write(
     update
 }
 
-/// Returns an entity to read a multicast group.
-/// This output can be wrapped in a `Vec` and passed to `read`.
+/// Return an entity that can be used to read a multicast group.
+/// The entity can be wrapped in a `Vec` and passed to `read`.
 ///
 /// Part of a [multicast group entry](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-multicastgroupentry).
 ///

@@ -32,7 +32,7 @@ use std::path::Path;
 
 const TOML_FN: &str = "../nerpa_controller/Cargo.toml";
 
-/// Writes the TOML for the nerpa controller.
+/// Write the TOML for the nerpa controller.
 ///
 /// # Arguments
 /// * `io_dir` - filepath to directory with P4 and DDlog files.

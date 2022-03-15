@@ -54,7 +54,7 @@ const EVENT_TYPE_LOCKED: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_ty
 const EVENT_TYPE_UPDATE: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE;
 const EVENT_TYPE_TXN_REPLY: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_TXN_REPLY;
 
-/// Compose request to monitor OVSDB.
+/// Compose request to monitor changes to specific columns in OVSDB.
 ///
 /// Used internally, to construct the OVSDB connection.
 ///
@@ -116,13 +116,13 @@ unsafe extern "C" fn compose_monitor_request(
 }
 
 /// A mutable, raw pointer to a live OVSDB connection.
-///
-/// This is a "newtype" style struct, so we can define `Send` on it.
+//
+// This is a "newtype" style struct, so we can define `Send` on it.
 struct OvsdbCSPtr(*mut ovsdb_sys::ovsdb_cs);
 
-/// The `Send` trait lets us transfer an object across thread boundaries.
-/// This pointer is only used in single-threaded settings, so the trait is unimplemented.
-/// It exists so that this type can be used in a function called by a Tokio actor.
+// The `Send` trait lets us transfer an object across thread boundaries.
+// This pointer is only used in single-threaded settings, so the trait is unimplemented.
+// It exists so that this type can be used in a function called by a Tokio actor.
 unsafe impl Send for OvsdbCSPtr{}
 
 /// Process inputs from OVSDB.
@@ -133,7 +133,7 @@ unsafe impl Send for OvsdbCSPtr{}
 /// * `database` - name for OVSDB database.
 /// * `respond_to` - sender for DDlog inputs (as updates) to an external program.
 pub async fn process_ovsdb_inputs(
-    mut ctx: context::Context,
+    mut ctx: context::OvsdbContext,
     server: String,
     database: String,
     respond_to: mpsc::Sender<Option<Update<DDValue>>>,
@@ -146,7 +146,7 @@ pub async fn process_ovsdb_inputs(
         let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
             compose_monitor_requests: Some(compose_monitor_request),
         } as *const ovsdb_sys::ovsdb_cs_ops;
-        let cs_ops_void = &mut ctx as *mut context::Context as *mut ffi::c_void;
+        let cs_ops_void = &mut ctx as *mut context::OvsdbContext as *mut ffi::c_void;
 
         let cs = ovsdb_sys::ovsdb_cs_create(
             database_cs.as_ptr(),
