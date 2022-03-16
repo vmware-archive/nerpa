@@ -20,7 +20,6 @@ set -o noclobber
 
 # Make top-level directory for the program
 PROG_DIR=$NERPA_DIR/nerpa_controlplane/$PROGRAM_NAME/
-echo $PROG_DIR
 mkdir $PROG_DIR
 cd $PROG_DIR
 
