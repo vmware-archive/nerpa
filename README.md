@@ -4,8 +4,6 @@
 
 NERPA (Network Programming with Relational and Procedural Abstractions) seeks to enable co-development of the control plane and data plane. This details the project's direction and organization.
 
-## Crates
-
 1. [nerpa_controlplane](nerpa_controlplane): Each subdirectory corresponds with a Nerpa program, with its input files.
 - [DDlog program](nerpa_controlplane/snvs/snvs.dl): Serves as the control plane. 
 - [P4 program](nerpa_controlplane/snvs/snvs.p4): Serves as the dataplane program. Used by `p4info2ddlog` to generate DDlog output relations.
@@ -84,6 +82,29 @@ nerpa_controlplane/snvs/target/debug/test-snvs ipc://bmv2.ipc
 The test will print its progress.  If it succeeds, it will print `Success!`  On failure, it will panic before that point.
 
 ## Writing a Nerpa Program
+
+### Write/Build Process
+Writing and building a Nerpa program involves several steps. We lay those out here for clarity and to reduce pitfalls for new Nerpa programmers. All of these are steps of the build script, `scripts/build-nerpa.sh`. That script includes specific syntax that you should use if you are rolling your own build process.
+
+1. Create default Nerpa program files: a P4 program, a DDlog program, an OVSDB schema, and P4 switch configuration commands. This is described [above](#build).
+
+2. Optionally, design the OVSDB schema for the management plane and generate DDlog relations using `ovsdb2ddlog`.
+
+3. Write the P4 program. Compile it, making sure to generate P4 runtime files.
+
+4. Generate DDlog relations and related utilities from the dataplane program by calling `p4info2ddlog`. Note that running the full build script compiles the stub DDlog program and builds the crate, which can take several minutes.
+
+In order, `p4info2ddlog` does the following:
+* Generate DDlog input relations representing P4 tables and actions
+* Generate DDlog input relations representing digest messages from P4
+* Generate `Cargo.toml` for the `nerpa_controller` crate, so it correctly imports all DDlog-related crates
+* Create the `dp2ddlog` crate, which can convert digests and packets to DDlog relations
+
+5. Write the DDlog program. This represents the rules from the control plane. At this point, all relations necessary for import should be generated.
+
+6. Generate necessary files and build the `ovsdb_client` crate. Even if your program does not use an OVSDB management plane, `nerpa_controller` depends on this import.
+
+7. Build the controller crate. The name of the imported DDlog crate does need to be changed before building.
 
 ### Assumptions
 The Nerpa programming framework embeds some assumptions about the structure within P4 and DDlog programs. These are documented below.
