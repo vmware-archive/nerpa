@@ -27,15 +27,21 @@ EOF
     exit 1
 fi
 
-if [[ -z $NERPA_DEPS || -z $DDLOG_HOME ]]; then
-    echo "Missing required environment variable (NERPA_DEPS or DDLOG_HOME)"
-    echo "Run . install-nerpa.sh to set these variables."
-    exit 1
-fi
+# Check if the Nerpa dependencies were installed correctly.
+if [[ -z $NERPA_DEPS ]]; then
+    NERPA_DEPS=$(pwd)/nerpa-deps
 
-if test ! -d $NERPA_DEPS; then
-    echo >&2 "$0: could not find nerpa-deps in expected location ($NERPA_DEPS)"
-    exit 1
+    # If the Nerpa dependencies directory exists, set the environment variables.
+    if [ -d $NERPA_DEPS ]; then
+        export NERPA_DEPS
+    else
+        echo "Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location."
+
+        echo "You have two options to set necessary environment variables to build nerpa programs."
+        echo "1) Run '. install-nerpa.sh' to install Nerpa dependencies in the expected directory."
+        echo "2) Manually execute the steps in 'scripts/install-nerpa.sh' in the desired locations."
+        exit 1
+    fi
 fi
 
 echo "Running a Nerpa program..."

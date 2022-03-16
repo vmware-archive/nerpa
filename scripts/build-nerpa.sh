@@ -12,10 +12,38 @@ if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     exit 1
 fi
 
-if [[ -z $NERPA_DEPS || -z $DDLOG_HOME ]]; then
-    echo "Missing required environment variable (NERPA_DEPS or DDLOG_HOME)"
-    echo "Run '. install-nerpa.sh' to set these variables."
-    exit 1
+# Check if the Nerpa dependencies were installed correctly.
+if [[ -z $NERPA_DEPS ]]; then
+    NERPA_DEPS=$(pwd)/nerpa-deps
+
+    # If the Nerpa dependencies directory exists, set the environment variables.
+    if [ -d $NERPA_DEPS ]; then
+        export NERPA_DEPS
+
+        # Check if the DDlog variables are set.
+        if [[ -z $DDLOG_HOME ]]; then
+            # If DDlog is found within the Nerpa dependency directory, set the DDlog variables.
+            if [[ -d $NERPA_DEPS/ddlog ]]; then
+                export DDLOG_HOME=$NERPA_DEPS/ddlog
+                export PATH=$PATH:$NERPA_DEPS/ddlog/bin
+            else
+                echo "The DDlog environment variables (DDLOG_HOME and PATH) were not set correctly."
+                echo "You have two options to set necessary environment variables to build Nerpa programs:"
+                echo "1) Run '. scripts/install-nerpa.sh' to install Nerpa dependencies in the expected directory."
+                echo "2) Manually install DDlog, as per the steps in 'scripts/install-nerpa.sh'."
+                exit 1
+            fi
+        fi
+    else
+        # Even without the Nerpa dependencies directory, a Nerpa program can be built if the DDlog environment variables are set correctly.
+        if [[ -z $DDLOG_HOME ]]; then
+            echo "Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location, and DDlog environment variables are not set correctly."
+            echo "You have two options to set necessary environment variables to build nerpa programs:"
+            echo "1) Run '. install-nerpa.sh' to install Nerpa dependencies in the expected directory."
+            echo "2) Manually execute the steps in 'scripts/install-nerpa.sh' in the desired locations."
+            exit 1
+        fi
+    fi
 fi
 
 echo "Building a Nerpa program..."
@@ -84,4 +112,7 @@ if test -f $FILE_NAME.ovsschema; then
 fi
 
 echo "Building controller crate..."
+# Substitute the DDlog import name.
+sed -i 's/use .*_ddlog/use '$FILE_NAME'_ddlog/' $NERPA_DIR/nerpa_controller/src/nerpa_controller/main.rs
+
 (cd $NERPA_DIR/nerpa_controller && cargo build && cd $NERPA_DIR)
