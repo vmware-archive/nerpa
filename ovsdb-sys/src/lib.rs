@@ -1,3 +1,9 @@
+/*!
+Generated bindings to OVSDB.
+
+Uses [`bindgen`](https://rust-lang.github.io/rust-bindgen/) to generate
+FFI bindings to the Open vSwitch Database's C codebase.
+*/
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
