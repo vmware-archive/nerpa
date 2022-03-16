@@ -17,8 +17,8 @@ fi
 if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     cat >&2 <<EOF
 USAGE: $0 [-s] FILE_DIR FILE_NAME
-where FILE_DIR contains *.p4, *.dl, and optional *.ovsschema files
-  and FILE_NAME is the name of the *p4, *dl, and *ovsschema files.
+where FILE_DIR contains *.p4, *.dl, and *.ovsschema files
+  and FILE_NAME is the name of the *.p4, *.dl, and *.ovsschema files.
 
 Options:
   -s: simulate interfaces over nanomsg instead of veth devices
