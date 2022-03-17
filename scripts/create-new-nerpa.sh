@@ -6,7 +6,7 @@ set -e
 
 if [ "$#" -ne 1 ]; then
     cat >&2 <<EOF
-USAGE: $0 PROGRAM_NAME
+usage: $0 PROGRAM_NAME
 * PROGRAM_NAME is the name of the Nerpa program, and of the *.p4, *.dl, and *.ovsschema files
 EOF
     exit 1
@@ -21,7 +21,7 @@ set -o noclobber
 # Make top-level directory for the program
 PROG_DIR=$NERPA_DIR/nerpa_controlplane/$PROGRAM_NAME/
 mkdir $PROG_DIR
-cd $PROG_DIR
+cd "$PROG_DIR"
 
 # Create empty P4 program and commands.
 touch $PROGRAM_NAME.p4
@@ -39,6 +39,6 @@ cat <<EOF > $PROGRAM_NAME.ovsschema
 {
     "name": "${PROGRAM_NAME}",
     "tables": {},
-    "version": "1.7.0"
+    "version": "1.0.0"
 }
 EOF

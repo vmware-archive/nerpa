@@ -16,7 +16,7 @@ fi
 # Print usage if incorrectly invoked.
 if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
     cat >&2 <<EOF
-USAGE: $0 [-s] FILE_DIR FILE_NAME
+Usage: $0 [-s] FILE_DIR FILE_NAME
 where FILE_DIR contains *.p4, *.dl, and *.ovsschema files
   and FILE_NAME is the name of the *.p4, *.dl, and *.ovsschema files.
 
@@ -32,14 +32,15 @@ if [[ -z $NERPA_DEPS ]]; then
     NERPA_DEPS=$(pwd)/nerpa-deps
 
     # If the Nerpa dependencies directory exists, set the environment variables.
-    if [ -d $NERPA_DEPS ]; then
+    if [[ -d $NERPA_DEPS ]]; then
         export NERPA_DEPS
     else
-        echo "Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location."
-
-        echo "You have two options to set necessary environment variables to build nerpa programs."
-        echo "1) Run '. install-nerpa.sh' to install Nerpa dependencies in the expected directory."
-        echo "2) Manually execute the steps in 'scripts/install-nerpa.sh' in the desired locations."
+        cat >&2 <<EOF
+Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location.
+You have two options to set necessary environment variables to build nerpa programs.
+1) Run '. install-nerpa.sh' to install Nerpa dependencies in the expected directory.
+2) Manually execute the steps in 'scripts/install-nerpa.sh' in the desired locations.
+EOF
         exit 1
     fi
 fi

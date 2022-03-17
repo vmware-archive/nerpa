@@ -6,9 +6,11 @@ set -e
 
 # Print usage if incorrectly invoked.
 if [ "$#" -ne 2 ] || ! [ -d "$1" ]; then
-    echo "USAGE: $0 FILE_DIR FILE_NAME" >&2
-    echo "* FILE_DIR: directory containing *.p4, *.dl, and optional *.ovsschema files"
-    echo "* FILE_NAME: name of the *p4, *dl, and *ovsschema files"
+    cat >&2 <<EOF
+Usage: $0 FILE_DIR FILE_NAME
+where FILE_DIR contains *.p4, *.dl, and *.ovsschema files
+  and FILE_NAME is the name of the *.p4, *.dl, and *.ovsschema files.
+EOF
     exit 1
 fi
 
@@ -17,7 +19,7 @@ if [[ -z $NERPA_DEPS ]]; then
     NERPA_DEPS=$(pwd)/nerpa-deps
 
     # If the Nerpa dependencies directory exists, set the environment variables.
-    if [ -d $NERPA_DEPS ]; then
+    if [[ -d $NERPA_DEPS ]]; then
         export NERPA_DEPS
 
         # Check if the DDlog variables are set.
@@ -27,20 +29,23 @@ if [[ -z $NERPA_DEPS ]]; then
                 export DDLOG_HOME=$NERPA_DEPS/ddlog
                 export PATH=$PATH:$NERPA_DEPS/ddlog/bin
             else
-                echo "The DDlog environment variables (DDLOG_HOME and PATH) were not set correctly."
-                echo "You have two options to set necessary environment variables to build Nerpa programs:"
-                echo "1) Run '. scripts/install-nerpa.sh' to install Nerpa dependencies in the expected directory."
-                echo "2) Manually install DDlog, as per the steps in 'scripts/install-nerpa.sh'."
-                exit 1
+                cat >&2 <<EOF
+The DDlog environment variables (DDLOG_HOME and PATH) were not set correctly.
+You have two options to set necessary environment variables to build Nerpa programs:
+1) Run '. scripts/install-nerpa.sh' to install Nerpa dependencies in the expected directory.
+2) Manually install DDlog, as per the steps in 'scripts/install-nerpa.sh'.
+EOF
             fi
         fi
     else
         # Even without the Nerpa dependencies directory, a Nerpa program can be built if the DDlog environment variables are set correctly.
         if [[ -z $DDLOG_HOME ]]; then
-            echo "Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location, and DDlog environment variables are not set correctly."
-            echo "You have two options to set necessary environment variables to build nerpa programs:"
-            echo "1) Run '. install-nerpa.sh' to install Nerpa dependencies in the expected directory."
-            echo "2) Manually execute the steps in 'scripts/install-nerpa.sh' in the desired locations."
+            cat >&2 <<EOF
+Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location, and DDlog environment variables are not set correctly.
+You have two options to set necessary environment variables to build Nerpa programs:
+1) Run '. scripts/install-nerpa.sh' to install Nerpa dependencies in the expected directory.
+2) Manually install DDlog, as per the steps in 'scripts/install-nerpa.sh'.
+EOF
             exit 1
         fi
     fi
