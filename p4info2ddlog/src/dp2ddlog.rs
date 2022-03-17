@@ -149,7 +149,7 @@ fn write_digest(
 
         writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
 
-        writeln!(d2d_out, "      Update::Insert {{")?;
+        writeln!(d2d_out, "      Some(Update::Insert {{")?;
         writeln!(d2d_out, "        relid: Relations::{}_dp_{} as RelId,", prog_name, digest_name)?;
         writeln!(d2d_out, "        v: types__{}_dp::{} {{", prog_name, digest_name)?;
 
@@ -184,7 +184,7 @@ fn write_digest(
         }
 
         writeln!(d2d_out, "        }}.into_ddvalue(),")?; // close brace for Update.v
-        writeln!(d2d_out, "      }}")?; // close brace for Update
+        writeln!(d2d_out, "      }})")?; // close brace for Update
         writeln!(d2d_out, "    }},")?; // close brace for match arm
     }
     writeln!(d2d_out, "    _ => panic!(\"Invalid digest ID: {{}}\", digest_id)")?;

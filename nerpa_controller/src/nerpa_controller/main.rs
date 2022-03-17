@@ -30,7 +30,10 @@ use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 use std::fs::File;
 
-use vxlan_ddlog::run;
+// Import the function to run a DDlog program.
+// Note that the crate name changes with the Nerpa program's name.
+// The Nerpa programmer must rename this import.
+use arp_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {
@@ -138,6 +141,6 @@ async fn run_controller(
 
     // Start streaming inputs from OVSDB and from the dataplane.
     let database = file_name.clone();
-    let server = String::from("unix:/usr/local/var/run/openvswitch/db.sock");
+    let server = String::from("unix:db.sock");
     nerpa_controller.stream_inputs(ovsdb_hddlog, server, database).await;
 }

@@ -2,5 +2,5 @@ dp2ddlog
 nerpa-deps
 
 # OVS files in testing
-*arp.db*
+*.db*
 ovsdb-server.*
