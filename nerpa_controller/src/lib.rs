@@ -33,7 +33,7 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use byteorder::{ByteOrder, BigEndian};
+use num_traits::cast::ToPrimitive;
 
 use differential_datalog::api::HDDlog;
 
@@ -227,9 +227,9 @@ pub struct SwitchClient {
     device_id: u64,
     role_id: u64,
     target: String,
-    // Using P4 Info, map each PacketMetadata field to its id and bitwidth.
+    // Using P4 Info, map each PacketMetadata field to its id.
     // This is used as a cache for metadata for P4 Runtime PacketOuts.
-    packet_meta_field_to_id_bw: HashMap<String, (u32, i32)>,
+    packet_meta_field_to_id: HashMap<String, u32>,
     packet_sink: PacketSink,
 }
 
@@ -272,15 +272,15 @@ impl SwitchClient {
         let p4info_struct: proto::p4info::P4Info = Message::parse_from_reader(&mut p4info_file)
             .unwrap_or_else(|err| panic!("{}: could not read P4Info ({})", p4info, err));
 
-        // Map packet metadata field names to (packet_id, packet_bit_width) tuples.
+        // Map packet metadata field names to packet_ids.
         // We do this in the constructor, to avoid computation per packet sent to the dataplane.
-        let mut packet_meta_field_to_id_bw = HashMap::new();
+        let mut packet_meta_field_to_id = HashMap::new();
         for cm in p4info_struct.get_controller_packet_metadata().iter() {
             if cm.get_preamble().get_name().eq("packet_out") {
                 for m in cm.get_metadata().iter() {
-                    packet_meta_field_to_id_bw.insert(
+                    packet_meta_field_to_id.insert(
                         m.get_name().to_string(),
-                        (m.get_id(), m.get_bitwidth()),
+                        m.get_id()
                     );
                 }
             }
@@ -333,7 +333,7 @@ impl SwitchClient {
             device_id,
             role_id,
             target,
-            packet_meta_field_to_id_bw,
+            packet_meta_field_to_id,
             packet_sink,
         }
     }
@@ -434,7 +434,7 @@ impl SwitchClient {
                                         .contains("packet")
                                     && array_kind == &CollectionKind::Vector {
                                         for array_record in array_records.iter() {
-                                            payload.append(&mut Self::record_to_value(array_record, None));
+                                            payload.append(&mut Self::record_to_bytestring(array_record));
                                         }
                                     }
                                 }
@@ -443,8 +443,8 @@ impl SwitchClient {
                                 else {
                                     let (meta_record_name, meta_record) = output_record;
                                     let meta_record_key = meta_record_name.to_string();
-                                    let (metadata_id, metadata_bw) = self.packet_meta_field_to_id_bw[&meta_record_key];
-                                    let metadata_value = Self::record_to_value(meta_record, Some(metadata_bw));
+                                    let metadata_id = self.packet_meta_field_to_id[&meta_record_key];
+                                    let metadata_value = Self::record_to_bytestring(meta_record);
 
                                     let mut metadata = proto::p4runtime::PacketMetadata::new();
                                     metadata.set_metadata_id(metadata_id);
@@ -493,7 +493,7 @@ impl SwitchClient {
                                     }
                                 },
                                 "priority" => {
-                                    priority = BigEndian::read_i32(&Self::record_to_value(record, Some(32)));
+                                    priority = Self::record_to_u128(record) as i32
                                 },
                                 _ => {
                                     // Find a match field with the matching name.
@@ -594,9 +594,9 @@ impl SwitchClient {
         for (k, v) in recs.iter() {
             let rec_name = k.as_ref().to_lowercase();
             if rec_name.contains("id") {
-                mcast_id = BigEndian::read_u32(&Self::record_to_value(v, Some(32)));
+                mcast_id = Self::record_to_u128(v) as u32
             } else if rec_name.contains("port") {
-                mcast_port = BigEndian::read_u32(&Self::record_to_value(v, Some(32)));
+                mcast_port = Self::record_to_u128(v) as u32
             } else {
                 error!("multicast relation field named {} did not include port or id", rec_name);
             }
@@ -738,7 +738,7 @@ impl SwitchClient {
         for (ra_name, ra_record) in record_actions.iter() {
             action_params_map.insert(
                 ra_name.to_string(),
-                Self::record_to_value(ra_record, None)
+                Self::record_to_bytestring(ra_record)
             );
         }
 
@@ -769,6 +769,7 @@ impl SwitchClient {
     }
 
     /// Convert a DDlog Record, using P4Info MatchFields, to a P4Runtime FieldMatch.
+    /// Returns None for a "don't-care", because FieldMatch must be omitted in this case.
     ///
     /// # Arguments
     /// * `r` - the Record representing a field match.
@@ -777,9 +778,6 @@ impl SwitchClient {
         r: &Record,
         match_field: &MatchField,
     ) -> Option<FieldMatch> {
-        let bit_width = match_field.bit_width;
-        let bit_width_opt = Some(bit_width);
-
         let mut field_match = FieldMatch::new();
         field_match.set_field_id(match_field.preamble.id);
 
@@ -787,7 +785,7 @@ impl SwitchClient {
             MatchType::Exact => {
                 // In an Exact match, we convert the record value to a byte-vector.
                 let mut exact_match = proto::p4runtime::FieldMatch_Exact::new();
-                exact_match.set_value(Self::record_to_value(r, bit_width_opt));
+                exact_match.set_value(Self::record_to_bytestring(r));
                 field_match.set_exact(exact_match);
             },
             MatchType::Lpm => {
@@ -800,13 +798,16 @@ impl SwitchClient {
                         error!("match field LPM Tuple had len {}, expected 2", t.len());
                         return None;
                     }
+
+                    let prefix_len = Self::record_to_u128(&t[1]);
+                    if prefix_len == 0 {
+                        return None;
+                    }
                     
-                    let value = Self::record_to_value(&t[0], bit_width_opt);
+                    let value = Self::record_to_bytestring(&t[0]);
                     lpm_match.set_value(value);
 
-                    let prefix_vec = Self::record_to_value(&t[1], bit_width_opt);
-                    let prefix_len: i32 = BigEndian::read_i32(&prefix_vec);
-                    lpm_match.set_prefix_len(prefix_len);
+                    lpm_match.set_prefix_len(prefix_len as i32);
 
                     field_match.set_lpm(lpm_match);
                 } else {
@@ -826,11 +827,14 @@ impl SwitchClient {
                     }
 
                     // TODO: Check if we need to left-pad value/mask.
-                    let value = Self::record_to_value(&t[0], bit_width_opt);
+                    let value = Self::record_to_bytestring(&t[0]);
                     ternary_match.set_value(value);
 
-                    let mask = Self::record_to_value(&t[1], bit_width_opt);
-                    ternary_match.set_mask(mask);
+                    let mask =Self::record_to_u128(&t[1]);
+                    if mask == 0 {
+                        return None
+                    }
+                    ternary_match.set_mask(Self::u128_to_bytestring(mask));
                 } else {
                     error!("Record for a Field Match of type Ternary must be a Tuple");
                     return None;
@@ -848,10 +852,12 @@ impl SwitchClient {
                         return None;
                     }
 
-                    let low = Self::record_to_value(&t[0], bit_width_opt);
+                    // XXX check for don't-care
+
+                    let low = Self::record_to_bytestring(&t[0]);
                     range_match.set_low(low);
 
-                    let high = Self::record_to_value(&t[1], bit_width_opt);
+                    let high = Self::record_to_bytestring(&t[1]);
                     range_match.set_high(high);
                 } else {
                     error!("Record for a Field Match of type Range must be a Tuple");
@@ -866,10 +872,10 @@ impl SwitchClient {
                 // The value for an Optional match should be a NamedStruct. If not, return None.
                 if let Record::NamedStruct(record_name, record_value) = r {
                     let value = match record_name.to_string().as_str() {
-                        "ddlog_std::Some" => Self::record_to_value(&record_value[0].1, bit_width_opt),
-                        "ddlog_std::None" => Vec::<u8>::new(),
+                        "ddlog_std::Some" => Self::record_to_bytestring(&record_value[0].1),
+                        "ddlog_std::None" => return None,
                         _ => {
-                            return None;
+                            return None; // XXX
                         }
                     };
 
@@ -885,7 +891,7 @@ impl SwitchClient {
             _ => {
                 let mut other = protobuf::well_known_types::Any::new();
 
-                let value = Self::record_to_value(r, bit_width_opt);
+                let value = Self::record_to_bytestring(r);
                 other.set_value(value);
                 field_match.set_other(other);
             }
@@ -894,47 +900,55 @@ impl SwitchClient {
         Some(field_match)
     }
 
-    /// Convert a DDlog record's value into a byte vector.
+    /// Extracts and returns a numerical value from a DDlog record.  Only properly supports numeric
+    /// types (like boolean and integer), and returns 0 for everything else.
+    ///
+    /// # Arguments
+    /// * `r` - the record to convert.
+    fn record_to_u128(r: &Record) -> u128 {
+        // TODO: Handle additional possible Record values.
+        match r {
+            Record::Bool(b) => return if *b { 1 } else { 0 },
+            Record::Int(i) => match (*i).to_u128() {
+                Some(value) => return value,
+                None => error!("attempted to extract out-of-range field value {}", i)
+            }
+            _ => error!("attempted to extract value from unsupported record type: {:#?}", r),
+        }
+        0
+    }
+
+    /// Converts a `u128` into a bytestring as specified in P4Runtime 1.3.0 section 8.4
+    /// "Bytestrings".  This representation uses the minimum number of bytes to represent a given
+    /// number in big-endian order.  (As an exception to the minimum-length rule, zero is
+    /// represented by a single 0-byte).
+    ///
+    /// # Arguments
+    /// * `r` - the value to convert.
+    fn u128_to_bytestring(mut value: u128) -> Vec<u8> {
+        let mut v: Vec<u8> = Vec::new();
+        loop {
+            v.push((value & 0xff) as u8);
+            value >>= 8;
+            if value == 0 {
+                v.reverse();
+                return v
+            }
+        }
+    }
+
+    /// Convert a DDlog record's value into a bytestring as specified in P4Runtime 1.3.0 section
+    /// 8.4 "Bytestrings".  This representation uses the minimum number of bytes to represent a
+    /// given number in big-endian order.  (As an exception to the minimum-length rule, zero is
+    /// represented by a single 0-byte).
     ///
     /// Only supports numeric types (like boolean and integer).
     /// This returns an empty byte vector for an unsupported type.
     ///
     /// # Arguments
     /// * `r` - the record to convert.
-    /// * `bit_width_opt` - the value's bit width, optionally, used to size the byte vector.
-    fn record_to_value(
-        r: &Record,
-        bit_width_opt: Option<i32>,
-    ) -> Vec<u8> {
-        let mut v = Vec::<u8>::new();
-        // TODO: Handle additional possible Record values.
-        match r {
-            Record::Bool(b) => v.push(*b as u8),
-            Record::Int(i) => {
-                let (_, int_bytes) = i.to_bytes_be();
-                v = int_bytes;
-            },
-            _ => {
-                error!("attempted to extract value from unsupported record type: {:#?}", r);
-                return v;
-            },
-        }
-
-        // If a bit-width was passed, left-pad the appropriate number of zeros.
-        if let Some(bit_width_uncast) = bit_width_opt {
-            let bit_width = bit_width_uncast as usize;
-
-            // Compute the appropriate number of 0s to prepend.
-            let num_total_bytes = bit_width / 8 + (bit_width % 8 != 0) as usize;
-            let num_curr_bytes = v.len();
-            let num_zero_bytes = num_total_bytes - num_curr_bytes;
-            
-            let mut padded_v = vec![0; num_zero_bytes];
-            padded_v.append(&mut v);
-            v = padded_v;
-        }
-
-        v
+    fn record_to_bytestring(r: &Record) -> Vec<u8> {
+        Self::u128_to_bytestring(Self::record_to_u128(r))
     }
 
     /// Retrieve a P4 table with the provided name.
