@@ -1,5 +1,5 @@
 # Contributing to the Nerpa project
-The Nerpa team welcomes contributions from the community. Before you start working with Nerpa, please read our [Developer Certificate of Origin](https://cla.vmware.com/dco). All contributions to this repository must be signed as described on this pace. Your signature certifies that you wrote the patch or have the right to pass it on as an open-source path.
+The Nerpa team welcomes contributions from the community. Before you start working with Nerpa, please read our [Developer Certificate of Origin](https://cla.vmware.com/dco). All contributions to this repository must be signed as described on this page. Your signature certifies that you wrote the patch or have the right to pass it on as an open-source patch.
 
 Contributor guidelines help us stay on top of things. These contributing guidelines were heavily modeled after Puppet's [[Contributing Guidelines](https://github.com/puppetlabs/puppet/blob/main/CONTRIBUTING.md). Both DDlog and P4 are fast-moving technologies, available on increasing numbers of platforms. We want to keep it as easy as possible to contribute changes that make things work for you.
 
@@ -21,7 +21,7 @@ git remote add upstream https://github.com/vmware/nerpa.git
 Here is a step-by-step guide to submitting contributions:
 1. Create a new branch for each fix, with a descriptive name: `git checkout -b your_branch_name`
 2. `git add <files that changed>`
-3. `git commit -s -m "Description of commit"` Each logically independent change should have a separate commit with an informative message.
+3. `git commit -s -m "Description of commit"` Each logically independent change should have a separate commit with an informative message. The `-s` option helps you to add the [Developer Certificate of Origin](https://cla.vmware.com/dco).
 4. `git fetch upstream`
 5. `git rebase upstream/master`
 6. Resolve any conflicts. As you find and fix conflicts, `git add` the merged files. At the end, you may need to use `git rebase --continue` or `git rebase --skip`.
