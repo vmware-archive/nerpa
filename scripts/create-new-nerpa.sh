@@ -29,7 +29,7 @@ touch commands.txt
 
 # Create DDlog program.
 cat <<EOF > $PROGRAM_NAME.dl 
-// Uncomment the following imports after running p4info2ddlog and generating relations from the P4 program.
+// Uncomment the following imports after generating relations from the P4 program and OVSDB schema.
 // import ${PROGRAM_NAME}_dp as ${PROGRAM_NAME}_dp
 // import ${PROGRAM_NAME^}_mp as ${PROGRAM_NAME}_mp
 EOF

@@ -1,0 +1,19 @@
+import ovsdb
+
+
+/* Input relations */
+
+input relation Port (
+    _uuid: uuid,
+    id: integer,
+    vlan_mode: Option<string>,
+    tag: Option<integer>,
+    trunks: Set<integer>,
+    priority_tagging: string
+)
+primary key (x) x._uuid
+
+/* Output relations */
+
+
+/* Delta tables definitions */

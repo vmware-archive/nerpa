@@ -1,0 +1,23 @@
+{
+    "name": "tutorial",
+    "tables": {
+        "Port": {
+            "columns": {
+                "id": {
+                    "type": {"key": {"type": "integer", "minInteger": 0, "maxInteger": 511}}
+                },
+                "vlan_mode": {
+                    "type": {"key": {"type": "string", "enum": ["set", ["trunk", "access", "native-tagged", "native-untagged", "dot1q-tunnel"]]},
+                    "min": 0, "max": 1}},
+                "tag": {
+                    "type": {"key": {"type": "integer", "minInteger": 0, "maxInteger": 4095}, "min": 0, "max": 1}},
+                "trunks": {
+                    "type": {"key": {"type": "integer", "minInteger": 0, "maxInteger": 4095}, "min": 0, "max": 4096}},
+                "priority_tagging": {
+                    "type": {"key": {"type": "string", "enum": ["set", ["no", "nonzero", "always"]]}}}
+            },
+            "isRoot": false
+        }
+    },
+    "version": "1.0.0"
+}
