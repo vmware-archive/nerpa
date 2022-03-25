@@ -4,11 +4,7 @@ The Nerpa team welcomes contributions from the community. Before you start worki
 Contributor guidelines help us stay on top of things. These contributing guidelines were heavily modeled after Puppet's [[Contributing Guidelines](https://github.com/puppetlabs/puppet/blob/main/CONTRIBUTING.md). Both DDlog and P4 are fast-moving technologies, available on increasing numbers of platforms. We want to keep it as easy as possible to contribute changes that make things work for you.
 
 ## Project management
-We mostly use github tools for managing the project.  Bugs and
-questions should be filed as [github
-issues](https://github.com/vmware/nerpa/issues).
-Improvements should be submitted as [pull
-requests](https://github.com/vmware/nerpa/pulls).
+We mostly use github tools for managing the project.  Bugs and questions should be filed as [github issues](https://github.com/vmware/nerpa/issues). Improvements should be submitted as [pull requests](https://github.com/vmware/nerpa/pulls).
 
 When submitting bugs, please clearly describe it, including steps to reproduce any bugs. Please provide version and operating system information for major components (DDlog, P4, etc). Trivial changes do not need an issue -- feel free to make a pull request.
 
