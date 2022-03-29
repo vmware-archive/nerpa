@@ -116,11 +116,11 @@ cd ..
 Compare the output file with [tutorial_dp.dl](tutorial_dp.dl) to verify its contents.
 
 ### Program the Control Plane
-To program the control plane, we write the DDlog program that sits in between OVSDB and the P4 switch. Because we have generated the input and output relations, we know what the inputs and outputs to the control plane look like. The DDlog program connects these and implements the control plane's actions, by computing output changes from the input changes.
+To program the control plane, we write the DDlog program that sits in between OVSDB and the P4 switch. Because we have generated the input and output relations, we know what the inputs to and outputs from the control plane look like. The DDlog program connects these and implements the control plane's actions, by computing output changes from the input changes.
 
 Copy the contents of [tutorial.dl](tutorial.dl) into `nerpa_controlplane/tutorial/tutorial.dl`.
 
-Compile the DDlog program, and build the generated crate:
+Compile the DDlog program, and build the generated crate. This generates the Rust code for the `tutorial` DDlog program.
 ```
 cd nerpa_controlplane/tutorial
 ddlog -i tutorial.dl
@@ -135,7 +135,15 @@ Now that each sub-program exists, we can build the Nerpa tutorial program end-to
 ./scripts/build-nerpa.sh nerpa_controlplane/tutorial tutorial
 ```
 
-This should successfully build all necessary crates, including `nerpa_controller`.
+The build script executes the following steps. You will notice that Steps 1 to 5 replicate commands you have already run in the tutorial. 
+
+1. Check if the Nerpa dependencies were installed correctly, specifically the DDlog environment variables `$DDLOG_HOME` and in `$PATH`, and the Nerpa dependencies directory `$NERPA_DIR`.
+2. Generate the DDlog relations from the OVSDB schema using `ovsdb2ddlog`. This is more fully described in the [management plane](#program-the-management-plane) section.
+3. Compile the P4 program using `p4c`. This is more fully described in the [data plane](#program-the-data-plane) section. Compilation also creates a P4info file.
+4. Generate DDlog relations from the P4info file using `p4info2ddlog`. This is also described in the [data plane](#program-the-data-plane) section.
+5. Compile the DDlog program and build the generated DDlog crate. This is described in the [control plane](#program-the-control-plane) section.
+6. Build `ovsdb_client`, the OVSDB client library crate. Because this client crate depends on the DDlog crate, we must first generate the `Cargo.toml` to ensure that it correctly imports the DDlog dependencies. This library crate can read output changes from a running OVSDB, and convert those changes to input relations.`nerpa_controller` uses this library to listen to changes from OVSDB and process those input relations in the control plane DDlog program.
+7. Build `nerpa_controller`, the controller crate. As mentioned at the [beginning](#nerpa-at-a-high-level), this crate synchronizes state between the planes. It listens for new inputs from the management and data planes; passes inputs to the control plane program; and writes any computed output changes to the data plane.
 
 ### Run the Nerpa Program
 
