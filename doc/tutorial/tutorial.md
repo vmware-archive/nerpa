@@ -116,11 +116,7 @@ cd ..
 Compare the output file with [tutorial_dp.dl](tutorial_dp.dl) to verify its contents.
 
 ### Program the Control Plane
-<<<<<<< HEAD
-To program the control plane, we write the DDlog program that sits in between OVSDB and the P4 switch. Because we have generated the input and output relations, we know what the inputs to and outputs from the control plane look like. The DDlog program connects these and implements the control plane's actions, by computing output changes from the input changes.
-=======
 To program the control plane, we write the DDlog program that sits in between OVSDB and the P4 switch. Because we have generated the input and output relations, we know what the inputs and outputs to the control plane look like. The DDlog program connects these and implements the control plane's actions, by computing output changes from the input changes.
->>>>>>> Modify tutorial text based on reviews.
 
 Copy the contents of [tutorial.dl](tutorial.dl) into `nerpa_controlplane/tutorial/tutorial.dl`.
 
@@ -139,7 +135,6 @@ Now that each sub-program exists, we can build the Nerpa tutorial program end-to
 ./scripts/build-nerpa.sh nerpa_controlplane/tutorial tutorial
 ```
 
-<<<<<<< HEAD
 The build script executes the following steps. You will notice that Steps 1 to 5 replicate commands you have already run in the tutorial. 
 
 1. Check if the Nerpa dependencies were installed correctly, specifically the DDlog environment variables `$DDLOG_HOME` and in `$PATH`, and the Nerpa dependencies directory `$NERPA_DIR`.
@@ -164,17 +159,6 @@ The run script executes the following steps.
 4. Start a new OVSDB server. Before this, we first stop any currently running ovsdb-server. We then use `ovsdb-tool` to create a new database, defined by the schema in `tutorial.ovsschema`. Finally, we start the server.
 5. Run `nerpa_controller`, the Nerpa controller crate. This long-running program synchronizes state between the planes. It begins by starting the DDlog program, the control plane. It then reads inputs from the management and data planes and sends them to the control plane; computes the outputs corresponding to the those inputs; and writes outputs to the data plane.
 
-=======
-This should successfully build all necessary crates, including `nerpa_controller`.
-
-### Run the Nerpa Program
-
-Run the Nerpa program, starting all pieces of software:
-```
-./scripts/run-nerpa.sh nerpa_controlplane/tutorial tutorial
-```
-
->>>>>>> Add initial tutorial with files.
 ### Test the Nerpa Program
 
 TODO: Add steps to send a packet and test the tutorial.
