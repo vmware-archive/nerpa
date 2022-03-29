@@ -203,7 +203,6 @@ control TutorialComputeChecksum(inout headers hdr, inout metadata meta) {
 
 control TutorialDeparser(packet_out packet, in headers hdr) {
     apply {
-        packet.emit(hdr);
     }
 }
 
