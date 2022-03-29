@@ -1,3 +1,6 @@
+/* The data plane program for VLAN assignment. 
+ * 
+ * Defines per-packet processing instructions. */
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
@@ -18,7 +21,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* Tutorial program, implementing VLAN assignment. */
 #include <core.p4> 
 #include <v1model.p4> // The V1model architecture.
 
@@ -37,6 +39,22 @@ header Vlan_t {
     bit<16> etherType;
 }
 
+header Ipv4_t {
+    bit<4> version;
+    bit<4> ihl;
+    bit<6> dscp;
+    bit<2> ecn;
+    bit<16> totalLen;
+    bit<16> identification;
+    bit<3> flags;
+    bit<13> fragOffset;
+    bit<8> ttl;
+    bit<8> protocol;
+    bit<16> hdrChecksum;
+    bit<32> srcAddr;
+    bit<32> dstAddr;
+}
+
 struct metadata {
     // The packet's conceptual VLAN, which may not be in a VLAN header.
     bit<12> vid;
@@ -48,6 +66,7 @@ struct metadata {
 struct headers {
     Ethernet_t eth;
     Vlan_t vlan;
+    Ipv4_t ipv4;
 }
 
 parser TutorialParser(packet_in packet,
@@ -68,7 +87,26 @@ parser TutorialParser(packet_in packet,
 }
 
 control TutorialVerifyChecksum(inout headers hdr, inout metadata meta) {
-    apply {}
+    apply {
+        verify_checksum(hdr.ipv4.isValid(),
+            {
+                hdr.ipv4.version,
+                hdr.ipv4.ihl,
+                hdr.ipv4.dscp,
+                hdr.ipv4.ecn,
+                hdr.ipv4.totalLen,
+                hdr.ipv4.identification,
+                hdr.ipv4.flags,
+                hdr.ipv4.fragOffset,
+                hdr.ipv4.ttl,
+                hdr.ipv4.protocol,
+                hdr.ipv4.srcAddr,
+                hdr.ipv4.dstAddr
+            },
+            hdr.ipv4.hdrChecksum,
+            HashAlgorithm.csum16
+        );
+    }
 }
 
 control TutorialIngress(inout headers hdr,
@@ -161,12 +199,30 @@ control TutorialEgress(inout headers hdr,
 }
 
 control TutorialComputeChecksum(inout headers hdr, inout metadata meta) {
-    apply {}
+    apply {
+        update_checksum(hdr.ipv4.isValid(),
+            {
+                hdr.ipv4.version,
+                hdr.ipv4.ihl,
+                hdr.ipv4.dscp,
+                hdr.ipv4.ecn,
+                hdr.ipv4.totalLen,
+                hdr.ipv4.identification,
+                hdr.ipv4.flags,
+                hdr.ipv4.fragOffset,
+                hdr.ipv4.ttl,
+                hdr.ipv4.protocol,
+                hdr.ipv4.srcAddr,
+                hdr.ipv4.dstAddr
+            },
+            hdr.ipv4.hdrChecksum,
+            HashAlgorithm.csum16
+        );
+    }
 }
 
 control TutorialDeparser(packet_out packet, in headers hdr) {
     apply {
-        packet.emit(hdr);
     }
 }
 
