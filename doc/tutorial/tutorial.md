@@ -116,7 +116,11 @@ cd ..
 Compare the output file with [tutorial_dp.dl](tutorial_dp.dl) to verify its contents.
 
 ### Program the Control Plane
+<<<<<<< HEAD
 To program the control plane, we write the DDlog program that sits in between OVSDB and the P4 switch. Because we have generated the input and output relations, we know what the inputs to and outputs from the control plane look like. The DDlog program connects these and implements the control plane's actions, by computing output changes from the input changes.
+=======
+To program the control plane, we write the DDlog program that sits in between OVSDB and the P4 switch. Because we have generated the input and output relations, we know what the inputs and outputs to the control plane look like. The DDlog program connects these and implements the control plane's actions, by computing output changes from the input changes.
+>>>>>>> Modify tutorial text based on reviews.
 
 Copy the contents of [tutorial.dl](tutorial.dl) into `nerpa_controlplane/tutorial/tutorial.dl`.
 
