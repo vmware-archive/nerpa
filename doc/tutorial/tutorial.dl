@@ -1,6 +1,17 @@
-// Uncomment the following imports after generating relations from the P4 program and OVSDB schema.
-import tutorial_dp as tutorial_dp
+/* The control plane for VLAN assignment.
+ *
+ * The defined rules compute a set of output relations based on input relations.
+ * These are evaluated incrementally. Given a set of changes to the input relations,
+ * DDlog produces a set of changes to the output relations.
+ */
+
+// Input relations are stored in 'Tutorial_mp.dl'.
+// They are generated from the OVSDB schema by ovsdb2ddlog.
 import Tutorial_mp as tutorial_mp
+
+// Output relations (and some input relations) are stored in 'tutorial_dp.dl'.
+// They are generated from the P4 program using 'p4info2ddlog'.
+import tutorial_dp as tutorial_dp
 
 import set
 
