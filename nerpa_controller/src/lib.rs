@@ -1033,7 +1033,7 @@ impl ControllerActor {
                 tokio::spawn(async move { digest_actor.run().await });
 
                 // Start processing inputs from OVSDB.
-                let ctx = ovsdb_client::context::Context::new(
+                let ctx = ovsdb_client::context::OvsdbContext::new(
                     hddlog,
                     DeltaMap::<DDValue>::new(),
                     database.clone(),
@@ -1101,7 +1101,7 @@ impl DataplaneResponseActor {
         update.set_device_id(0);
         let mut smr = StreamMessageRequest::new();
         smr.set_arbitration(update);
-        let req_result = self.sink.send((smr, grpcio::WriteFlags::default())).await;
+        let req_result = self.to_data_plane.send((smr, grpcio::WriteFlags::default())).await;
         if req_result.is_err() {
             panic!("failed to configure stream channel with master arbitration update: {:#?}", req_result.err());
         }
@@ -1133,7 +1133,7 @@ impl DataplaneResponseActor {
                         for data in d.get_data().iter() {
                             let dd_update_opt = digest_to_ddlog(d.get_digest_id(), data);
                             
-                            let channel_res = self.respond_to.send(dd_update_opt).await;
+                            let channel_res = self.to_controller.send(dd_update_opt).await;
                             if channel_res.is_err() {
                                 error!("could not send response over channel: {:#?}", channel_res);
                             }
@@ -1143,7 +1143,7 @@ impl DataplaneResponseActor {
                         let dd_update_opt = packet_in_to_ddlog(p);
                         debug!("received packetin update: {:#?}", dd_update_opt);
 
-                        let channel_res = self.respond_to.send(dd_update_opt).await;
+                        let channel_res = self.to_controller.send(dd_update_opt).await;
                         if channel_res.is_err() {
                             error!("could not send response over channel: {:#?}", channel_res);
                         }
