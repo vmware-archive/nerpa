@@ -187,7 +187,7 @@ impl From<&p4types::StructuredAnnotation> for AnnotationValue {
 
 /// Annotations in a [preamble](https://p4.org/p4-spec/p4runtime/main/P4Runtime-Spec.html#sec-preamble-message). Maps name to value and optional location.
 #[derive(Clone, Debug, Default)]
-pub struct Annotations(HashMap<String, (Option<SourceLocation>, AnnotationValue)>);
+pub struct Annotations(pub HashMap<String, (Option<SourceLocation>, AnnotationValue)>);
 
 fn parse_annotations<'a, T, U, V>(
     annotations: T,
@@ -280,9 +280,9 @@ impl Display for Annotations {
 }
 
 #[derive(Clone, Debug, Default)]
-struct Documentation {
-    brief: String,
-    description: String,
+pub struct Documentation {
+    pub brief: String,
+    pub description: String,
 }
 
 impl From<&p4info::Documentation> for Documentation {
@@ -301,9 +301,9 @@ pub struct Preamble {
     pub id: u32,
     /// Full name of the P4 object, e.g. `c1.c2.ipv4_lpm`.
     pub name: String,
-    alias: String,
-    annotations: Annotations,
-    doc: Documentation,
+    pub alias: String,
+    pub annotations: Annotations,
+    pub doc: Documentation,
 }
 
 impl From<&p4info::Preamble> for Preamble {
@@ -445,8 +445,8 @@ pub struct ActionParam {
     // Preamble but it includes everything in the preamble except
     // 'alias'.  It seems more uniform to just use Preamble here.
     pub preamble: Preamble,
-    bit_width: i32,
-    type_name: Option<String>,
+    pub bit_width: i32,
+    pub type_name: Option<String>,
 }
 
 impl From<&p4info::Action_Param> for ActionParam {
