@@ -147,10 +147,17 @@ The build script executes the following steps. You will notice that Steps 1 to 5
 
 ### Run the Nerpa Program
 
-Run the Nerpa program, starting all pieces of software:
+Run the Nerpa program, starting all pieces of software. Passing the `-s` flag let us simulate interfaces over [nanomsg](https://nanomsg.org/) rather than using virtual ethernet (veth) devices. This helps with testing.
 ```
-./scripts/run-nerpa.sh nerpa_controlplane/tutorial tutorial
+./scripts/run-nerpa.sh -s nerpa_controlplane/tutorial tutorial
 ```
+
+The run script executes the following steps.
+1. Check that the Nerpa dependencies were installed as expected. Specifically, it confirms that the environment variable `$NERPA_DEPS` points to a directory that contains the `behavioral-model` subdirectory.
+2. Run `simple_switch_grpc`, the virtual switch. If using veth devices, it tears down existing interfaces and sets them up.
+3. Initially configure the switch by passing the provided `commands.txt` to `sswitch_CLI.py`. This is a Python wrapper around the simple switch command-line interface.
+4. Start a new OVSDB server. Before this, we first stop any currently running ovsdb-server. We then use `ovsdb-tool` to create a new database, defined by the schema in `tutorial.ovsschema`. Finally, we start the server.
+5. Run `nerpa_controller`, the Nerpa controller crate. This long-running program synchronizes state between the planes. It begins by starting the DDlog program, the control plane. It then reads inputs from the management and data planes and sends them to the control plane; computes the outputs corresponding to the those inputs; and writes outputs to the data plane.
 
 ### Test the Nerpa Program
 
