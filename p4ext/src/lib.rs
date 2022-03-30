@@ -379,7 +379,6 @@ pub struct MatchField {
     pub bit_width: i32,
     /// Describes the match behavior of the field.
     pub match_type: MatchType,
-    type_name: Option<String>,
     // unknown_fields: 
 }
 
@@ -413,7 +412,6 @@ impl From<&p4info::MatchField> for MatchField {
                     }
                 }
             },
-            type_name: None, // XXX
         }
     }
 }
@@ -421,9 +419,6 @@ impl From<&p4info::MatchField> for MatchField {
 impl Display for MatchField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "field {}: bit<{}>", self.preamble.name, self.bit_width)?;
-        if let Some(ref type_name) = self.type_name {
-            write!(f, " ({})", type_name.escape_debug())?;
-        }
         write!(f, " {}-match", self.match_type)?;
         if !self.preamble.annotations.0.is_empty() {
             write!(f, " {}", self.preamble.annotations)?;
