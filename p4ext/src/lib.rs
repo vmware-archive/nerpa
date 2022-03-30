@@ -517,7 +517,9 @@ pub struct ActionRef {
 }
 
 impl ActionRef {
-    fn new_from_proto(ar: &p4info::ActionRef, actions: &HashMap<u32, Action>) -> Self {
+    /// Returns a new `ActionRef` based on `ar`.  The actions in the new `ActionRef` are looked up
+    /// by ID in `actions` and cloned.
+    pub fn new_from_proto(ar: &p4info::ActionRef, actions: &HashMap<u32, Action>) -> Self {
         ActionRef {
             action: actions.get(&ar.id).unwrap().clone(),
             may_be_default: ar.scope != p4info::ActionRef_Scope::TABLE_ONLY,
@@ -565,7 +567,9 @@ pub struct Table {
 }
 
 impl Table {
-    fn new_from_proto(t: &p4info::Table, actions: &HashMap<u32, Action>) -> Self {
+    /// Returns a new `Table` based on `t`.  The actions in the new `Table` are looked up by ID in
+    /// `actions` and cloned.
+    pub fn new_from_proto(t: &p4info::Table, actions: &HashMap<u32, Action>) -> Self {
         Table {
             preamble: t.get_preamble().into(),
             match_fields: t.get_match_fields().iter().map(|x| x.into()).collect(),
