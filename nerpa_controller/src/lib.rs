@@ -788,7 +788,7 @@ impl SwitchClient {
                 exact_match.set_value(Self::record_to_bytestring(r));
                 field_match.set_exact(exact_match);
             },
-            MatchType::Lpm => {
+            MatchType::LPM => {
                 let mut lpm_match = proto::p4runtime::FieldMatch_LPM::new();
 
                 // The value for an LPM match should be a Tuple.

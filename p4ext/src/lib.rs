@@ -330,7 +330,7 @@ pub enum MatchType {
     /// Exact.
     Exact,
     /// Longest prefix.
-    Lpm,
+    LPM,
     /// Ternary.
     Ternary,
     /// Represents min..max intervals.
@@ -355,7 +355,7 @@ impl Display for MatchType {
         let s = match self {
             Unspecified => "unspecified",
             Exact => "exact",
-            Lpm => "LPM",
+            LPM => "LPM",
             Ternary => "ternary",
             Range => "range",
             Optional => "optional",
@@ -400,7 +400,7 @@ impl From<&p4info::MatchField> for MatchField {
             bit_width: mf.bitwidth,
             match_type: match mf.get_match_type() {
                 EXACT => MatchType::Exact,
-                LPM => MatchType::Lpm,
+                LPM => MatchType::LPM,
                 TERNARY => MatchType::Ternary,
                 RANGE => MatchType::Range,
                 OPTIONAL => MatchType::Optional,
