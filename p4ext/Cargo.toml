@@ -7,6 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.40"
 byteorder = "1.4.2"
 futures = "0.3.12"
 grpcio = "0.9.0"
@@ -16,6 +17,16 @@ protobuf = "2.22.0"
 protobuf-codegen = "2.22.0"
 rusty-fork = "0.3.0"
 tokio = { version = "1.2.0", features = ["full"] }
+thiserror = "1.0"
+
+# differential_datalog is a generic library that doesn't vary from one
+# ddlog program to another, but it isn't on crates.io so it needs to
+# be obtained from some particular instantiation of a ddlog program.
+# Only ofp4 needs to use ddlog.
+differential_datalog = {path = "../ofp4/snvs_ddlog/differential_datalog", optional = true}
+
+[features]
+ofp4 = ["differential_datalog"]
 
 [dev-dependencies]
 rusty-fork = "0.3.0"
