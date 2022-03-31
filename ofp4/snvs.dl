@@ -1,0 +1,202 @@
+input relation OutputVlan(
+    port: bit<9>,
+    vlan: Option<bit<12>>,
+    priority: bit<32>
+)
+input relation PriorityTagging(
+    port: bit<9>,
+    nonzero_pcp: bool
+)
+input relation MirrorDstDrop(
+    port: bit<9>
+)
+input relation ReservedMcastDstDrop[bit<48>]
+typedef InputVlanAction = InputVlanActionDrop | InputVlanActionSetVlan{vid: bit<12>} | InputVlanActionUseTaggedVlan
+input relation InputVlan(
+    port: bit<9>,
+    has_vlan: bool,
+    vid: Option<bit<12>>,
+    priority: bit<32>,
+    action: InputVlanAction
+)
+input relation MirrorSelectProduct(
+    port: Option<bit<9>>,
+    vlan: Option<bit<12>>,
+    priority: bit<32>
+)
+input relation FloodVlan(
+    vlan: bit<12>
+)
+input relation LearnedSrc(
+    vlan: bit<12>,
+    mac: bit<48>,
+    port: bit<9>
+)
+typedef LearnedDstAction = LearnedDstActionKnownDst{port: bit<9>}
+input relation LearnedDst(
+    vlan: bit<12>,
+    mac: bit<48>,
+    action: LearnedDstAction
+)
+input relation MulticastGroup(
+    mcast_id: bit<16>,
+    port: bit<9>)
+
+output relation Flow(s: string)
+index Flow(s: string) on Flow(s)
+
+/*
+ * Register allocation
+ */
+// Standard metadata
+function r_egress_spec(): istring = i"reg0"      // standard_metdata.egress_spec
+function r_mcast_grp(): istring = i"reg1[0..11]" // standard_metadata.mcast_grp
+function r_instance_type(): istring = i"reg2"    // standard_metdata.instance_type
+function r_egress_port(): istring = i"reg3"      // standard_metdata.egress_port
+
+// Program-specific metadata
+function r_vlan(): istring = i"reg4[0..11]"
+function r_vlan_match(value: bit<12>): string = "reg4=${value}/0xfff"
+function r_flood(): istring = i"reg5[0]"
+function r_flood_match(value: bit<1>): string = "reg5=${value}/${1 << 0}"
+function r_tag_vlan(): istring = i"reg5[1]"
+function r_tag_vlan_match(value: bit<1>): istring = i"reg5=${(value as u32) << 1}/${1 << 1}"
+function r_output(): istring = i"reg6[0..8]"
+function r_vid(): istring = i"reg7[0..11]"
+function r_include_vlan_header(): istring = i"reg5[2]"
+function r_include_vlan_header_match(value: bit<1>): istring = i"reg5=${(value as u32) << 2}/${1 << 2}"
+function r_nonzero_pcp(): istring = i"reg5[3]"
+function r_nonzero_pcp_match(value: bit<1>): istring = i"reg5=${(value as u32) << 3}/${1 << 3}"
+
+//    action Drop() {
+//        mark_to_drop(standard_metadata);
+//        exit;
+//    }
+function drop(): istring = i"load(0->${r_egress_spec()}), resubmit(,31)"
+
+/*
+ * SnvsIngress
+ */
+ 
+Flow("table=0 priority=100 in_port=${port} actions=${drop()}") :-
+    MirrorDstDrop(port).
+Flow("table=0 priority=0 actions=resubmit(,1)").
+
+Flow("table=1 priority=100 dl_dst=${dst} actions=${drop()}") :-
+    ReservedMcastDstDrop[dst].
+Flow("table=1 priority=0 actions=resubmit(,2)").
+
+Flow("table=2 priority=100 in_port=${port} vlan_tci=${vlan_match} actions=${actions}") :-
+    InputVlan(port, has_vlan, vid, priority, action),
+    var vlan_match = match ((has_vlan, vid)) {
+        (false, _) -> "0",
+        (true, None) -> "0x1000/0x1000",
+        (true, Some{vlan}) -> "${hex('h1000 | vlan)}/0x1fff"
+    },
+    var actions = match (action) {
+        InputVlanActionDrop -> "${drop()}",
+        InputVlanActionSetVlan{vlan} -> "load(${vlan}->${r_vlan()}), resubmit(,3)",
+        InputVlanActionUseTaggedVlan -> "move(vlan_tci[0..11]->${r_vlan()}), resubmit(,3)"
+    }.
+Flow("table=2 priority=0 actions=${drop()}").
+  
+Flow("table=3 priority=100 priority=${priority} ${port_match}actions=clone(load(1->${r_instance_type()}), resubmit(,31)), resubmit(,4)") :-
+    MirrorSelectProduct(port, vlan, priority),
+    var port_match = match (port) {
+        Some{port} -> "in_port=${port} ",
+        None -> ""
+    },
+    var vlan_match = match (vlan) {
+        Some{vlan} -> "${r_vlan_match(vlan)} ",
+        None -> ""
+    }.
+Flow("table=3 priority=0 actions=resubmit(,4)").
+
+Flow("table=4 ${r_vlan_match(vlan)} priority=100 actions=load(1->${r_flood()}), resubmit(,5)") :-
+    FloodVlan(vlan).
+Flow("table=4 priority=0 actions=load(0->${r_flood()}), resubmit(,5)").
+
+Flow("table=5 priority=100 ${r_flood_match(0)} ${r_vlan_match(vlan)} dl_src=${mac} in_port=${port} actions=resubmit(,6)") :-
+    LearnedSrc(vlan, mac, port).
+Flow("table=5 priority=50 ${r_flood_match(0)} dl_src=00:00:00:00:00:00/01:00:00:00:00:00 actions=controller, resubmit(,6)").
+Flow("table=5 priority=0 actions=resubmit(,6)").
+
+Flow("table=6 priority=100 ${r_flood_match(0)} ${r_vlan_match(vlan)} dl_dst=${mac} actions=load(${port}->${r_output()}), resubmit(,7)") :-
+    LearnedDst(vlan, mac, LearnedDstActionKnownDst{port}).
+Flow("table=6 priority=0 actions=load(510->${r_output()}), resubmit(,7)").
+
+// If we're flooding, then use the VLAN as the multicast group
+// (we assume that the control plane has configured one multicast
+// group per VLAN, with the VLAN number as the multicast group ID).
+//
+// If we have a destination port, then it becomes the output port.
+//
+// We don't bother to try to drop output to the input port here
+// because it happens in the egress pipeline.
+Flow("table=7 priority=100 reg6=510 actions=move(${r_vlan()}->${r_mcast_grp()}), resubmit(,31)").
+Flow("table=7 priority=0 actions=move(${r_output()}->${r_egress_spec()}[0..8]), resubmit(,31)").
+
+/*
+ * Ingress->Egress
+ */
+
+Flow("table=31 ${r_mcast_grp()}=0 actions=move(${r_egress_spec()}->${r_egress_port()}), resubmit(,32)").
+Flow("table=31 ${r_mcast_grp()}=${mcast_id} actions=${outputs}") :-
+    MulticastGroup(mcast_id, port),
+    var outputs = "clone(load(${port}->${r_egress_port()}), resubmit(,32))".group_by(mcast_id).to_vec().join(", ").
+
+/*
+ * SnvsEgress
+ */
+
+// If this is a clone for the purpose of port mirroring, we're all
+// done.
+Flow("table=32 priority=100 ${r_mcast_grp()}=1 actions=resubmit(,64)").
+Flow("table=32 priority=0 actions=resubmit(,33)").
+
+// Drop loopback.
+//
+// XXX "a==b" or "a!=b" is hard in OpenFlow.  For an N-bit field, it can be
+// synthesized as a series of 2N flows that check individual bits.  It's
+// not worth it in this case because OpenFlow by default drops packets that
+// are output to the input port.  So we just emit nothing for this.
+
+// Output VLAN processing, including priority tagging.
+// bool tag_vlan = OutputVlan.apply().hit;
+Flow("table=33 priority=${priority} ${r_egress_port()}=${port} ${vlan_match}actions=load(1->${r_tag_vlan()}, resubmit(,34))") :-
+    OutputVlan(port, vlan, priority),
+    var vlan_match = match (vlan) {
+        None -> "",
+        Some{vid} -> r_vlan_match(vid)
+    }.
+Flow("table=33 priority=0 actions=load(0->${r_tag_vlan()}), resubmit(,34)").
+
+// VlanID vid = tag_vlan ? meta.vlan : 0;
+Flow("table=34 ${r_tag_vlan_match(1)} actions=move(${r_vlan()}->${r_vid()}), resubmit(,35)").
+Flow("table=34 ${r_tag_vlan_match(0)} actions=load(0->${r_vid()}), resubmit(,35)").
+
+// bool include_vlan_header = tag_vlan || PriorityTagging.apply().hit;
+//
+// The PriorityTagging table has an expression
+//   hdr.vlan.isValid() && hdr.vlan.pcp != 0
+// that we evaluate first into r_nonzero_pcp():
+Flow("table=35 priority=100 vlan_tci=0/0x1000 actions=load(0->${r_nonzero_pcp()}), resubmit(,36)").
+Flow("table=35 priority=50  vlan_tci=0/0xe000 actions=load(0->${r_nonzero_pcp()}), resubmit(,36)").
+Flow("table=35 priority=0                     actions=load(1->${r_nonzero_pcp()}), resubmit(,36)").
+//
+// Then evaluate the expression.
+Flow("table=36 priority=9 ${r_tag_vlan_match(1)} actions=load(1->${r_include_vlan_header()}), resubmit(,37)").
+Flow("table=36 priority=5 ${r_egress_port()}=${port} ${r_nonzero_pcp_match(if (nonzero_pcp) 1 else 0)} actions=load(1->${r_include_vlan_header()}), resubmit(,37)") :-
+    PriorityTagging(port, nonzero_pcp).
+Flow("table=36 priority=0 actions=load(0->${r_include_vlan_header()}), resubmit(,37)").
+
+// Output VLAN processing.
+Flow("table=37 ${r_include_vlan_header_match(1)} vlan_tci=0/0x1000 actions=push_vlan(0x8100), move(${r_vid()}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,64)").
+Flow("table=37 ${r_include_vlan_header_match(0)} vlan_tci=0x1000/0x1000 actions=pop_vlan, resubmit(,64)").
+
+/*
+ * egress
+ */
+
+Flow("table=64 ${r_egress_port()}=0 priority=100 actions=drop").
+Flow("table=64 priority=0 actions=output(${r_egress_port()}[])").

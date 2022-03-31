@@ -141,6 +141,6 @@ async fn run_controller(
 
     // Start streaming inputs from OVSDB and from the dataplane.
     let database = file_name.clone();
-    let server = String::from("unix:db.sock");
+    let server = String::from("unix:nerpa.sock");
     nerpa_controller.stream_inputs(ovsdb_hddlog, server, database).await;
 }

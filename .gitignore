@@ -4,3 +4,4 @@ nerpa-deps
 # OVS files in testing
 *.db*
 ovsdb-server.*
+sandbox/
