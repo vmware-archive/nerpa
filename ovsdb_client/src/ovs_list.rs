@@ -20,7 +20,7 @@ SOFTWARE.
 
 /* OVS list functions. Because these are `inline`, bindgen does not generate them. */
 
-extern crate ovsdb_sys;
+extern crate ovs;
 
 use std::{
     cell::Cell as Mut,
@@ -36,18 +36,18 @@ pub struct OvsList {
 }
 
 impl OvsList {
-    pub fn as_ovs_list(&mut self) -> ovsdb_sys::ovs_list {
+    pub fn as_ovs_list(&mut self) -> ovs::sys::ovs_list {
         let prev_ptr = match self.prev.get() {
             None => ptr::null_mut(),
-            Some(p) => p.as_ptr() as *mut ovsdb_sys::ovs_list,
+            Some(p) => p.as_ptr() as *mut ovs::sys::ovs_list,
         };
 
         let next_ptr = match self.next.get() {
             None => ptr::null_mut(),
-            Some(p) => p.as_ptr() as *mut ovsdb_sys::ovs_list,
+            Some(p) => p.as_ptr() as *mut ovs::sys::ovs_list,
         };
 
-        ovsdb_sys::ovs_list {
+        ovs::sys::ovs_list {
             prev: prev_ptr,
             next: next_ptr,
         }
@@ -56,16 +56,16 @@ impl OvsList {
 
 /* Cast an ovs_list to an ovsdb_cs_event. */
 pub unsafe fn to_event(
-    list_ptr: *mut ovsdb_sys::ovs_list
-) -> Option<ovsdb_sys::ovsdb_cs_event> {
+    list_ptr: *mut ovs::sys::ovs_list
+) -> Option<ovs::sys::ovsdb_cs_event> {
     if list_ptr.is_null() {
         return None;
     }
 
     let event_ptr = list_ptr
         .cast::<u8>()
-        .wrapping_sub(offset_of!(ovsdb_sys::ovsdb_cs_event, list_node))
-        .cast::<ovsdb_sys::ovsdb_cs_event>();
+        .wrapping_sub(offset_of!(ovs::sys::ovsdb_cs_event, list_node))
+        .cast::<ovs::sys::ovsdb_cs_event>();
     
     if event_ptr.is_null() {
         return None;
@@ -75,8 +75,8 @@ pub unsafe fn to_event(
 }
 
 pub unsafe fn remove(
-    elem: *mut ovsdb_sys::ovs_list
-) -> *mut ovsdb_sys::ovs_list {
+    elem: *mut ovs::sys::ovs_list
+) -> *mut ovs::sys::ovs_list {
     (*(*elem).prev).next = (*elem).next;
     (*(*elem).next).prev = (*elem).prev;
     
@@ -84,7 +84,7 @@ pub unsafe fn remove(
 }
 
 pub unsafe fn is_empty(
-    list: *mut ovsdb_sys::ovs_list,
+    list: *mut ovs::sys::ovs_list,
 ) -> bool {
     (*list).next == list
 }

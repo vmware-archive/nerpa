@@ -109,8 +109,8 @@ impl OvsdbContext {
     /// Because it checks if this pointer is null, its behavior will be safe.
     pub unsafe fn process_txn_reply(
         &mut self,
-        cs: *mut ovsdb_sys::ovsdb_cs,
-        reply: *mut ovsdb_sys::jsonrpc_msg,
+        cs: *mut ovs::sys::ovsdb_cs,
+        reply: *mut ovs::sys::jsonrpc_msg,
     ) -> Result<(), String> {
         if reply.is_null() {
             return Err(
@@ -121,11 +121,11 @@ impl OvsdbContext {
         // Dereferencing 'reply' is safe because of the null check.
         let reply_type = (*reply).type_;
 
-        if reply_type == ovsdb_sys::jsonrpc_msg_type_JSONRPC_ERROR {
+        if reply_type == ovs::sys::jsonrpc_msg_type_JSONRPC_ERROR {
             // Convert the jsonrpc_msg to a *mut c_char.
             // Represent it in a Rust string for debugging, and free the C string.
             let reply_s = {
-                let reply_cs = ovsdb_sys::jsonrpc_msg_to_string(reply);
+                let reply_cs = ovs::sys::jsonrpc_msg_to_string(reply);
                 let reply_s = format!("received database error: {:#?}", reply_cs);
                 libc::free(reply_cs as *mut libc::c_void);
 
@@ -139,7 +139,7 @@ impl OvsdbContext {
                 );
             }
 
-            ovsdb_sys::ovsdb_cs_force_reconnect(cs);
+            ovs::sys::ovsdb_cs_force_reconnect(cs);
 
             return Err(reply_s);
         }
@@ -172,7 +172,7 @@ impl OvsdbContext {
     /// * `events`: events received from OVSDB.
     pub fn parse_updates(
         &self,
-        events: Vec<ovsdb_sys::ovsdb_cs_event>,
+        events: Vec<ovs::sys::ovsdb_cs_event>,
     ) -> Vec<Update<DDValue>> {
         let mut updates = Vec::new();
 
@@ -187,7 +187,7 @@ impl OvsdbContext {
 
             let table_updates_s = unsafe {
                 let update = event.__bindgen_anon_1.update;
-                let buf = ovsdb_sys::json_to_string(update.table_updates, 0);
+                let buf = ovs::sys::json_to_string(update.table_updates, 0);
 
                 ffi::CStr::from_ptr(buf).to_str().unwrap()
             };

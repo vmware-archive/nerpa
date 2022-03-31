@@ -13,7 +13,7 @@ edition = \"2018\"
 differential_datalog = {path = \"../$1/$2_ddlog/differential_datalog\"}
 libc = \"0.2.98\"
 ddlog_ovsdb_adapter = {path = \"../$1/$2_ddlog/ovsdb\"}
-ovsdb-sys = {path = \"../ovsdb-sys\"}
+ovs = {path = \"../ovs\"}
 $2 = {path = \"../$1/$2_ddlog\", features = [\"ovsdb\"]}
 memoffset = \"0.6.4\"
 serde = \"1.0.126\"

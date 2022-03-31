@@ -28,7 +28,7 @@ SOFTWARE.
 
 extern crate ddlog_ovsdb_adapter;
 extern crate libc;
-extern crate ovsdb_sys;
+extern crate ovs;
 
 #[macro_use]
 extern crate memoffset;
@@ -47,12 +47,12 @@ use differential_datalog::program::Update;
 
 use tokio::sync::mpsc;
 
-/// Aliases for types in the ovsdb-sys bindings.
-type EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type;
-const EVENT_TYPE_RECONNECT: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_RECONNECT;
-const EVENT_TYPE_LOCKED: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_LOCKED;
-const EVENT_TYPE_UPDATE: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE;
-const EVENT_TYPE_TXN_REPLY: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_TXN_REPLY;
+/// Aliases for types in the ovs bindings.
+type EventType = ovs::sys::ovsdb_cs_event_ovsdb_cs_event_type;
+const EVENT_TYPE_RECONNECT: EventType = ovs::sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_RECONNECT;
+const EVENT_TYPE_LOCKED: EventType = ovs::sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_LOCKED;
+const EVENT_TYPE_UPDATE: EventType = ovs::sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_UPDATE;
+const EVENT_TYPE_TXN_REPLY: EventType = ovs::sys::ovsdb_cs_event_ovsdb_cs_event_type_OVSDB_CS_EVENT_TYPE_TXN_REPLY;
 
 /// Compose request to monitor changes to specific columns in OVSDB.
 ///
@@ -62,13 +62,13 @@ const EVENT_TYPE_TXN_REPLY: EventType = ovsdb_sys::ovsdb_cs_event_ovsdb_cs_event
 /// * `schema_json` - OVSDB schema.
 /// * `_aux` - additional data for the request.
 unsafe extern "C" fn compose_monitor_request(
-    schema_json: *const ovsdb_sys::json,
+    schema_json: *const ovs::sys::json,
     _aux: *mut raw::c_void,
-) -> *mut ovsdb_sys::json {
-    let monitor_requests = ovsdb_sys::json_object_create();
+) -> *mut ovs::sys::json {
+    let monitor_requests = ovs::sys::json_object_create();
 
     // Convert the bindgen-generated 'json' to a Rust 'str'.
-    let schema_cs = ovsdb_sys::json_to_string(schema_json, 0);
+    let schema_cs = ovs::sys::json_to_string(schema_json, 0);
     let schema_s = ffi::CStr::from_ptr(schema_cs).to_str().unwrap();
 
     let json_v: Value = serde_json::from_str(schema_s).unwrap();
@@ -79,36 +79,36 @@ unsafe extern "C" fn compose_monitor_request(
         let cols = to["columns"].as_object().unwrap();
 
         // Construct a JSON array of each column.
-        let subscribed_cols = ovsdb_sys::json_array_create_empty();
+        let subscribed_cols = ovs::sys::json_array_create_empty();
         for (ck, _cv) in cols.iter() {
             let ck_cs = ffi::CString::new(ck.as_str()).unwrap();
             let ck_cp = ck_cs.as_ptr() as *const raw::c_char;
 
-            ovsdb_sys::json_array_add(
+            ovs::sys::json_array_add(
                 subscribed_cols,
-                ovsdb_sys::json_string_create(ck_cp),
+                ovs::sys::json_string_create(ck_cp),
             );
         }
 
         // Map "columns": [<subscribed_cols>].
-        let monitor_request = ovsdb_sys::json_object_create();
+        let monitor_request = ovs::sys::json_object_create();
         let columns_cs = ffi::CString::new("columns").unwrap();
-        ovsdb_sys::json_object_put(
+        ovs::sys::json_object_put(
             monitor_request,
             columns_cs.as_ptr(),
             subscribed_cols,
         );
 
         let table_cs = ffi::CString::new(tk.as_str()).unwrap();
-        ovsdb_sys::json_object_put(
+        ovs::sys::json_object_put(
             monitor_requests,
             table_cs.as_ptr(),
-            ovsdb_sys::json_array_create_1(monitor_request),
+            ovs::sys::json_array_create_1(monitor_request),
         );
     }
 
     // Log the monitor request.
-    let monitor_requests_cs = ovsdb_sys::json_to_string(monitor_requests, 0);
+    let monitor_requests_cs = ovs::sys::json_to_string(monitor_requests, 0);
     let monitor_requests_s = ffi::CStr::from_ptr(monitor_requests_cs).to_str().unwrap();
     println!("\nMonitoring the following OVSDB columns: {}\n", monitor_requests_s);
 
@@ -118,7 +118,7 @@ unsafe extern "C" fn compose_monitor_request(
 /// A mutable, raw pointer to a live OVSDB connection.
 //
 // This is a "newtype" style struct, so we can define `Send` on it.
-struct OvsdbCSPtr(*mut ovsdb_sys::ovsdb_cs);
+struct OvsdbCSPtr(*mut ovs::sys::ovsdb_cs);
 
 // The `Send` trait lets us transfer an object across thread boundaries.
 // This pointer is only used in single-threaded settings, so the trait is unimplemented.
@@ -143,30 +143,30 @@ pub async fn process_ovsdb_inputs(
 
     // Construct the client-sync here, so `ctx` can be passed when creating the connection.
     let cs_ptr = unsafe {
-        let cs_ops = &ovsdb_sys::ovsdb_cs_ops {
+        let cs_ops = &ovs::sys::ovsdb_cs_ops {
             compose_monitor_requests: Some(compose_monitor_request),
-        } as *const ovsdb_sys::ovsdb_cs_ops;
+        } as *const ovs::sys::ovsdb_cs_ops;
         let cs_ops_void = &mut ctx as *mut context::OvsdbContext as *mut ffi::c_void;
 
-        let cs = ovsdb_sys::ovsdb_cs_create(
+        let cs = ovs::sys::ovsdb_cs_create(
             database_cs.as_ptr(),
             1,
             cs_ops,
             cs_ops_void,
         );
-        ovsdb_sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
-        ovsdb_sys::ovsdb_cs_set_lock(cs, std::ptr::null());
+        ovs::sys::ovsdb_cs_set_remote(cs, server_cs.as_ptr(), true);
+        ovs::sys::ovsdb_cs_set_lock(cs, std::ptr::null());
 
         OvsdbCSPtr(cs)
     };
 
     loop {
         let updates = unsafe {
-            let mut event_updates = Vec::<ovsdb_sys::ovsdb_cs_event>::new();
+            let mut event_updates = Vec::<ovs::sys::ovsdb_cs_event>::new();
             let cs = cs_ptr.0;
 
             let mut events_list = &mut ovs_list::OvsList::default().as_ovs_list();
-            ovsdb_sys::ovsdb_cs_run(cs, events_list);
+            ovs::sys::ovsdb_cs_run(cs, events_list);
 
             while !ovs_list::is_empty(events_list) {
                 events_list = ovs_list::remove(events_list).as_mut().unwrap();

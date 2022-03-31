@@ -38,6 +38,7 @@ fn main() {
         .blacklist_function("qgcvt")
         .blacklist_function("qecvt_r")
         .blacklist_function("qfcvt_r")
+        .constified_enum_module("ofperr")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings!");
