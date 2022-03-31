@@ -31,6 +31,13 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .clang_arg("-Iovs/include")
         .header("wrapper.h")
+    // These functions generate warnings about non-FFI-safe u128 usage.
+        .blacklist_function("strtold")
+        .blacklist_function("qecvt")
+        .blacklist_function("qfcvt")
+        .blacklist_function("qgcvt")
+        .blacklist_function("qecvt_r")
+        .blacklist_function("qfcvt_r")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings!");
