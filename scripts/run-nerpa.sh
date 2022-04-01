@@ -163,18 +163,6 @@ case $TARGET in
         ovsdb-server --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
                      --remote=punix:"$sandbox"/db.sock \
                      --remote=db:Open_vSwitch,Open_vSwitch,manager_options
-
-        # Wait for the database server to come up.
-        sleep 0.1
-        if test ! -e db.sock; then
-            printf "Waiting for ovsdb-server to start..."
-            while test ! -e db.sock; do
-                sleep 1;
-            done
-            echo "  Done"
-        fi
-
-        # Initialize database.
         ovs-vsctl --no-wait -- init
 
         # Start OVS, and add a bridge and some ports.
