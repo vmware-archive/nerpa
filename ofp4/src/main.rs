@@ -411,6 +411,7 @@ impl<'a> P4Runtime for P4RuntimeService {
             unary_fail(&ctx, sink, grpcio::RpcStatus::with_details(RpcStatusCode::UNKNOWN, Default::default(), details.write_to_bytes().unwrap()));
         }
     }
+
     fn read(&mut self,
             ctx: RpcContext,
             req: ReadRequest,
@@ -440,6 +441,7 @@ impl<'a> P4Runtime for P4RuntimeService {
 
         server_streaming_success(&ctx, sink, responses);
     }
+
     fn set_forwarding_pipeline_config(
         &mut self,
         ctx: RpcContext,
@@ -464,6 +466,7 @@ impl<'a> P4Runtime for P4RuntimeService {
             .collect();
         unary_success(&ctx, sink, SetForwardingPipelineConfigResponse::new());
     }
+
     fn get_forwarding_pipeline_config(&mut self, ctx: RpcContext, req: GetForwardingPipelineConfigRequest, sink: UnarySink<GetForwardingPipelineConfigResponse>) {
         println!("get_forwarding_pipeline_config");
         let state = self.state.lock().unwrap();
@@ -480,6 +483,7 @@ impl<'a> P4Runtime for P4RuntimeService {
             ..Default::default()};
         unary_success(&ctx, sink, reply);
     }
+
     fn stream_channel(
         &mut self,
         ctx: RpcContext,
@@ -499,6 +503,7 @@ impl<'a> P4Runtime for P4RuntimeService {
         .map(|_| ());
         ctx.spawn(f)
     }
+
     fn capabilities(&mut self,
                     _ctx: RpcContext,
                     _req: CapabilitiesRequest,

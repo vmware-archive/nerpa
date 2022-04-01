@@ -105,6 +105,7 @@ impl FlowMod {
             }
         }
     }
+
     pub fn encode(&self, protocol: Protocol) -> Ofpbuf {
         unsafe {
             let b = sys::ofputil_encode_flow_mod(&self.0 as *const sys::ofputil_flow_mod,
@@ -112,6 +113,7 @@ impl FlowMod {
             Ofpbuf::from_ptr(b)
         }
     }
+
     pub fn format(oh: *const sys::ofp_header, verbosity: i32) -> Result<String> {
         unsafe {
             let mut ds = Ds::new();

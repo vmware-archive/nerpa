@@ -31,12 +31,15 @@ impl Ofpbuf {
     pub fn as_slice(&self) -> &[u8] {
         unsafe { slice::from_raw_parts((*self.0).data as *const u8, (*self.0).size as usize) }
     }
+
     pub fn as_ptr(&self) -> *const u8 {
         unsafe { (*self.0).data as *const u8 }
     }
+
     pub fn from_ptr(buf: *mut sys::ofpbuf) -> Ofpbuf {
         Ofpbuf(buf)
     }
+
     pub unsafe fn leak(&mut self) -> *mut sys::ofpbuf {
         let ptr = self.0;
         self.0 = null_mut();

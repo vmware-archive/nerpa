@@ -83,6 +83,7 @@ impl BundleCtrlMsg {
             })
         }
     }
+
     fn to_bcm(&self) -> sys::ofputil_bundle_ctrl_msg {
         sys::ofputil_bundle_ctrl_msg {
             bundle_id: self.bundle_id,
@@ -90,6 +91,7 @@ impl BundleCtrlMsg {
             flags: self.flags
         }
     }
+
     pub fn encode_request(&self, version: Version) -> Ofpbuf {
         unsafe {
             let mut bcm = self.to_bcm();
@@ -100,6 +102,7 @@ impl BundleCtrlMsg {
             b
         }
     }
+
     pub fn encode_reply(&self, request: &sys::ofp_header) -> Ofpbuf {
         unsafe {
             let mut bcm = self.to_bcm();
@@ -110,6 +113,7 @@ impl BundleCtrlMsg {
             b
         }
     }
+
     pub fn format(&self) -> Result<String> {
         unsafe {
             let bcm = self.to_bcm();
