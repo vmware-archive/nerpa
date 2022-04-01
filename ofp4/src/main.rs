@@ -299,9 +299,9 @@ impl P4RuntimeService {
                 let delta = {
                     let hddlog = &state.hddlog;
 
-                    hddlog.transaction_start().unwrap();
-                    hddlog.apply_updates(&mut commands.into_iter()).unwrap();
-                    hddlog.transaction_commit_dump_changes().unwrap()
+                    hddlog.transaction_start().ddlog_map_error()?;
+                    hddlog.apply_updates(&mut commands.into_iter()).ddlog_map_error()?;
+                    hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
                 dump_delta(&delta, &mut state.pending_flow_mods);
                 state.latch.set();
@@ -322,7 +322,7 @@ impl P4RuntimeService {
                     Some(table) => table,
                     None => Err(Error(RpcStatusCode::NOT_FOUND)).context(format!("unknown table {}", te.key.table_id))?
                 };
-                let relid = state.hddlog.inventory.get_table_id(table.base_name()).unwrap() as RelId;
+                let relid = state.hddlog.inventory.get_table_id(table.base_name()).ddlog_map_error()? as RelId;
 
                 // Validate the operation.
                 let old_value = state.table_entries.get(&te.key);
@@ -343,9 +343,9 @@ impl P4RuntimeService {
                 let delta = {
                     let hddlog = &state.hddlog;
 
-                    hddlog.transaction_start().unwrap();
-                    hddlog.apply_updates_dynamic(&mut commands.into_iter()).unwrap();
-                    hddlog.transaction_commit_dump_changes().unwrap()
+                    hddlog.transaction_start().ddlog_map_error()?;
+                    hddlog.apply_updates_dynamic(&mut commands.into_iter()).ddlog_map_error()?;
+                    hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
                 dump_delta(&delta, &mut state.pending_flow_mods);
                 state.latch.set();
