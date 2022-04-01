@@ -629,7 +629,6 @@ fn main() -> Result<()> {
         state.lock().unwrap().latch.wait();
         rconn.run_wait();
         rconn.recv_wait();
-        ovs::poll_loop::timer_wait(1000);
         ovs::poll_loop::block();
     }
 }

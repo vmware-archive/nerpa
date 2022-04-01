@@ -85,7 +85,7 @@ impl Rconn {
         unsafe { sys::rconn_run(self.0) }
     }
     pub fn run_wait(&mut self) {
-        unsafe { sys::rconn_run(self.0) }
+        unsafe { sys::rconn_run_wait(self.0) }
     }
     pub fn recv(&mut self) -> Option<Ofpbuf> {
         unsafe {
