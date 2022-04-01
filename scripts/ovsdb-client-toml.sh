@@ -8,6 +8,7 @@ echo "[package]
 name = \"ovsdb_client\"
 version = \"0.1.0\"
 edition = \"2018\"
+license = \"MIT\"
 
 [dependencies]
 differential_datalog = {path = \"../$1/$2_ddlog/differential_datalog\"}
