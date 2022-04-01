@@ -25,6 +25,14 @@ use std::ffi;
 use std::io;
 use std::ptr::{null, null_mut};
 
+/// A "reliable connection" to an OpenFlow remote.
+///
+/// An rconn maintains a message transmission queue of bounded length specified by the client.  The
+/// rconn does not guarantee reliable delivery of queued messages: all queued messages are dropped
+/// when reconnection becomes necessary.
+///
+/// An rconn optionally provides reliable communication, in this sense: the rconn will re-connect,
+/// with exponential backoff, when the underlying connection drops.
 pub struct Rconn(*mut sys::rconn);
 
 pub const DSCP_DEFAULT: u8 = sys::DSCP_DEFAULT as u8;

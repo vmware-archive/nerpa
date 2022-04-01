@@ -17,6 +17,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
+
+//! OpenFlow bundle support.
+//!
+//! Some versions of OpenFlow support "bundles", which are groups of OpenFlow messages that the
+//! switch applies as a single transaction.  This module supports grouping OpenFlow messages into
+//! bundles.
 use super::sys;
 use super::sys::ofperr;
 
@@ -42,9 +48,16 @@ pub const OFPBCT_DISCARD_REPLY: u16 = sys::ofp14_bundle_ctrl_type_OFPBCT_DISCARD
 pub const OFPBF_ATOMIC: u16 = sys::ofp14_bundle_flags_OFPBF_ATOMIC as u16;
 pub const OFPBF_ORDERED: u16 = sys::ofp14_bundle_flags_OFPBF_ORDERED as u16;
 
+/// An OpenFlow "bundle control message", which operates on a bundle.
 pub struct BundleCtrlMsg {
+    /// An arbitrary client-assigned identifier for the bundle, which must be unique among the
+    /// bundles that are currently open within the scope of a particular OpenFlow connection.
     pub bundle_id: u32,
+
+    /// One of `OFPBCT_*`.
     pub type_: u16,
+
+    /// Any combination of `OFPBF_*`.
     pub flags: u16
 }
 
@@ -142,7 +155,7 @@ pub struct BundleSequence<Inner: Iterator<Item=Ofpbuf>> {
 }
 impl<Inner: Iterator<Item=Ofpbuf>> BundleSequence<Inner> {
     /// Returns an iterator that yields a sequence of OpenFlow messages that open a bundle,
-    /// add all of the messages from `inner` to it, and then close the bundle.
+    /// add all of the messages from `inner` to it, and then commit the bundle.
     ///
     /// # Arguments.
     /// * `bundle_id`: Identifier for the bundle.  The caller should use a different ID

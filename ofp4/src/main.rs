@@ -17,6 +17,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
+
+//! `ofp4` provides a P4Runtime interface to Open vSwitch.  It accepts P4Runtime connections from a
+//! controller and connects to an Open vSwitch instance over OpenFlow and OVSDB.
+
 use anyhow::{anyhow, Context, Result};
 
 use clap::{App, Arg};
@@ -118,6 +122,9 @@ impl State {
         }
     }
 
+    /// Implements the P4Runtime `read` operation for the specified `multicast_group_id`, including
+    /// the P4Runtime behavior that a zero or missing multicast group acts as a wildcard.  Returns
+    /// the entities to send back to the P4Runtime client.
     fn read_multicast_groups(&self, multicast_group_id: u32) -> Vec<Entity> {
         let group_ids: Vec<MulticastGroupId> = if multicast_group_id == 0 {
             self.multicast_groups.keys().cloned().collect()
@@ -140,6 +147,9 @@ impl State {
         entities
     }
 
+    /// Implements the P4Runtime `read` operation for table entries that match all of the fields in
+    /// `target`.  As P4Runtime specifies, any field in `target` that is zero or missing acts as a
+    /// wildcard.  Returns the entities to send back to the P4Runtime client.
     fn read_table_entries(&self, target: &proto::p4runtime::TableEntry) -> Vec<Entity> {
         let target: TableEntry = match target.try_into() {
             Ok(target) => target,

@@ -1,3 +1,11 @@
+/*
+ * DDlog program based on snvs.p4.
+ *
+ * This program accepts as input the contents of P4Runtime tables and uses
+ * DDlog rules to convert them into OpenFlow flows.
+ */
+
+// P4Runtime input relations.
 input relation OutputVlan(
     port: bit<9>,
     vlan: Option<bit<12>>,
@@ -42,6 +50,7 @@ input relation MulticastGroup(
     mcast_id: bit<16>,
     port: bit<9>)
 
+// OpenFlow flow output relation.
 output relation Flow(s: string)
 index Flow(s: string) on Flow(s)
 

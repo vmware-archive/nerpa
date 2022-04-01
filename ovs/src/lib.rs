@@ -22,6 +22,10 @@ SOFTWARE.
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+//! `ovs` provides Rust wrappers for Open vSwitch libraries.
+
+/// The `sys` module contains the raw `bindgen` bindings for OVS libraries.
+/// It's usually better to use a safe wrapper around these bindings.
 pub mod sys {
     use std::ptr::null_mut;
     use std::slice;

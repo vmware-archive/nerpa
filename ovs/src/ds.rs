@@ -22,6 +22,11 @@ use super::sys;
 use std::ffi;
 use std::ptr::null_mut;
 
+/// Wrapper for OVS `struct ds`, which is a dynamically allocated string type.  Rust code should
+/// use `std::string::String` instead.
+///
+/// `Ds` is useful for other OVS wrappers because it is part of the interface for some OVS
+/// functions.
 pub struct Ds(pub sys::ds);
 
 impl Ds {
