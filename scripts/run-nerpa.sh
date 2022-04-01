@@ -76,123 +76,123 @@ EOF
 . "$env_sh"
 
 # Ensure that any OVS-related daemons get cleaned up after we exit.
-> "$sandbox"/dummy.pid		# Avoid error if we fail before creating any other pidfiles.
+> "$sandbox"/dummy.pid          # Avoid error if we fail before creating any other pidfiles.
 trap 'kill `cat "$sandbox"/*.pid`' 0 1 2 3 13 14 15
 
 # Set up the virtual switch.
 case $TARGET in
     bmv2)
-	# Kill any running `simple_switch_grpc` processes.
-	echo "Resetting network configs..."
-	$SUDO pkill -f simple_switch_grpc || :
+        # Kill any running `simple_switch_grpc` processes.
+        echo "Resetting network configs..."
+        $SUDO pkill -f simple_switch_grpc || :
 
-	if ! $SIM_IFACES; then
-	    # Tear down any existing virtual eth interfaces.
-	    for idx in 0 1 2 3; do
-		intf="veth$(($idx*2))"
-		if sudo ip link show $intf &> /dev/null; then
-		    sudo ip link delete $intf type veth
-		fi
-	    done
+        if ! $SIM_IFACES; then
+            # Tear down any existing virtual eth interfaces.
+            for idx in 0 1 2 3; do
+                intf="veth$(($idx*2))"
+                if sudo ip link show $intf &> /dev/null; then
+                    sudo ip link delete $intf type veth
+                fi
+            done
 
-	    # Set up the virtual eth interfaces.
-	    for idx in 0 1 2 3; do
-		intf0="veth$(($idx*2))"
-		intf1="veth$(($idx*2 + 1))"
-		if ! sudo ip link show $intf0 &> /dev/null; then
-		    sudo ip link add name $intf0 type veth peer name $intf1
-		    sudo ip link set dev $intf0 up
-		    sudo ip link set dev $intf1 up
+            # Set up the virtual eth interfaces.
+            for idx in 0 1 2 3; do
+                intf0="veth$(($idx*2))"
+                intf1="veth$(($idx*2 + 1))"
+                if ! sudo ip link show $intf0 &> /dev/null; then
+                    sudo ip link add name $intf0 type veth peer name $intf1
+                    sudo ip link set dev $intf0 up
+                    sudo ip link set dev $intf1 up
 
-		    sudo sysctl net.ipv6.conf.${intf0}.disable_ipv6=1
-		    sudo sysctl net.ipv6.conf.${intf1}.disable_ipv6=1
-		fi
-	    done
-	fi
+                    sudo sysctl net.ipv6.conf.${intf0}.disable_ipv6=1
+                    sudo sysctl net.ipv6.conf.${intf1}.disable_ipv6=1
+                fi
+            done
+        fi
 
-	# Run the simple switch GRPC.
-	SWITCH_EMULATOR_PATH=$NERPA_DEPS/behavioral-model
-	SWITCH_GRPC_EXEC=$SWITCH_EMULATOR_PATH/targets/simple_switch_grpc/simple_switch_grpc
-	if test ! -f $SWITCH_GRPC_EXEC; then
-	    echo >&2 "$0: did not find simple-switch-grpc executable in expected location ($SWITCH_GRPC_EXEC)"
-	    exit 1
-	fi
+        # Run the simple switch GRPC.
+        SWITCH_EMULATOR_PATH=$NERPA_DEPS/behavioral-model
+        SWITCH_GRPC_EXEC=$SWITCH_EMULATOR_PATH/targets/simple_switch_grpc/simple_switch_grpc
+        if test ! -f $SWITCH_GRPC_EXEC; then
+            echo >&2 "$0: did not find simple-switch-grpc executable in expected location ($SWITCH_GRPC_EXEC)"
+            exit 1
+        fi
 
-	SWITCH_SETTINGS=$FILE_DIR/$FILE_NAME.json
-	if test ! -f $SWITCH_SETTINGS; then
-	    echo >&2 "$0: did not find settings JSON file in expected location ($SWITCH_SETTINGS)"
-	    exit 1
-	fi
+        SWITCH_SETTINGS=$FILE_DIR/$FILE_NAME.json
+        if test ! -f $SWITCH_SETTINGS; then
+            echo >&2 "$0: did not find settings JSON file in expected location ($SWITCH_SETTINGS)"
+            exit 1
+        fi
 
-	SWITCH_FLAGS="--log-console $SWITCH_SETTINGS"
-	if $SIM_IFACES; then
-	    SWITCH_FLAGS+=" --packet-in ipc://bmv2.ipc"
-	else
-	    SWITCH_FLAGS+=" -i 0@veth1 -i 1@veth3 -i 2@veth5 -i 3@veth7"
-	fi
-	GRPC_FLAGS="--grpc-server-addr 0.0.0.0:50051 --cpu-port 510"
+        SWITCH_FLAGS="--log-console $SWITCH_SETTINGS"
+        if $SIM_IFACES; then
+            SWITCH_FLAGS+=" --packet-in ipc://bmv2.ipc"
+        else
+            SWITCH_FLAGS+=" -i 0@veth1 -i 1@veth3 -i 2@veth5 -i 3@veth7"
+        fi
+        GRPC_FLAGS="--grpc-server-addr 0.0.0.0:50051 --cpu-port 510"
 
-	$SUDO $SWITCH_GRPC_EXEC $SWITCH_FLAGS -- $GRPC_FLAGS & sleep 2 
+        $SUDO $SWITCH_GRPC_EXEC $SWITCH_FLAGS -- $GRPC_FLAGS & sleep 2 
 
-	# Configure the switch.
-	COMMANDS_FILE=$FILE_DIR/commands.txt
-	if test ! -f $COMMANDS_FILE; then
-	    echo >&2 "$0: did not find simple switch config commands in expected location ($COMMANDS_FILE)"
-	    $SUDO pkill -f simple_switch_grpc
-	    exit 1
-	fi
+        # Configure the switch.
+        COMMANDS_FILE=$FILE_DIR/commands.txt
+        if test ! -f $COMMANDS_FILE; then
+            echo >&2 "$0: did not find simple switch config commands in expected location ($COMMANDS_FILE)"
+            $SUDO pkill -f simple_switch_grpc
+            exit 1
+        fi
 
-	TOOLS_PATH=$SWITCH_EMULATOR_PATH/tools/
-	CLI_EXEC=$SWITCH_EMULATOR_PATH/targets/simple_switch/sswitch_CLI.py
-	chmod +x $CLI_EXEC
+        TOOLS_PATH=$SWITCH_EMULATOR_PATH/tools/
+        CLI_EXEC=$SWITCH_EMULATOR_PATH/targets/simple_switch/sswitch_CLI.py
+        chmod +x $CLI_EXEC
 
-	sed '/^#/d' $COMMANDS_FILE | PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC
-	;;
+        sed '/^#/d' $COMMANDS_FILE | PYTHONPATH=$TOOLS_PATH python3 $CLI_EXEC
+        ;;
 
     ofp4)
-	schema=$NERPA_DIR/ovs/ovs/vswitchd/vswitch.ovsschema
-	if test ! -e "$schema"; then
-	    echo >&2 "$0: Open vSwitch configuration schema not found in expected location ($schema)"
-	    exit 1
-	fi
+        schema=$NERPA_DIR/ovs/ovs/vswitchd/vswitch.ovsschema
+        if test ! -e "$schema"; then
+            echo >&2 "$0: Open vSwitch configuration schema not found in expected location ($schema)"
+            exit 1
+        fi
 
-	# Create an OVS configuration database and start the database server.
-	pushd "$sandbox" >/dev/null
-	>> .conf.db.~lock~
-	ovsdb-tool create conf.db "$schema"
-	ovsdb-server --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
-		     --remote=punix:"$sandbox"/db.sock \
-		     --remote=db:Open_vSwitch,Open_vSwitch,manager_options
+        # Create an OVS configuration database and start the database server.
+        pushd "$sandbox" >/dev/null
+        >> .conf.db.~lock~
+        ovsdb-tool create conf.db "$schema"
+        ovsdb-server --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
+                     --remote=punix:"$sandbox"/db.sock \
+                     --remote=db:Open_vSwitch,Open_vSwitch,manager_options
 
-	# Wait for the database server to come up.
-	sleep 0.1
-	if test ! -e db.sock; then
-	    printf "Waiting for ovsdb-server to start..."
-	    while test ! -e db.sock; do
-		sleep 1;
-	    done
-	    echo "  Done"
-	fi
+        # Wait for the database server to come up.
+        sleep 0.1
+        if test ! -e db.sock; then
+            printf "Waiting for ovsdb-server to start..."
+            while test ! -e db.sock; do
+                sleep 1;
+            done
+            echo "  Done"
+        fi
 
-	# Initialize database.
-	ovs-vsctl --no-wait -- init
+        # Initialize database.
+        ovs-vsctl --no-wait -- init
 
-	# Start OVS, and add a bridge and some ports.
-	echo "Starting sandboxed OVS..."
+        # Start OVS, and add a bridge and some ports.
+        echo "Starting sandboxed OVS..."
         ovs-vswitchd --detach --no-chdir --pidfile -vconsole:off --log-file -vsyslog:off \
-		     --enable-dummy=override -vvconn -vnetdev_dummy
-	ovs-vsctl add-br br0 -- add-port br0 p0 -- add-port br0 p1 -- add-port br0 p2 -- add-port br0 p3
-	echo "To use OVS from the perspective of the sandbox, set OVS_* variables in your shell:"
-	echo "    . '$env_sh'"
+                     --enable-dummy=override -vvconn -vnetdev_dummy
+        ovs-vsctl add-br br0 -- add-port br0 p0 -- add-port br0 p1 -- add-port br0 p2 -- add-port br0 p3
+        echo "To use OVS from the perspective of the sandbox, set OVS_* variables in your shell:"
+        echo "    . '$env_sh'"
 
-	popd >/dev/null
+        popd >/dev/null
 
-	# Start ofp4.
-	echo "Starting ofp4..."
-	(cd ofp4 && cargo build)
-	ofp4/target/debug/ofp4 unix:"$sandbox"/br0.mgmt &
-	echo $! > "$sandbox"/ofp4.pid
-	;;
+        # Start ofp4.
+        echo "Starting ofp4..."
+        (cd ofp4 && cargo build)
+        ofp4/target/debug/ofp4 unix:"$sandbox"/br0.mgmt &
+        echo $! > "$sandbox"/ofp4.pid
+        ;;
 esac
 
 # Optionally, start OVSDB.
