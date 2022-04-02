@@ -303,7 +303,7 @@ impl P4RuntimeService {
                     hddlog.apply_updates(&mut commands.into_iter()).ddlog_map_error()?;
                     hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
-                dump_delta(&delta, &mut state.pending_flow_mods);
+                delta_to_flow_mods(&delta, &mut state.pending_flow_mods);
                 state.latch.set();
 
                 // Commit the operation to our internal representation.
@@ -347,7 +347,7 @@ impl P4RuntimeService {
                     hddlog.apply_updates_dynamic(&mut commands.into_iter()).ddlog_map_error()?;
                     hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
-                dump_delta(&delta, &mut state.pending_flow_mods);
+                delta_to_flow_mods(&delta, &mut state.pending_flow_mods);
                 state.latch.set();
 
                 // Commit the operation to our internal representation.
@@ -638,7 +638,9 @@ fn main() -> Result<()> {
     }
 }
 
-fn dump_delta(delta: &DeltaMap<DDValue>, flow_mods: &mut Vec<Ofpbuf>) {
+/// Converts the `delta` of changes to DDlog output relations (particularly `Flow`) into OpenFlow
+/// [`FlowMod`] messages and appends those messages to `flow_mods`.
+fn delta_to_flow_mods(delta: &DeltaMap<DDValue>, flow_mods: &mut Vec<Ofpbuf>) {
     for (&rel, changes) in delta.iter() {
         if rel == Relations::Flow as RelId {
             for (val, &weight) in changes.iter() {
