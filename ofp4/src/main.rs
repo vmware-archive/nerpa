@@ -550,7 +550,7 @@ fn main() -> Result<()> {
 
     let env = Arc::new(Environment::new(1));
     let (mut hddlog, _init_state) = snvs_ddlog::run(1, false).ddlog_map_error()?;
-    let mut record = Some(std::fs::File::create("replay.txt").unwrap());
+    let mut record = Some(std::fs::File::create("replay.txt")?);
     hddlog.record_commands(&mut record);
     let state = Arc::new(Mutex::new(State::new(hddlog)));
     let service = create_p4_runtime(P4RuntimeService::new(state.clone()));
