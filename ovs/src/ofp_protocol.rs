@@ -42,16 +42,6 @@ impl From<Protocol> for sys::ofputil_protocol {
 
 bitflags! {
     pub struct Protocols: sys::ofputil_protocol {
-        const OF10_STD = Protocol::OF10_STD as sys::ofputil_protocol;
-        const OF10_STD_TID = Protocol::OF10_STD_TID as sys::ofputil_protocol;
-        const OF10_NXM = Protocol::OF10_NXM as sys::ofputil_protocol;
-        const OF10_NXM_TID = Protocol::OF10_NXM_TID as sys::ofputil_protocol;
-        const OF11_STD = Protocol::OF11_STD as sys::ofputil_protocol;
-        const OF12_OXM = Protocol::OF12_OXM as sys::ofputil_protocol;
-        const OF13_OXM = Protocol::OF13_OXM as sys::ofputil_protocol;
-        const OF14_OXM = Protocol::OF14_OXM as sys::ofputil_protocol;
-        const OF15_OXM = Protocol::OF15_OXM as sys::ofputil_protocol;
-
         /* OpenFlow 1.0 protocols.
          *
          * The "STD" protocols use the standard OpenFlow 1.0 flow format.
@@ -60,6 +50,11 @@ bitflags! {
          * The protocols with "TID" mean that the nx_flow_mod_table_id Nicira
          * extension has been enabled.  The other protocols have it disabled.
          */
+        const OF10_STD = Protocol::OF10_STD as sys::ofputil_protocol;
+        const OF10_STD_TID = Protocol::OF10_STD_TID as sys::ofputil_protocol;
+        const OF10_NXM = Protocol::OF10_NXM as sys::ofputil_protocol;
+        const OF10_NXM_TID = Protocol::OF10_NXM_TID as sys::ofputil_protocol;
+
         const OF10_STD_ANY = Self::OF10_STD.bits | Self::OF10_STD_TID.bits;
         const OF10_NXM_ANY = Self::OF10_NXM.bits | Self::OF10_NXM_TID.bits;
         const OF10_ANY = Self::OF10_STD_ANY.bits | Self::OF10_NXM_ANY.bits;
@@ -71,6 +66,7 @@ bitflags! {
          * OpenFlow 1.1 always operates with an equivalent of the
          * nx_flow_mod_table_id Nicira extension enabled, so there is no "TID"
          * variant. */
+        const OF11_STD = Protocol::OF11_STD as sys::ofputil_protocol;
 
         /* OpenFlow 1.2+ protocols (only one variant each).
          *
@@ -79,6 +75,11 @@ bitflags! {
          * OpenFlow 1.2+ always operates with an equivalent of the
          * nx_flow_mod_table_id Nicira extension enabled, so there is no "TID"
          * variant. */
+        const OF12_OXM = Protocol::OF12_OXM as sys::ofputil_protocol;
+        const OF13_OXM = Protocol::OF13_OXM as sys::ofputil_protocol;
+        const OF14_OXM = Protocol::OF14_OXM as sys::ofputil_protocol;
+        const OF15_OXM = Protocol::OF15_OXM as sys::ofputil_protocol;
+
         const ANY_OXM = (Self::OF12_OXM.bits |
                          Self::OF13_OXM.bits |
                          Self::OF14_OXM.bits |
