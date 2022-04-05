@@ -31,9 +31,7 @@ Installation instructions are found in the [README](../../README.md/#installatio
 ## Write a Nerpa Program
 
 ### Problem: VLAN Assignment
-In this tutorial, we'll create a new Nerpa program called `tutorial`.  We will demonstrate how to write, build, and run a Nerpa program. This program will implement VLAN assignment, which assigns ports to VLANs. A port is represented using its ID; the type of VLAN; a tag; trunks; and priority.
-
-Translating this to DDlog, the input relations would represent ports, and the output relations represent the assigned VLANs.
+In this tutorial, we'll create a new Nerpa program called `tutorial`.  We will demonstrate how to write, build, and run a Nerpa program. This program will implement VLAN assignment, which assigns ports to VLANs. A port is represented using its ID; the type of VLAN; a tag; trunks; and priority. In a DDlog program, the input relations would represent ports, and the output relations represent the assigned VLANs.
 
 Below, we instantiate the system diagram above for the `tutorial` example.
 
@@ -83,11 +81,13 @@ These files should have the following contents.
 * `tutorial.p4` should be an empty P4 program.
 
 ### Program the Management Plane
-We will first program the management plane by designing the OVSDB schema. This explains the application's goal and is the simplest part of the program. Writing it down carefully ensures that you understand the problem at hand.
+We will first program the management plane by designing the OVSDB schema. We start here, because this explains the application's goal and is the simplest part of the program. Writing it down carefully ensures that you understand the problem at hand.
+
+To do this, copy the contents of [tutorial.ovsschema](tutorial.ovsschema) into `nerpa_controlplane/tutorial/tutorial.ovsschema`.
 
 We pass the OVSDB schema as input to the `ovsdb2ddlog` tool, which generates DDlog relations from the schema. This helps us directly read changes from OVSDB and convert them to inputs for the running DDlog program.
 
-To do this, copy the contents of [tutorial.ovsschema](tutorial.ovsschema) into `nerpa_controlplane/tutorial/tutorial.ovsschema`. Then, run the following command. This, and all other commands in this tutorial, should be run from the top-level `nerpa` directory:
+To do this, run the following command. This, and all other commands in this tutorial, should be run from the top-level `nerpa` directory:
 ```
 ovsdb2ddlog --schema-file=nerpa_controlplane/tutorial/tutorial.ovsschema --output-file=nerpa_controlplane/tutorial/Tutorial_mp.dl
 ```
@@ -147,9 +147,9 @@ The build script executes the following steps. You will notice that Steps 1 to 5
 
 ### Run the Nerpa Program
 
-Run the Nerpa program, starting all pieces of software. Passing the `-s` flag let us simulate interfaces over [nanomsg](https://nanomsg.org/) rather than using virtual ethernet (veth) devices. This helps with testing.
+Run the Nerpa program, starting all pieces of software.
 ```
-./scripts/run-nerpa.sh -s nerpa_controlplane/tutorial tutorial
+./scripts/run-nerpa.sh nerpa_controlplane/tutorial tutorial
 ```
 
 The run script executes the following steps.
@@ -159,6 +159,80 @@ The run script executes the following steps.
 4. Start a new OVSDB server. Before this, we first stop any currently running ovsdb-server. We then use `ovsdb-tool` to create a new database, defined by the schema in `tutorial.ovsschema`. Finally, we start the server.
 5. Run `nerpa_controller`, the Nerpa controller crate. This long-running program synchronizes state between the planes. It begins by starting the DDlog program, the control plane. It then reads inputs from the management and data planes and sends them to the control plane; computes the outputs corresponding to the those inputs; and writes outputs to the data plane.
 
+After executing the run script in a Terminal window, you should see loglines that indicate `bmv2`, `ovsdb-server`, and `nerpa_controller` are running.
+
+These log lines indicate that `bmv2` started as expected:
+```
+Server listening on 0.0.0.0:50051
+[11:23:11.949] [bmv2] [I] [thread 23575] Starting Thrift server on port 9090
+[11:23:11.949] [bmv2] [I] [thread 23575] Thrift server was started
+Obtaining JSON from switch...
+[11:23:13.696] [bmv2] [T] [thread 23657] bm_get_config
+Done
+Control utility for runtime P4 table manipulation
+```
+
+These show that `ovsdb-server` started and is logging:
+```
+Stopping OVSDB...
+Creating database...
+Starting OVSDB...
+2022-04-05T18:23:13Z|00001|vlog|INFO|opened log file nerpa/ovsdb-server.log
+```
+
+Finally, these show that `nerpa_controller` started, connected to OVSDB, and is properly monitoring the necessary columns:
+```
+Finished dev [unoptimized + debuginfo] target(s) in 0.54s
+Running `target/debug/nerpa-controller --ddlog-record=replay.txt nerpa_controlplane/tutorial tutorial`
+... Many lines setting debug entries in the switch ...
+[11:23:14.501] [bmv2] [D] [thread 23677] simple_switch target has been notified of a config swap
+2022-04-05T18:23:14Z|00001|reconnect|INFO|unix:db.sock: connecting...
+2022-04-05T18:23:24Z|00002|reconnect|INFO|unix:db.sock: connected
+
+Monitoring the following OVSDB columns: {"Port":[{"columns":["id","priority_tagging","tag","trunks","vlan_mode"]}]}
+```
+
 ### Test the Nerpa Program
 
-TODO: Add steps to send a packet and test the tutorial.
+At this point, you should have executed the build and run scripts. After executing the run script, three pieces of software should be running: OVSDB; the `bmv2` software switch; and the `nerpa_controller` binary program.
+
+Open a new Terminal window, and confirm that these three pieces of software are all running:
+```
+ps -ef | grep ovsdb-server
+ps -ef | grep simple_switch_grpc
+ps -ef | grep nerpa_controller
+```
+
+Now, we will alter the network configuration. We do this by inserting rows into the OVSDB management plane. In the new Terminal window that you used to check the running processes, execute the following commands:
+```
+ovsdb-client -v transact tcp:127.0.0.1:6640 '["tutorial", {"op": "insert", "table": "Port", "row": {"id": 0, "vlan_mode": "access", "tag": 1, "trunks": 0, "priority_tagging": "no"}}]'
+ovsdb-client -v transact tcp:127.0.0.1:6640 '["tutorial", {"op": "insert", "table": "Port", "row": {"id": 1, "vlan_mode": "access", "tag": 1, "trunks": 0, "priority_tagging": "no"}}]'
+ovsdb-client -v transact tcp:127.0.0.1:6640 '["tutorial", {"op": "insert", "table": "Port", "row": {"id": 2, "vlan_mode": "access", "tag": 1, "trunks": 0, "priority_tagging": "no"}}]'
+ovsdb-client -v transact tcp:127.0.0.1:6640 '["tutorial", {"op": "insert", "table": "Port", "row": {"id": 3, "vlan_mode": "access", "tag": 1, "trunks": 0, "priority_tagging": "no"}}]'
+```
+
+These rows are equivalent to the following DDlog relations:
+```
+Port(0, AccessPort{1}, NoPriorityTag).
+Port(1, AccessPort{1}, NoPriorityTag).
+Port(2, AccessPort{1}, NoPriorityTag).
+Port(3, AccessPort{1}, NoPriorityTag).
+```
+
+After you execute each command, you will see corresponding log lines in the original Terminal window. These indicate that the P4 table entry is being set. 
+
+For example:
+```
+[11:49:34.760] [bmv2] [D] [thread 24107] Entry 0 added to table 'TutorialIngress.InputVlan'
+[11:49:34.760] [bmv2] [D] [thread 24107] Dumping entry 0
+Match key:
+* port                : EXACT     0000
+* has_vlan            : EXACT     00
+* vid                 : TERNARY   0000 &&& 0fff
+Priority: 2147483646
+Action entry: TutorialIngress.SetVlan - 1,
+```
+
+Behind the scenes, the OVSDB client processed this new input from OVSDB, converted it to an input relation, and sent it to the running `nerpa_controller`. The controller then used the running DDlog control plane program to compute the output relation. It converted the output into a P4 Runtime table entry and pushed that entry to the switch. Above, that final step is logged.
+
+Congratulations! You have successfully built, run, and tested VLAN assignment within the Nerpa programming framework.
