@@ -12,7 +12,7 @@ In this tutorial we demonstrate how to write and run a Nerpa program.
 
 A Nerpa program consists of three sub-programs, each corresponding to a plane of an enterprise network.
 * The management plane sets high-level policy for the network devices. We use Open vSwitch Database (OVSDB) for the management plane. An OVSDB schema initializes the management plane. The admin user can insert, modify, or delete rows in the database to represent changes in high-level configuration.
-* The control plane configures the data plane based on the declared state of the network. We use a Differential Datalog (DDlog) program for the control plane. A DDlog program consists of rules that compute a set of output relations based on input relations. These rules are evaluated incrementally: given a set of changes to the input relations, DDlog produces a set of changes to the output relations. Those output relations are written to the P4-enabled switch.
+* The control plane configures the data plane based on the declared state of the network. We use a Differential Datalog (DDlog) program for the control plane. A DDlog program consists of rules that compute a set of output relations based on input relations. These rules are evaluated incrementally: given a set of changes to the input relations, DDlog produces a set of changes to the output relations. Those output relations are converted to match-action contents of P4 tables and then written to the switch.
 * The data plane processes packets that pass through the system. We program this using a P4 program. A P4 program specifies how data plane devices, like switches and routers, process packets.
 
 DDlog input and output relations are generated from the OVSDB schema and P4 program. They are imported by the DDlog program that is compiled and used as the control plane. This facilitates codesign and tighter integration of the control and data planes.
@@ -95,7 +95,7 @@ ovsdb2ddlog --schema-file=nerpa_controlplane/tutorial/tutorial.ovsschema --outpu
 Compare the output file with [Tutorial_mp.dl](Tutorial_mp.dl) to verify its contents.
 
 ### Program the Data Plane
-To program the data plane, we write the P4 program. `tutorial.p4` specifies how packets with a VLAN header should be processed. P4 is a low-level language with many restrictions, and the DDlog program must cater to those restrictions far more than the other direction.
+To program the data plane, we write the P4 program. `tutorial.p4` specifies how packets with a VLAN header should be processed. P4 is a low-level language with many restrictions, and the DDlog program must cater to those restrictions.
 
 Copy the contents of [tutorial.p4](tutorial.p4) into `nerpa_controlplane/tutorial/tutorial.p4`.
 
