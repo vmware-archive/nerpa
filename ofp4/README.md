@@ -15,7 +15,7 @@ and table entries to be updated, translates those into OpenFlow flows
 through the rules written in `snvs.dl`, and installs those into Open
 vSwitch flow tables using OpenFlow.  ofp4 does not yet support
 P4Runtime digests or other ways of sending feedback to the P4Runtime
-controller, so it won't be able to support `snvs` MAC learning yet.
+controller, so it won't be able to support `snvs.p4` MAC learning yet.
 ofp4 won't ever be able to support some P4 features, such customizable
 parsers and deparsers and most kind of arithmetic, at least not
 without adding new Open vSwitch extensions.

@@ -51,6 +51,18 @@ input relation MulticastGroup(
     port: bit<9>)
 
 // OpenFlow flow output relation.
+//
+// The syntax for flows is that used by Open vSwitch:
+//
+// * Overall flow syntax in ovs-ofctl(8) under "Flow Syntax" or
+//   at http://www.openvswitch.org/support/dist-docs/ovs-ofctl.8.pdf
+//
+// * Field matching in ovs-fields(7) or
+//   at http://www.openvswitch.org/support/dist-docs/ovs-fields.7.pdf
+//
+// * Actions in ovs-actions(7) or
+//   at https://docs.openvswitch.org/en/latest/ref/ovs-actions.7/
+
 output relation Flow(s: string)
 index Flow(s: string) on Flow(s)
 
