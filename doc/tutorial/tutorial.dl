@@ -1,0 +1,116 @@
+/* The control plane for VLAN assignment.
+ *
+ * The defined rules compute a set of output relations based on input relations.
+ * These are evaluated incrementally. Given a set of changes to the input relations,
+ * DDlog produces a set of changes to the output relations.
+ */
+
+// Input relations are stored in 'Tutorial_mp.dl'.
+// They are generated from the OVSDB schema by ovsdb2ddlog.
+import Tutorial_mp as tutorial_mp
+
+// Output relations (and some input relations) are stored in 'tutorial_dp.dl'.
+// They are generated from the P4 program using 'p4info2ddlog'.
+import tutorial_dp as tutorial_dp
+
+import set
+
+typedef port_id_t = bit<9>
+typedef vlan_id_t = bit<12>
+typedef eth_addr_t = bit<48>
+
+typedef vlan_set_t = AllVlans | SomeVlans{vlans: Set<vlan_id_t>}
+
+// A Port is either an access port for a particular VLAN or a trunk
+// port.  When a trunk port receives a packet without an 802.1Q
+// header, that packet belongs to default VLAN ID 'native_vid'
+// (commonly 0).  When the switch forwards a packet to a trunk port
+// with VLAN ID 'native_vid', it includes an 802.1Q header if
+// 'tag_native' is true or (more commonly) excludes it if it is false.
+// In addition to 'native_vid', a trunk port carries the VLANs in
+// 'other_vlans'.
+typedef vlan_config_t = AccessPort{vid: vlan_id_t}
+                      | TrunkPort{native_vid: vlan_id_t,
+                                  tag_native: bool,
+                                  other_vlans: vlan_set_t}
+
+typedef priority_tagging_t = NoPriorityTag
+                            | NonzeroPriorityTag
+                            | AlwaysPriorityTag
+
+relation Port(
+    id: port_id_t,
+    vlan: vlan_config_t,
+    priority_tagging: priority_tagging_t
+)
+
+Port(id, vlan, priority_tagging) :-
+    tutorial_mp::Port(.id = mp_id, .vlan_mode = mp_vlan_mode, .tag = mp_tag, .trunks = mp_trunks, .priority_tagging = mp_priority_tagging),
+    var id = mp_id as port_id_t,
+    var vlan = {
+        var vid = match (mp_tag) {
+            None -> 0 as vlan_id_t,
+            Some{tag} -> tag as vlan_id_t,
+        };
+        var is_trunk = match (mp_vlan_mode) {
+            // if vlan mode is empty, default to access, unless trunks is set
+            None -> mp_trunks.size() > 0,
+            Some{mode} -> mode == "trunk"
+        };
+        var tag_native = match (mp_vlan_mode) {
+            None -> false,
+            Some{mode} -> mode == "native-tagged",
+        };
+
+        if (is_trunk) {
+            AccessPort{.vid = vid}
+        } else {
+            var trunks = mp_trunks.map(|x| x as vlan_id_t);
+            TrunkPort{
+                .native_vid = vid,
+                .tag_native = tag_native,
+                .other_vlans = SomeVlans{.vlans = trunks}
+            }
+        }
+    },
+    var priority_tagging = match (mp_priority_tagging) {
+        "no" -> NoPriorityTag,
+        "nonzero" -> NonzeroPriorityTag,
+        "always" -> AlwaysPriorityTag,
+        _ -> NoPriorityTag,
+    }.
+
+
+// InputVlan includes a priority that is given to the P4 table entry.
+// Since it has an optional field, this priority must be nonzero.
+tutorial_dp::InputVlan(port, false, None, 1, tutorial_dp::InputVlanActionSetVlan{vid}) :-
+    Port(.id = port, .vlan = AccessPort{vid}).
+tutorial_dp::InputVlan(port, false, None, 1, tutorial_dp::InputVlanActionSetVlan{native_vid}) :-
+    Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid}).
+tutorial_dp::InputVlan(port, true, None, 1, tutorial_dp::InputVlanActionUseTaggedVlan) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}).
+tutorial_dp::InputVlan(port, true, Some{vid}, 2, tutorial_dp::InputVlanActionUseTaggedVlan) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
+    var vid = FlatMap(vlans).
+
+
+// Output VLAN processing.
+//
+// When a match exists, it means that the VLAN should be tagged.
+tutorial_dp::OutputVlan(port, Some{native_vid}, 2) :-
+    Port(.id = port, .vlan = TrunkPort{.native_vid = native_vid,
+                                      .tag_native = true}).
+tutorial_dp::OutputVlan(port, None, 1) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = AllVlans}).
+tutorial_dp::OutputVlan(port, Some{vid}, 2) :-
+    Port(.id = port, .vlan = TrunkPort{.other_vlans = SomeVlans{vlans}}),
+    var vid = FlatMap(vlans).
+
+tutorial_dp::PriorityTagging(port, nonzero_pcp) :-
+    Port(.id = port, .priority_tagging = priority_tagging),
+    var nonzero_pcps = match (priority_tagging) {
+        NoPriorityTag -> vec_empty(),
+        NonzeroPriorityTag -> [true],
+        AlwaysPriorityTag -> [false, true]
+    },
+    var nonzero_pcp = FlatMap(nonzero_pcps).

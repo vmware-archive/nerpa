@@ -28,11 +28,12 @@ EOF
 fi
 
 # Check if the Nerpa dependencies were installed correctly.
+# '$NERPA_DEPS' should point to a directory containing a 'behavioral-model' subdirectory.
 if [[ -z $NERPA_DEPS ]]; then
     NERPA_DEPS=$(pwd)/nerpa-deps
 
-    # If the Nerpa dependencies directory exists, set the environment variables.
-    if [[ -d $NERPA_DEPS ]]; then
+    # If the Nerpa dependencies directory exists as expected, set the environment variables.
+    if [ -d $NERPA_DEPS ] && [ -d $NERPA_DEPS/behavioral-model ]; then
         export NERPA_DEPS
     else
         cat >&2 <<EOF
