@@ -11,5 +11,5 @@
 	path = proto/p4runtime
 	url = https://github.com/p4lang/p4runtime
 [submodule "ovsdb-sys/ovs"]
-	path = ovsdb-sys/ovs
+	path = ovs/ovs
 	url = git@github.com:openvswitch/ovs.git

@@ -1,12 +1,16 @@
 [package]
-name = "ovsdb-sys"
+name = "ovs"
 version = "0.1.0"
 build = "build.rs"
 edition = "2018"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.55"
+libc = "0.2"
+bitflags = "1.3.2"
 
 [build-dependencies]
-bindgen= "0.57.0"
+bindgen = "0.57.0"
