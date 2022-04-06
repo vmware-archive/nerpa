@@ -37,8 +37,11 @@ git clone --recursive git@github.com:vmware/nerpa.git
 . scripts/install-nerpa.sh
 ```
 
+### Tutorial
+After installing all dependencies, you can write Nerpa programs. We recommend following the [tutorial](doc/tutorial/tutorial.md) for a step-by-step introduction to Nerpa. Individual steps for setup are also documented below. 
+
 ### Build
-After installing all dependencies, you can write Nerpa programs. The Nerpa program called `example` would consist of the following files. For organization, these files should be placed in the same subdirectory of `nerpa_controlplane` and given the same name, as follows:
+The Nerpa program called `example` would consist of the following files. For organization, these files should be placed in the same subdirectory of `nerpa_controlplane` and given the same name, as follows:
 ```
 nerpa_controlplane/example/example.dl // DDlog program for the controlplane
 nerpa_controlplane/example/example.p4 // P4 program for the dataplane
