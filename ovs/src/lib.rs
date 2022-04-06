@@ -35,6 +35,9 @@ pub mod sys {
     impl Default for ofputil_flow_mod {
         fn default() -> Self {
             Self {
+                // `list_node` is only used for adding an `ofputil_flow_mod` to some list, and for
+                // that these members will be overwritten, so there's no value in trying to
+                // initialize this as an empty list.
                 list_node: ovs_list { next: null_mut(), prev: null_mut() },
                 match_: minimatch { flow: null_mut(), mask: null_mut(), tun_md: null_mut() },
                 priority: 0,
