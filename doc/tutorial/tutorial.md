@@ -2,9 +2,7 @@
 
 ## Introduction
 
-Nerpa, short for "Network Programming with Relational and Procedural Abstractions", is a programming framework to simplify the management of a programmable network. It implements an incremental control plane and allows for tighter integration and co-design of the control plane and data plane.
-
-In this tutorial we demonstrate how to write and run a Nerpa program.
+This tutorial demonstrates how to write and run a Nerpa program. This programming framework helps simplify the management of a programmable network. In this tutorial we demonstrate how to write and run a Nerpa program.
 
 ## Nerpa at a high level
 

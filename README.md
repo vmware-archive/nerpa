@@ -2,7 +2,13 @@
 
 # NERPA
 
-NERPA (Network Programming with Relational and Procedural Abstractions) seeks to enable co-development of the control plane and data plane. This details the project's direction and organization.
+Nerpa, short for "Network Programming with Relational and Procedural Abstractions", is a programming framework to simplify the management of a programmable network. It implements an incremental control plane and allows for tighter integration and co-design of the control plane and data plane.
+
+In our current vision for Nerpa, we interoperate between an Open vSwitch Database (OVSDB) management plane; a Differential Datalog (DDlog) program as control plane; and a P4 program for the data plane. This diagram shows how those pieces interact.
+
+![Nerpa vision](doc/tutorial/nerpa_vision.png)
+
+The Nerpa framework involves several components, located in different subdirectories. This repo is organized as follows:
 
 1. [nerpa_controlplane](nerpa_controlplane): Each subdirectory corresponds with a Nerpa program, with its input files.
 - [DDlog program](nerpa_controlplane/snvs/snvs.dl): Serves as the control plane. 
@@ -19,6 +25,10 @@ Notice that the controller's `Cargo.toml` is uncommitted. This is generated usin
 5. [p4info2ddlog](p4info2ddlog): Script that reads a P4 program's P4info and generates DDlog relations for the dataplane program.
 
 6. [proto](proto): Protobufs for P4 and P4Runtime, used to generate Rust code.
+
+The above pieces fit together as follows in the [`tutorial` Nerpa program](doc/tutorial/tutorial.md):
+
+![Tutorial example](doc/tutorial/tutorial_impl_diagram.png)
 
 ## Steps
 ### Installation
