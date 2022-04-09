@@ -1,0 +1,50 @@
+
+	*v1model`
+/àßÔSnvsIngress.MirrorDstDropMirrorDstDropport 	(…ƒ‹·¶‘
+@defaultonly@€
+O‰€ SnvsIngress.ReservedMcastDstDropReservedMcastDstDrop"@nerpa_singletondst 0(…ƒ‹·¶‘
+@defaultonly@€{
+'À¤ÛSnvsIngress.InputVlan	InputVlanport 	(has_vlan@nerpa_bool (vid (…ƒ‹úÀä	èæë@€c
+;ŸáSnvsIngress.MirrorSelectProductMirrorSelectProductport 	(vlan (·¶‘
+@€X
+'ËõÃSnvsIngress.FloodVlan	FloodVlanvlan (×±²·¶‘
+@defaultonly@€^
+)ëİõSnvsIngress.LearnedSrc
+LearnedSrcvlan (mac 0(port 	(·¶‘
+@€g
+)³«¨SnvsIngress.LearnedDst
+LearnedDstvlan (mac 0(ÈºÓ	·¶‘
+@defaultonly@€P
+(©ª•SnvsEgress.OutputVlan
+OutputVlanport 	(vlan (·¶‘
+@€n
+2ÖëÉSnvsEgress.PriorityTaggingPriorityTaggingport 	( nonzero_pcp@nerpa_bool (·¶‘
+@€.
+,·¶‘
+NoActionNoAction"@noWarn("unused")
+…ƒ‹SnvsIngress.DropDrop0
+#úÀä	SnvsIngress.SetVlanSetVlan	vid 1
+/èæëSnvsIngress.UseTaggedVlanUseTaggedVlan)
+'×±²SnvsIngress.set_flood	set_flood3
+%ÈºÓ	SnvsIngress.KnownDstKnownDst
+port 	b3
+ ÆˆÅ¾LearnDigestLearnDigest"
+LearnDigestÂU
+S
+LearnDigestD
+
+port
+
+	
+
+vlan
+
+
+
+mac
+
+0
+
+	timestamp
+
+0

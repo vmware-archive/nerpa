@@ -33,7 +33,7 @@ use std::fs::File;
 // Import the function to run a DDlog program.
 // Note that the crate name changes with the Nerpa program's name.
 // The Nerpa programmer must rename this import.
-use arp_ddlog::run;
+use snvs_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {

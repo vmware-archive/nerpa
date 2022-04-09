@@ -4,10 +4,7 @@
 *_mp.dl
 
 # Generated P4 files
-*.json
-*.p4i
-*.p4info.bin
-*.p4info.txt
+!snvs.p4info.bin
 
 # Rust output
 target/

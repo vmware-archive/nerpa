@@ -1,0 +1,29 @@
+name: build-nerpa
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  initial-build:
+    if: ${{ github.repository == 'vmware/nerpa' && github.event_name == 'push' }}
+    runs-on: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: 1.56.0
+        override: true
+        components: rustfmt, clippy
+
+    - name: Install cmake
+      uses: jwlawson/actions-setup-cmake@v1.9
+      with:
+        cmake-version: '3.12.x'
+
+    - name: Build Nerpa
+      run: |
+        ./scripts/build-ci.sh
