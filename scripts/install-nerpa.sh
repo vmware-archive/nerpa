@@ -51,7 +51,7 @@ cargo build
 
 # Install OVS.
 echo "Installing OVS..."
-cd $NERPA_DIR/ovsdb-sys/ovs
+cd $NERPA_DIR/ovs/ovs
 ./boot.sh
 ./configure
 make
@@ -59,5 +59,5 @@ sudo make install
 
 # Build the OVSDB bindings crate.
 echo "Building the OVSDB bindings crate..."
-(cd $NERPA_DIR/ovsdb-sys && cargo build && cargo test)
+(cd $NERPA_DIR/ovs && cargo build && cargo test)
 cd $NERPA_DIR

@@ -23,18 +23,9 @@ extern crate grpcio;
 extern crate proto;
 extern crate protobuf;
 
-use clap::{
-    App,
-    Arg
-};
-use grpcio::{
-    ChannelBuilder,
-    EnvBuilder
-};
-use nerpa_controller::{
-    Controller,
-    SwitchClient
-};
+use clap::{App, Arg};
+use grpcio::{ChannelBuilder, EnvBuilder};
+use nerpa_controller::{Controller, SwitchClient};
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 use std::fs::File;
@@ -42,12 +33,12 @@ use std::fs::File;
 // Import the function to run a DDlog program.
 // Note that the crate name changes with the Nerpa program's name.
 // The Nerpa programmer must rename this import.
-use ci_ddlog::run;
+use snvs_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {
-    const FILE_DIR_ARG: &str = "FILE_DIR";
-    const FILE_NAME_ARG: &str = "FILE_NAME";
+    const FILE_DIR_ARG: &str = "file-directory";
+    const FILE_NAME_ARG: &str = "file-name";
     const DDLOG_RECORD: &str = "ddlog-record";
 
     let matches = App::new("nerpa_controller")
@@ -55,13 +46,13 @@ pub async fn main() {
         .about("Starts the controller program")
         .arg(
             Arg::with_name(FILE_DIR_ARG)
-                .help("path to directory with input files (*.p4info.bin, *.json, *.dl)")
+                .help("Directory path with input files (*.p4info.bin, *.json, *.dl)")
                 .required(true)
                 .index(1),
         )
         .arg(
             Arg::with_name(FILE_NAME_ARG)
-                .help("file name before the extension: {program}.p4info.bin, {program}.dl")
+                .help("Filename before the extension: {file-name}.p4info.bin, {file-name}.dl")
                 .required(true)
                 .index(2),
         )
@@ -77,12 +68,12 @@ pub async fn main() {
     // Validate CLI arguments.
     let file_dir_opt = matches.value_of(FILE_DIR_ARG);
     if file_dir_opt.is_none() {
-        panic!("missing required argument: FILE_DIR");
+        panic!("missing required argument: file-directory");
     }
 
     let file_name_opt = matches.value_of(FILE_NAME_ARG);
     if file_name_opt.is_none() {
-        panic!("missing required argument: FILE_NAME");
+        panic!("missing required argument: file-name");
     }
 
     let mut record_file = matches.value_of_os(DDLOG_RECORD).map(
@@ -97,7 +88,6 @@ pub async fn main() {
     let file_name = String::from(file_name_opt.unwrap());
     run_controller(file_dir, file_name, &mut record_file).await
 }
-
 
 async fn run_controller(
     file_dir: String,
@@ -135,7 +125,7 @@ async fn run_controller(
         device_id,
         role_id,
         target,
-    );
+    ).await;
 
     // Run the DDlog program.
     let (mut hddlog, initial_contents) = run(1, false).unwrap();
@@ -143,9 +133,14 @@ async fn run_controller(
     switch_client.push_outputs(&initial_contents).await.unwrap();
 
     // Instantiate controller.
-    let nerpa_controller = Controller::new(switch_client, hddlog).unwrap();
+    // We store the DDlog program on the heap. We can safely pass references to heap
+    // memory to both the controller and the OVSDB client.
+    let controller_hddlog = Arc::new(hddlog);
+    let ovsdb_hddlog = controller_hddlog.clone();
+    let nerpa_controller = Controller::new(switch_client, controller_hddlog).unwrap();
 
-    // TODO: We want to read inputs from the management and data planes.
-    // Currently, this only processes inputs from the data plane.
-    nerpa_controller.stream_digests().await;
+    // Start streaming inputs from OVSDB and from the dataplane.
+    let database = file_name.clone();
+    let server = String::from("unix:nerpa.sock");
+    nerpa_controller.stream_inputs(ovsdb_hddlog, server, database).await;
 }

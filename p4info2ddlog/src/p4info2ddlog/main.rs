@@ -49,7 +49,7 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name(CRATE_ARG)
-                .help("path to directory for digest2ddlog helper crate (optional)")
+                .help("path to directory for dp2ddlog helper crate (optional)")
                 .required(false)
                 .index(3),
         )
@@ -62,9 +62,13 @@ fn main() -> Result<()> {
         )
         .get_matches();
     
+    // unwrap is safe, since these arguments are required.
+    let file_dir = matches.value_of(FILE_DIR_ARG).unwrap();
+    let file_name = matches.value_of(FILE_NAME_ARG).unwrap();
+
     p4info_to_ddlog(
-        matches.value_of(FILE_DIR_ARG),
-        matches.value_of(FILE_NAME_ARG),
+        file_dir,
+        file_name,
         matches.value_of(CRATE_ARG),
         matches.value_of(PIPELINE_ARG),
     )

@@ -1,3 +1,12 @@
+/*!
+Generates DDlog relations and crate TOML files from P4info.
+
+Because Nerpa uses Differential Datalog for the control plane,
+associated dependencies must be regenerated based on the
+DDlog program, and the TOML file dependencies are renamed. This
+crate provides the utility functions for those conversions.
+*/
+#![warn(missing_docs)]
 /*
 Copyright (c) 2021 VMware, Inc.
 SPDX-License-Identifier: MIT
@@ -18,17 +27,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-mod digest2ddlog;
+mod dp2ddlog;
 mod controller;
 
 use anyhow::{anyhow, Context, Result};
 
 use multimap::MultiMap;
 
-use proto::p4info::{self, Action, P4Info, Table};
+use proto::p4info::P4Info;
 use proto::p4types::P4BitstringLikeTypeSpec_oneof_type_spec as P4BitstringTypeSpec;
 
-use protobuf::{Message, RepeatedField};
+use protobuf::Message;
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -36,28 +45,6 @@ use std::fmt::Write;
 use std::fs;
 use std::fs::File;
 use std::io::Write as IoWrite;
-
-type Annotations = RepeatedField<String>;
-
-trait Annotation {
-    fn has_annotation(&self, name: &str) -> bool;
-}
-
-impl Annotation for Annotations {
-    fn has_annotation(&self, field_name: &str) -> bool {
-        self.iter().any(|e| e == field_name)
-    }
-}
-
-// Returns the ddlog type to use for a 'bitwidth'-bit P4 value
-// annotated with 'annotations'.
-fn p4_basic_type(bitwidth: i32, annotations: &Annotations) -> String {
-    if bitwidth == 1 && annotations.has_annotation("@nerpa_bool") {
-        "bool".into()
-    } else {
-        format!("bit<{}>", bitwidth)
-    }
-}
 
 fn read_p4info(filename_os: &OsStr) -> Result<P4Info> {
     let filename = filename_os.to_string_lossy();
@@ -68,26 +55,23 @@ fn read_p4info(filename_os: &OsStr) -> Result<P4Info> {
 fn get_pipelines(
     p4info: P4Info,
     pipeline_arg: Option<&str>,
-) -> Result<MultiMap<String, Table>> {
+) -> Result<MultiMap<String, p4ext::Table>> {
+    // Actions are referenced by id, so make a map.
+    let action_by_id: HashMap<u32, p4ext::Action> = p4info
+        .get_actions()
+        .iter()
+        .map(|a| (a.get_preamble().id, a.into()))
+        .collect();
+
     // Break up table names into "<pipeline>.<table>" and group by pipeline.
-    let mut pipelines: MultiMap<String, Table> = p4info
+    let mut pipelines: MultiMap<String, p4ext::Table> = p4info
         .get_tables()
         .iter()
-        .cloned()
+        .map(|table| p4ext::Table::new_from_proto(table, &action_by_id))
         .filter_map(|table| {
-            match table
-                .get_preamble()
-                .name
-                .split('.')
-                .collect::<Vec<_>>()
-                .as_slice()
-            {
-                [pipeline_name, table_name] => {
-                    let mut table = table.clone();
-                    table.mut_preamble().set_name(table_name.to_string());
-                    Some((pipeline_name.to_string(), table))
-                }
-                _ => None,
+            match table.pipeline_name() {
+                Some(pipeline) => Some((pipeline.to_string(), table)),
+                None => None
             }
         })
         .collect();
@@ -191,26 +175,23 @@ fn p4data_to_ddlog_type(
     }
 }
 
+/// Convert P4 program information to DDlog relations. Generate external crates.
+///
+/// # Arguments
+/// * `file_dir` - filepath to directory containing P4 and DDlog files.
+/// * `file_name` - name of the Nerpa program.
+/// * `crate_arg` - filepath to directory for `dp2ddlog` helper crate.
+/// * `pipeline_arg` - name of P4 pipeline for conversion.
 pub fn p4info_to_ddlog(
-    io_dir_arg: Option<&str>,
-    prog_name_arg: Option<&str>,
+    file_dir: &str,
+    file_name: &str,
     crate_arg: Option<&str>,
     pipeline_arg: Option<&str>,
 ) -> Result<()> {
-    let io_dir = io_dir_arg.unwrap();
-    let prog_name = prog_name_arg.unwrap();
-
-    let p4info_fn = format!("{}/{}.p4info.bin", io_dir, prog_name);
+    let p4info_fn = format!("{}/{}.p4info.bin", file_dir, file_name);
     let p4info = read_p4info(OsStr::new(&p4info_fn))?;
 
     let pipelines = get_pipelines(p4info.clone(), pipeline_arg)?;
-
-    // Actions are referenced by id, so make a map.
-    let action_by_id: HashMap<u32, &Action> = p4info
-        .get_actions()
-        .iter()
-        .map(|a| (a.get_preamble().id, a))
-        .collect();
 
     let mut output = String::new();
 
@@ -220,53 +201,32 @@ pub fn p4info_to_ddlog(
 
     for (_, tables) in pipelines {
         for table in tables {
-            let table_name = &table.get_preamble().name;
-
-            use p4info::MatchField_MatchType::*;
+            let table_name = table.base_name();
 
             // Declarations for 'table', as (field_name, type) tuples.
             let mut decls = Vec::new();
 
             // Basic declaration for each match field.
-            for mf in table.get_match_fields() {
-                let bt = p4_basic_type(mf.bitwidth, &mf.annotations);
-
-                let full_type = match mf.get_match_type() {
-                    EXACT => bt,
-                    LPM => format!("({}, bit<32>>)", bt),
-                    RANGE | TERNARY => format!("({}, {})", bt, bt),
-                    OPTIONAL => format!("Option<{}>", bt),
-                    UNSPECIFIED => "()".into(),
-                };
-
-                decls.push((mf.name.clone(), full_type));
+            for mf in table.match_fields.iter() {
+                decls.push((mf.preamble.name.clone(), mf.p4_full_type()));
             }
 
             // If the match fields are all exact-match, we don't need
             // a priority, otherwise include one.
-            if table
-                .get_match_fields()
-                .iter()
-                .any(|mf| mf.get_match_type() != EXACT)
-            {
+            if table.has_priority() {
                 decls.push(("priority".to_string(), "bit<32>".to_string()));
             }
 
             // Grab the actions for 'table'.  We only care about
             // actions that we can set through the control plane, so
-            // omit DEFAULT_ONLY actions.
-            let actions: Vec<_> = table
-                .get_action_refs()
-                .iter()
-                .filter(|ar| ar.scope != p4info::ActionRef_Scope::DEFAULT_ONLY)
-                .map(|ar| action_by_id.get(&ar.id).unwrap())
-                .collect();
+            // filter those.
+            let actions: Vec<_> = table.entry_actions().map(|ar| &ar.action).collect();
 
             // If there is just one action and it doesn't have any
             // parameters, then we don't need to include the actions
             // in the relation.
             let needs_actions =
-                actions.len() > 1 || (actions.len() == 1 && !actions[0].get_params().is_empty());
+                actions.len() > 1 || (actions.len() == 1 && !actions[0].params.is_empty());
             if needs_actions {
                 let action_type_name = format!("{}Action", table_name);
 
@@ -277,14 +237,14 @@ pub fn p4info_to_ddlog(
                         " {} {}{}",
                         if i == 0 { "=" } else { "|" },
                         action_type_name,
-                        a.get_preamble().alias
+                        a.preamble.alias
                     )?;
-                    if !a.get_params().is_empty() {
+                    if !a.params.is_empty() {
                         let params: String = a
-                            .get_params()
+                            .params
                             .iter()
                             .map(|p| {
-                                format!("{}: {}", p.name, p4_basic_type(p.bitwidth, &p.annotations))
+                                format!("{}: {}", p.preamble.name, p.p4_basic_type())
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
@@ -300,12 +260,7 @@ pub fn p4info_to_ddlog(
             // but if the relation only has a single member and it's
             // annotated with @nerpa_singleton, declare it as the type
             // of that single member.
-            if decls.len() == 1
-                && table
-                    .get_preamble()
-                    .annotations
-                    .has_annotation("@nerpa_singleton")
-            {
+            if decls.len() == 1 && table.is_nerpa_singleton() {
                 let (_, full_type) = &decls[0];
                 writeln!(output, "output relation {}[{}]", table_name, full_type)?;
             } else {
@@ -397,7 +352,27 @@ pub fn p4info_to_ddlog(
         writeln!(output, ")")?;
     }
 
-    let output_fn = format!("{}/{}_dp.dl", io_dir, prog_name);
+    // Format the controller metadata as relations.
+    // Write the formatted relation to the output butter.
+    for cm in p4info.get_controller_packet_metadata().iter() {
+        // The name 'packet_in' corresponds to messages from the dataplane to the controller.
+        let cm_name = cm.get_preamble().get_name();
+        let (relation_type, relation_name) = match cm_name {
+            "packet_in" => ("input", "PacketIn"),
+            "packet_out" => ("output", "PacketOut"),
+            _ => continue,
+        };
+
+        let cm_meta = cm.get_metadata();
+        writeln!(output, "{} relation {}(", relation_type, relation_name)?;
+        for cmm in cm_meta.iter() {
+            writeln!(output, "    {}: bit<{}>,", cmm.get_name(), cmm.get_bitwidth())?;
+        }
+        writeln!(output, "    packet: Vec<bit<8>>")?;
+        writeln!(output, ")")?;
+    }
+
+    let output_fn = format!("{}/{}_dp.dl", file_dir, file_name);
     let output_filename_os = OsStr::new(&output_fn);
     let output_filename = output_filename_os.to_string_lossy();
     File::create(output_filename_os)
@@ -407,12 +382,12 @@ pub fn p4info_to_ddlog(
 
     // Update dependencies in the `nerpa_controller` crate.
     controller::write_toml(
-        io_dir,
-        prog_name,
+        file_dir,
+        file_name,
         crate_arg,
     )?;
 
-    // Generate the external crate `digest2ddlog`.
+    // Generate the external crate `dp2ddlog`.
     // This converts P4 Runtime digests to DDlog inputs.
 
     // If the crate argument was not passed, early return.
@@ -428,10 +403,11 @@ pub fn p4info_to_ddlog(
     // Write the crate's library file.
     let crate_rs_fn = format!("{}/src/lib.rs", crate_str);
     let crate_rs_os = OsStr::new(&crate_rs_fn);
-    let crate_rs_output = digest2ddlog::write_rs(
+    let crate_rs_output = dp2ddlog::write_rs(
         p4info.get_digests(),
         p4info.get_type_info(),
-        prog_name
+        p4info.get_controller_packet_metadata(),
+        file_name
     )?;
 
     File::create(crate_rs_os)
@@ -442,7 +418,7 @@ pub fn p4info_to_ddlog(
     // Write the crate `.toml`.
     let crate_toml_fn = format!("{}/Cargo.toml", crate_str);
     let crate_toml_os = OsStr::new(&crate_toml_fn);
-    let crate_toml_output = digest2ddlog::write_toml(io_dir, prog_name);
+    let crate_toml_output = dp2ddlog::write_toml(file_dir, file_name);
 
     File::create(crate_toml_os)
         .with_context(|| format!("{}: create failed", crate_toml_fn))?

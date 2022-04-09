@@ -1,0 +1,13 @@
+[package]
+name = "test-snvs"
+version = "0.1.0"
+edition = "2018"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hwaddr = "0.1"
+nanomsg = "0.7.2"
+packet = "0.1"
+bmv2_packet = { path = "../../bmv2_packet", version = "0.1" }

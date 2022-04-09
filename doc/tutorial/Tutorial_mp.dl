@@ -1,0 +1,31 @@
+/* Relations generated from the management plane schema for VLAN assignment.
+ * 
+ * Generating relations guarantees a common format for passing data between
+ * the management plane and the control plane.
+ * An input relation corresponds to a table in the OVSDB schema.
+ *
+ * 'ovsdb2ddlog' generated these relations from 'tutorial.ovsschema'.
+ * They are then imported by 'tutorial.dl', the main control plane program.
+ *
+ * Note that the "mp" in the filename stands for management plane.
+ */
+
+import ovsdb
+
+
+/* Input relations */
+
+input relation Port (
+    _uuid: uuid,
+    id: integer,
+    vlan_mode: Option<string>,
+    tag: Option<integer>,
+    trunks: Set<integer>,
+    priority_tagging: string
+)
+primary key (x) x._uuid
+
+/* Output relations */
+
+
+/* Delta tables definitions */
