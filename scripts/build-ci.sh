@@ -33,8 +33,8 @@ cargo install protobuf-codegen
 cargo install grpcio-compiler
 
 # Define program-specific variables.
-TEST_FN=ci
-TEST_DIR=$NERPA_DIR/nerpa_controlplane/ci
+TEST_FN=snvs
+TEST_DIR=$NERPA_DIR/nerpa_controlplane/$TEST_FN
 
 # Run 'p4info2ddlog' script.
 echo "Generating DDlog relations for dataplane using P4 info..."
@@ -43,9 +43,9 @@ cargo run $TEST_DIR $TEST_FN $NERPA_DIR/digest2ddlog
 
 # Compile DDlog crate.
 echo "Building Nerpa program DDlog crate..."
-cd $NERPA_DIR/nerpa_controlplane/ci
-ddlog -i ci.dl &&
-(cd ci_ddlog && cargo build --release && cd ..)
+cd $NERPA_DIR/nerpa_controlplane/$TEST_FN
+ddlog -i ${TEST_FN}.dl &&
+(cd ${TEST_FN}_ddlog && cargo build --release && cd ..)
 
 # Build Nerpa controller crate.
 echo "Building Nerpa controller..."
