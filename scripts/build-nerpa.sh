@@ -95,8 +95,7 @@ if test ! -f "$FILE_NAME.dl"; then
 fi
 
 echo "Compiling DDlog crate..."
-ddlog -i $FILE_NAME.dl &&
-(cd ${FILE_NAME}_ddlog && cargo build --release && cd ..)
+ddlog -i $FILE_NAME.dl
 
 # Optionally, generate necessary code for the management plane.
 # Build the OVSDB client crate, which depends on the DDlog crate.
@@ -107,12 +106,12 @@ if test -f $FILE_NAME.ovsschema; then
     cd $NERPA_DIR
     ./scripts/ovsdb-client-toml.sh $1 $2
 
-    # Build the ovsdb client crate.
+    # Generate necessary files for the `ovsdb_client` crate.
+    # This crate is built as part of the `nerpa_controller`.
     cd $NERPA_DIR/ovsdb_client
     mkdir -p src/context
     pip3 install -r requirements.txt
     python3 ovsdb2ddlog2rust --schema-file=$FILE_DIR/$FILE_NAME.ovsschema -p nerpa_ --output-file src/context/nerpa_rels.rs
-    cargo build
     cd $FILE_DIR
 fi
 
