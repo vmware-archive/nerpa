@@ -199,5 +199,12 @@ if test -f "$SCHEMA"; then
     popd >/dev/null
 fi
 
+# If a script with an initial OVSDB command was provided, execute that script in the background.
+INIT_SCRIPT=$FILE_DIR/init-ovsdb.sh
+if test -f "$INIT_SCRIPT"; then
+    echo "Initializing OVSDB contents in background..."
+    $INIT_SCRIPT &
+fi
+
 # Run the controller.
 (cd $NERPA_DIR/nerpa_controller && RUST_BACKTRACE=FULL cargo run -- --ddlog-record=replay.txt $FILE_DIR $FILE_NAME && cd $NERPA_DIR)
