@@ -1,5 +1,7 @@
 #!/bin/bash
 
+apt-get install pip3
+
 echo "Building Nerpa from CI script..."
 
 # Set environment variables.
@@ -36,6 +38,11 @@ cargo install grpcio-compiler
 TEST_FN=snvs
 TEST_DIR=$NERPA_DIR/nerpa_controlplane/$TEST_FN
 
+# Generate input relations from OVSDB.
+cd $NERPA_DIR/nerpa_controlplane/$TEST_FN
+ovsdb2ddlog -f ${TEST_FN}.ovsschema --output-file=${TEST_FN^}_mp.dl
+cd $NERPA_DIR
+
 # Run 'p4info2ddlog' script.
 echo "Generating DDlog relations for dataplane using P4 info..."
 cd $NERPA_DIR/p4info2ddlog
@@ -47,6 +54,17 @@ cd $NERPA_DIR/nerpa_controlplane/$TEST_FN
 ddlog -i ${TEST_FN}.dl &&
 (cd ${TEST_FN}_ddlog && cargo build --release && cd ..)
 
+# Build OVSDB client.
+cd $NERPA_DIR
+./scripts/ovsdb-client-toml.sh nerpa_controlplane/$TEST_FN $TEST_FN
+
+cd $NERPA_DIR/ovsdb_client
+mkdir -p src/context
+pip3 install -r requirements.txt
+python3 ovsdb2ddlog2rust --schema-file=../nerpa_controlplane/$TEST_FN/$TEST_FN.ovsschema -p nerpa_ --output-file src/context/nerpa_rels.rs
+cargo build
+cd $NERPA_DIR
+
 # Build Nerpa controller crate.
 echo "Building Nerpa controller..."
-(cd $NERPA_DIR/nerpa_controller && cargo build && cd ..)
+(cd $NERPA_DIR/nerpa_controller && cargo build && cd $NERPA_DIR)
