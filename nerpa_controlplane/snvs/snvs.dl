@@ -62,13 +62,6 @@ relation Port(
     priority_tagging: priority_tagging_t
 )
 
-// These are hard-coded for now because we don't have a proper connection to
-// OVSDB yet.
-Port(0, AccessPort{1}, NoPriorityTag).
-Port(1, AccessPort{1}, NoPriorityTag).
-Port(2, AccessPort{1}, NoPriorityTag).
-Port(3, AccessPort{1}, NoPriorityTag).
-
 Port(id, vlan, priority_tagging) :-
     snvs_mp::Port(.id = mp_id, .vlan_mode = mp_vlan_mode, .tag = mp_tag, .trunks = mp_trunks, .priority_tagging = mp_priority_tagging),
     var id = mp_id as port_id_t,

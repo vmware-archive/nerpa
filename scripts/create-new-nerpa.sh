@@ -42,3 +42,7 @@ cat <<EOF > $PROGRAM_NAME.ovsschema
     "version": "1.0.0"
 }
 EOF
+
+# Create initial OVSDB contents file.
+touch init-ovsdb.sh
+chmod +x init-ovsdb.sh

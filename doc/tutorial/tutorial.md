@@ -48,11 +48,13 @@ This should create a Nerpa program in `nerpa_controlplane/tutorial`, composed of
 * `tutorial.p4`: P4 program implementing the data plane, that will run on a software switch
 * `tutorial.ovsschema`: OVSDB schema specifying the management plane 
 * `commands.txt`: commands sent to the P4 switch's command-line interface and used to initialize the control plane
+* `init-ovsdb.sh`: transactions for OVSDB's initial contents. These can be commands using `ovsdb-tool` or `ovsdb-client`, with transactions formatted as JSONs as per [RFC 7047](https://www.ietf.org/rfc/rfc7047.txt).
 
 Accordingly, before moving forward, make sure that the following directory structure exists:
 ```
 nerpa_controlplane/tutorial
 | +-- commands.txt
+| +-- init-ovsdb.sh
 | +-- tutorial.dl
 | +-- tutorial.ovsschema
 | +-- tutorial.p4
@@ -61,6 +63,8 @@ nerpa_controlplane/tutorial
 These files should have the following contents.
 
 * `commands.txt` should be empty.
+
+* `init-ovsdb.sh` should be empty.
 
 * `tutorial.dl` should only contain the following comments.
 ```
@@ -232,5 +236,7 @@ Action entry: TutorialIngress.SetVlan - 1,
 ```
 
 Behind the scenes, the OVSDB client processed this new input from OVSDB, converted it to an input relation, and sent it to the running `nerpa_controller`. The controller then used the running DDlog control plane program to compute the output relation. It converted the output into a P4 Runtime table entry and pushed that entry to the switch. Above, that final step is logged.
+
+Note that you could also have copy-pasted those four lines into `nerpa_controlplane/tutorial/init-ovsdb.sh` before calling `run-nerpa`. Then, those rows would have been inserted into OVSDB on start-up. Feel free to stop the currently running script and try this!
 
 Congratulations! You have successfully built, run, and tested VLAN assignment within the Nerpa programming framework.
