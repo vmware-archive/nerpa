@@ -52,21 +52,11 @@ match_kind {
     optional
 }
 
-/* Metadata fields.  These are always present for every packet. */
-struct Metadata {
-    PortID in_port;             /* Ingress port. */
-    bit<32> skb_priority;       /* Linux packet scheduling class. */
-    bit<32> pkt_mark;           /* Linux kernel metadata. */
-    bit<32> packet_type;        /* OpenFlow packet type.  0 for Ethernet. */
-    Tunnel tunnel;
-    Conntrack ct;
-}
-
 /* Tunnel metadata.  These are all-zero for packets that did not arrive in
  * a tunnel. */
 struct Tunnel {
     bit<64> tun_id;             /* VXLAN VNI, GRE key, Geneve VNI, ... */
-    bit<32> tun_src;		/* Outer IPv4 source address. */
+    bit<32> tun_src;            /* Outer IPv4 source address. */
     bit<32> tun_dst;            /* Outer IPv4 destination address. */
     bit<128> tun_ipv6_src;      /* Outer IPv6 source address. */
     bit<128> tun_ipv6_dst;      /* Outer IPv6 destination address. */
@@ -77,7 +67,7 @@ struct Tunnel {
     bit<8> tun_erspan_dir;      /* ERSPAN direction (low bit only). */
     bit<8> tun_erspan_hwid;     /* ERSPAN ERSPAN engine ID (low 6 bits). */
     bit<8> tun_gtpu_flags;      /* GTP-U flags. */
-    bit<8> tun_gtpu_msgtype;	/* GTP-U message type. */
+    bit<8> tun_gtpu_msgtype;    /* GTP-U message type. */
     bit<16> tun_flags;          /* Tunnel flags (low bit only). */
 
     /* Access to Geneve tunneling TLV options. */
@@ -102,9 +92,9 @@ const bit<32> CS_DNAT = 1 << 7; // 1 if packet awas already DNATed.
  * them.
  */
 struct Conntrack {
-    bit<32> ct_state;		// CS_*.
+    bit<32> ct_state;           // CS_*.
     bit<16> ct_zone;            // Connection-tracking zone.
-    bit<32> ct_mark;		// Arbitrary metadata.
+    bit<32> ct_mark;            // Arbitrary metadata.
     bit<128> ct_label;          // More arbitrary metadata.
 
     /* The following fields require a match to a valid connection tracking state
@@ -120,6 +110,16 @@ struct Conntrack {
     bit<16> ct_tp_dst;
 }
 
+/* Metadata fields.  These are always present for every packet. */
+struct Metadata {
+    PortID in_port;             /* Ingress port. */
+    bit<32> skb_priority;       /* Linux packet scheduling class. */
+    bit<32> pkt_mark;           /* Linux kernel metadata. */
+    bit<32> packet_type;        /* OpenFlow packet type.  0 for Ethernet. */
+    Tunnel tunnel;
+    Conntrack ct;
+}
+
 header Ethernet {
     bit<48> src;
     bit<48> dst;
@@ -133,13 +133,13 @@ header Vlan {
 }
 
 header Mpls {
-    bit<32> label;		// Label (low 20 bits).
-    bit<8> tc;			// Traffic class (low 3 bits).
-    bit<8> bos;			// Bottom of Stack (low bit only).
-    bit<8> ttl			// Time to live.
+    bit<32> label;              // Label (low 20 bits).
+    bit<8> tc;                  // Traffic class (low 3 bits).
+    bit<8> bos;                 // Bottom of Stack (low bit only).
+    bit<8> ttl;                 // Time to live.
 }
 
-const bit<8> FRAG_ANY = 1 << 0;	  // Set for any IP fragment.
+const bit<8> FRAG_ANY = 1 << 0;   // Set for any IP fragment.
 const bit<8> FRAG_LATER = 1 << 1; // Set for IP fragment with nonzero offset.
 
 header Ipv4 {
@@ -147,7 +147,7 @@ header Ipv4 {
     bit<32> dst;
     bit<8> proto;
     bit<8> ttl;
-    bit<8> frag;		// 0, or FRAG_ANY, or (FRAG_ANY | FRAG_LATER)
+    bit<8> frag;                // 0, or FRAG_ANY, or (FRAG_ANY | FRAG_LATER)
     bit<8> tos;                 // DSCP in top 6 bits, ECN in low 2 bits.
 }
 
@@ -156,7 +156,7 @@ header Ipv6 {
     bit<128> dst;
     bit<8> proto;
     bit<8> ttl;
-    bit<8> frag;		// 0, or FRAG_ANY, or (FRAG_ANY | FRAG_LATER)
+    bit<8> frag;                // 0, or FRAG_ANY, or (FRAG_ANY | FRAG_LATER)
     bit<8> tos;                 // DSCP in top 6 bits, ECN in low 2 bits.
 }
 
@@ -174,7 +174,7 @@ header Nsh {
     bit<8> ttl;
     bit<8> mdtype;
     bit<8> np;
-    bit<32> spi; 		// Low 24 bits only.
+    bit<32> spi;                // Low 24 bits only.
     bit<8> si;
     bit<32> c1;
     bit<32> c2;
@@ -185,7 +185,7 @@ header Nsh {
 struct Tcp {
     bit<16> src;
     bit<16> dst;
-    bit<16> flags;		// Low 12 bits only.
+    bit<16> flags;              // Low 12 bits only.
 }
 
 struct Udp {
