@@ -111,14 +111,48 @@ struct Conntrack {
 }
 
 /* Metadata fields.  These are always present for every packet. */
-struct Metadata {
+struct standard_metadata_t {
+    /* OVS metadata fields. */
     PortID in_port;             /* Ingress port. */
     bit<32> skb_priority;       /* Linux packet scheduling class. */
     bit<32> pkt_mark;           /* Linux kernel metadata. */
     bit<32> packet_type;        /* OpenFlow packet type.  0 for Ethernet. */
     Tunnel tunnel;
     Conntrack ct;
+
+    /* P4 metadata fields.
+     *
+     * The ingress pipeline should assign values to these fields, which are
+     * initially zero.  The treatment of a packet after it exits the ingress
+     * pipeline depends on their values:
+     *
+     * - If 'out_group' is nonzero, the packet is replicated and passed to the
+     *   egress pipeline once for each member of the multicast group (as set
+     *   through P4Runtime).
+     *
+     * - If 'out_group' is zero and 'out_port' is nonzero, the packet is passed
+     *   to the egress pipeline for that port.
+     *
+     * - If 'out_group' and 'out_port' are zero, the packet is dropped.
+     *
+     * In the egress pipeline, 'out_port' is the port to which the packet will
+     * be delivered.  The egress pipeline may change it, which changes the
+     * output port, or may set it to zero, which will drop it.  'out_group' is
+     * preserved from the ingress pipeline but its value isn't used after the
+     * pipeline runs.
+     *
+     * (Port 0 is never a valid port number in OVS.)
+     */
+    bit<16> out_group;
+    PortID out_port;
 }
+
+/*
+ * Sets 'std.out_group' and 'std.out_port' to zero, which causes the packet to
+ * be dropped when the packet reaches the end of the ingress pipeline.
+ */
+@pure
+extern void mark_to_drop(inout standard_metadata_t std);
 
 header Ethernet {
     bit<48> src;
@@ -247,10 +281,14 @@ struct Headers {
 }
 
 @pipeline
-control Ingress<H, M>(inout H hdr, inout M meta);
+control Ingress<M>(inout Headers hdr,
+                   inout M meta,
+                   inout standard_metadata_t standard_metadata);
 @pipeline
-control Egress<H, M>(inout H hdr, inout M meta);
+control Egress<M>(inout Headers hdr,
+                  inout M meta,
+                  inout standard_metadata_t standard_metadata);
 
-package OfSwitch<H, M>(Ingress<H, M> ig, Egress<H, M> eg);
+package OfSwitch<M>(Ingress<M> ig, Egress<M> eg);
 
 #endif  /* _OF_MODEL_P4 */
