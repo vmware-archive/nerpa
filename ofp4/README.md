@@ -21,7 +21,14 @@ To build the P4 compiler with this backend you have to perform the
 following steps:
 
 * Check out the p4c repository from the above address and make sure you can compile the code
-* Create a symbolic link in the directory p4c/extensions pointing to this directory
+* Create a symbolic link in the directory p4c/extensions pointing to this directory.
+For example, if p4c is checked out into `p4c` and Nerpa into `nerpa`:
+
+```
+mkdir p4c/extensions
+ln -s $(pwd)/nerpa/ofp4 p4c/extensions
+```
+
 * Rebuild the p4c compiler using the standard methodology.
 
 The result of the compilation should be a `p4c-of` binary.
