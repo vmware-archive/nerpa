@@ -34,7 +34,7 @@ add_custom_target(linkp4cof
   COMMAND ${CMAKE_COMMAND} -E make_directory ${P4C_BINARY_DIR}/p4include &&
           ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${OF_DIST_HEADERS} ${P4C_BINARY_DIR}/p4include
   COMMAND ${CMAKE_COMMAND} -E create_symlink ${P4C_BINARY_DIR}/p4include ${CMAKE_CURRENT_BINARY_DIR}/p4include
-  )
+)
 
 set (OF_XFAIL_TESTS
 )
@@ -42,7 +42,7 @@ set (OF_XFAIL_TESTS
 add_dependencies(p4c_driver linkp4cof)
 
 # Program used to run tests
-set(OF_DRIVER ${P4C_SOURCE_DIR}/backends/p4test/run-p4-sample.py)
+set(OF_DRIVER ${P4C_SOURCE_DIR}/extensions/ofp4/run-of-test.py)
 
 # Tests to run
 set (OF_TEST_SUITES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.p4")
