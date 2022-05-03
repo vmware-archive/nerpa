@@ -33,6 +33,15 @@ ln -s $(pwd)/nerpa/ofp4 p4c/extensions
 
 The result of the compilation should be a `p4c-of` binary.
 
+## Running tests
+
+To run only the ofp4-specific tests you can use the p4c
+testing infrastructure, by invoking
+
+```
+make check-of
+```
+
 ## What is ofp4?
 
 ofp4 is essentially a controller with a P4Runtime interface that
