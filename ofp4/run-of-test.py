@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Runs an open-flow test on a P4 program"""
+"""Runs an open-flow test on a P4 program.  This script is invoked
+   with suitable arguments by 'make check' or 'make check-of' from
+   the p4c repository.  The script is invoked with 2 arguments:
+   - the directory hosting p4c
+   - the p4 program to compile
+"""
 
 from subprocess import Popen
 from threading import Thread
@@ -22,6 +27,7 @@ import os
 
 SUCCESS = 0
 FAILURE = 1
+TIMEOUT = 10 * 60 # in seconds, for running a test
 
 class Options(object):
     """Compiler options"""
@@ -80,17 +86,18 @@ def run_timeout(options, args, timeout, stderr):
     return local.process.returncode
 
 
-timeout = 10 * 60
 
 
 def process_file(options, argv):
     assert isinstance(options, Options)
+    basename = os.path.basename(options.p4filename)
+    base, ext = os.path.splitext(basename)
     if not os.path.isfile(options.p4filename):
         raise Exception("No such file " + options.p4filename)
-    args = ["./p4c-of"] + options.compilerOptions
+    args = ["./p4c-of", "-o", basename + ".dl", "--p4runtime-files", basename + ".txt"] + options.compilerOptions
     args.extend(argv)
-    result = run_timeout(options, args, timeout, None)
 
+    result = run_timeout(options, args, TIMEOUT, None)
     if result != SUCCESS:
         print("Error compiling")
 
@@ -123,10 +130,8 @@ def main(argv):
             else:
                 options.compilerOptions += argv[1].split()
                 argv = argv[1:]
-        elif argv[0][1] == 'D' or argv[0][1] == 'I' or argv[0][1] == 'T':
-            options.compilerOptions.append(argv[0])
         else:
-            print("Uknown option ", argv[0], file=sys.stderr)
+            print("Unknown option ", argv[0], file=sys.stderr)
             usage(options)
             sys.exit(FAILURE)
         argv = argv[1:]
