@@ -1,15 +1,11 @@
-[submodule "nerpa_controller/googleapis"]
-	path = nerpa_controller/googleapis
-	url = https://github.com/googleapis/googleapis.git
-[submodule "nerpa_controller/p4runtime"]
-	path = nerpa_controller/p4runtime
-	url = https://github.com/p4lang/p4runtime.git
 [submodule "proto/googleapis"]
 	path = proto/googleapis
 	url = https://github.com/googleapis/googleapis.git
 [submodule "proto/p4runtime"]
 	path = proto/p4runtime
-	url = https://github.com/p4lang/p4runtime
-[submodule "ovsdb-sys/ovs"]
+	url = https://github.com/p4lang/p4runtime.git
+	branch = main
+[submodule "ovs/ovs"]
 	path = ovs/ovs
-	url = git@github.com:openvswitch/ovs.git
+	url = https://github.com/openvswitch/ovs.git
+
