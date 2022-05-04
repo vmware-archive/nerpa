@@ -52,12 +52,8 @@ limitations under the License.
 
 namespace P4OF {
 
-MidEnd::MidEnd(CompilerOptions& options) {
-    bool isv1 = options.langVersion == CompilerOptions::FrontendVersion::P4_14;
-    refMap.setIsV1(isv1);
-    auto evaluator = new P4::EvaluatorPass(&refMap, &typeMap);
+MidEnd::MidEnd(P4OFOptions& options) {
     setName("MidEnd");
-
     addPasses({
         options.ndebug ? new P4::RemoveAssertAssume(&refMap, &typeMap) : nullptr,
         new P4::RemoveMiss(&refMap, &typeMap),
@@ -80,7 +76,7 @@ MidEnd::MidEnd(CompilerOptions& options) {
         new P4::FlattenHeaders(&refMap, &typeMap),
         new P4::FlattenInterfaceStructs(&refMap, &typeMap),
         new P4::Predication(&refMap),
-        new P4::MoveDeclarations(),  // more may have been introduced
+        new P4::MoveDeclarations(),
         new P4::ConstantFolding(&refMap, &typeMap),
         new P4::GlobalCopyPropagation(&refMap, &typeMap),
         new PassRepeated({
@@ -88,17 +84,15 @@ MidEnd::MidEnd(CompilerOptions& options) {
             new P4::ConstantFolding(&refMap, &typeMap),
         }),
         new P4::StrengthReduction(&refMap, &typeMap),
-        new P4::MoveDeclarations(),  // more may have been introduced
+        new P4::MoveDeclarations(),
         new P4::SimplifyControlFlow(&refMap, &typeMap),
         new P4::CompileTimeOperations(),
         new P4::TableHit(&refMap, &typeMap),
         new P4::EliminateSwitch(&refMap, &typeMap),
-        evaluator,
+        new P4::EvaluatorPass(&refMap, &typeMap),
         new P4::HSIndexSimplifier(&refMap, &typeMap),
         new P4::SynthesizeActions(&refMap, &typeMap),
         new P4::MoveActionsToTables(&refMap, &typeMap),
-        evaluator,
-        [this, evaluator]() { toplevel = evaluator->getToplevelBlock(); },
         new P4::MidEndLast()
     });
     if (options.excludeMidendPasses) {

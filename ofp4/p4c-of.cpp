@@ -34,22 +34,43 @@ limitations under the License.
 #include "frontends/p4/frontend.h"
 #include "frontends/p4/toP4/toP4.h"
 #include "midend.h"
+#include "backend.h"
+#include "options.h"
 
-class P4OFOptions : public CompilerOptions {
- public:
-    bool loadIRFromJson = false;
-    P4OFOptions() {
-        registerOption("--fromJSON", "file",
-                       [this](const char* arg) {
-                           loadIRFromJson = true;
-                           file = arg;
-                           return true;
-                       },
-                       "read previously dumped json instead of P4 source code");
-     }
-};
+using P4OFContext = P4CContextWithOptions<P4OF::P4OFOptions>;
 
-using P4OFContext = P4CContextWithOptions<P4OFOptions>;
+bool done(const IR::P4Program* program) {
+    return program == nullptr || ::errorCount() > 0;
+}
+
+void compile(P4OF::P4OFOptions& options) {
+    auto hook = options.getDebugHook();
+    const IR::P4Program * program = P4::parseP4File(options);
+    if (done(program))
+        return;
+
+    P4::P4COptionPragmaParser optionsPragmaParser;
+    program->apply(P4::ApplyOptionsPragmas(optionsPragmaParser));
+
+    P4::FrontEnd fe;
+    fe.addDebugHook(hook);
+    program = fe.run(options, program);
+    if (done(program))
+        return;
+
+    P4::serializeP4RuntimeIfRequired(program, options);
+    P4OF::MidEnd midend(options);
+    midend.addDebugHook(hook);
+    program = program->apply(midend);
+    if (done(program))
+        return;
+
+    P4OF::BackEnd backend(options, &midend.refMap, &midend.typeMap);
+    backend.addDebugHook(hook);
+    program->apply(backend);
+    if (backend.program != nullptr)
+        backend.program->emit(options.outputFile);
+}
 
 int main(int argc, char *const argv[]) {
     setup_gc_logging();
@@ -60,48 +81,12 @@ int main(int argc, char *const argv[]) {
     options.langVersion = CompilerOptions::FrontendVersion::P4_16;
     options.compilerVersion = "0.1";
 
-    if (options.process(argc, argv) != nullptr) {
-        if (options.loadIRFromJson == false)
-            options.setInputFile();
-    }
+    if (options.process(argc, argv) != nullptr)
+        options.setInputFile();
     if (::errorCount() > 0)
         return 1;
-    const IR::P4Program *program = nullptr;
-    auto hook = options.getDebugHook();
-    if (options.loadIRFromJson) {
-        std::ifstream json(options.file);
-        if (json) {
-            JSONLoader loader(json);
-            const IR::Node* node = nullptr;
-            loader >> node;
-            if (!(program = node->to<IR::P4Program>()))
-                error(ErrorType::ERR_INVALID, "%s is not a P4Program in json format", options.file);
-        } else {
-            error(ErrorType::ERR_IO, "Can't open %s", options.file); }
-    } else {
-        program = P4::parseP4File(options);
 
-        if (program != nullptr && ::errorCount() == 0) {
-            P4::P4COptionPragmaParser optionsPragmaParser;
-            program->apply(P4::ApplyOptionsPragmas(optionsPragmaParser));
-
-            P4::FrontEnd fe;
-            fe.addDebugHook(hook);
-            program = fe.run(options, program);
-        }
-    }
-
-    if (program != nullptr && ::errorCount() == 0) {
-        P4::serializeP4RuntimeIfRequired(program, options);
-        P4OF::MidEnd midEnd(options);
-        midEnd.addDebugHook(hook);
-        midEnd.process(program);
-        if (program) {
-            if (options.dumpJsonFile)
-                JSONGenerator(*openFile(options.dumpJsonFile, true), true) << program << std::endl;
-        }
-    }
-
+    compile(options);
     if (Log::verbose())
         std::cerr << "Done." << std::endl;
     return ::errorCount() > 0;

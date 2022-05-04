@@ -11,7 +11,7 @@ echo "Initializing git submodules..."
 git submodule update --init --recursive
 
 # Make a directory for dependency installation.
-mkdir nerpa-deps
+mkdir -p nerpa-deps
 export NERPA_DEPS=$NERPA_DIR/nerpa-deps
 cd $NERPA_DEPS
 
