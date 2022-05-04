@@ -112,7 +112,8 @@ fn extract_p4data_types(
         Some(P4DataTypeSpec::header_stack(ref hs)) => types.push(hs.get_header().get_name().to_owned()),
         Some(P4DataTypeSpec::header_union_stack(ref hus)) => types.push(hus.get_header_union().get_name().to_owned()),
         Some(P4DataTypeSpec::field_enum(ref fe)) => types.push(fe.get_name().to_owned()),
-        Some(P4DataTypeSpec::error(ref e)) => types.push(format!("error when extracting type: {:#?}", e)), // TODO: Find a cleaner method for errors.
+        // Since the Debug trait is implemented for `P4ErrorType`, this should print the name as a String.
+        Some(P4DataTypeSpec::error(ref e)) => types.push(format!("{:#?}", e)),
         Some(P4DataTypeSpec::serializable_enum(ref se)) => types.push(se.get_name().to_owned()),
         Some(P4DataTypeSpec::new_type(ref nt)) => types.push(nt.get_name().to_owned()),
         None => {},
