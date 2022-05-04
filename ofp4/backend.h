@@ -14,23 +14,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef _EXTENSIONS_OFP4_MIDEND_H_
-#define _EXTENSIONS_OFP4_MIDEND_H_
+/// Backend of the p4c-of compiler.
+
+#ifndef _EXTENSIONS_OFP4_BACKEND_H_
+#define _EXTENSIONS_OFP4_BACKEND_H_
 
 #include "ir/ir.h"
 #include "frontends/common/options.h"
+#include "frontends/common/resolveReferences/referenceMap.h"
+#include "frontends/p4/typeMap.h"
 #include "options.h"
 
 namespace P4OF {
 
-class MidEnd : public PassManager {
+/// Class representing a DDlog program.
+class DDlogProgram {
  public:
-    P4::ReferenceMap    refMap;
-    P4::TypeMap         typeMap;
+    DDlogProgram() = default;
 
-    explicit MidEnd(P4OFOptions& options);
+    void emit(cstring file);
 };
 
-}   // namespace P4OF
+class BackEnd : public PassManager {
+ public:
+    DDlogProgram* program;
+    BackEnd(P4OFOptions& options, P4::ReferenceMap* refMap, P4::TypeMap* typeMap);
+};
 
-#endif /* _EXTENSIONS_OFP4_MIDEND_H_ */
+}  // namespace P4OF
+
+#endif  /* _EXTENSIONS_OFP4_BACKEND_H_ */

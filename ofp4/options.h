@@ -1,5 +1,5 @@
 /*
-Copyright 2022 VMware, Inc.
+Copyright 2022 VMware Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef _EXTENSIONS_OFP4_MIDEND_H_
-#define _EXTENSIONS_OFP4_MIDEND_H_
+#ifndef _EXTENSIONS_OFP4_OPTIONS_H_
+#define _EXTENSIONS_OFP4_OPTIONS_H_
 
-#include "ir/ir.h"
 #include "frontends/common/options.h"
-#include "options.h"
 
 namespace P4OF {
 
-class MidEnd : public PassManager {
+class P4OFOptions : public CompilerOptions {
  public:
-    P4::ReferenceMap    refMap;
-    P4::TypeMap         typeMap;
+    // file to output to
+    cstring outputFile = nullptr;
 
-    explicit MidEnd(P4OFOptions& options);
+    P4OFOptions() {
+        registerOption("-o", "outfile",
+                [this](const char* arg) { outputFile = arg; return true; },
+                "Write output to outfile");
+    }
 };
 
-}   // namespace P4OF
+}  // namespace P4OF
 
-#endif /* _EXTENSIONS_OFP4_MIDEND_H_ */
+#endif  /* _EXTENSIONS_OFP4_OPTIONS_H_ */

@@ -5,13 +5,16 @@ message(STATUS "Start configuring OFP4 back end")
 
 # Source files
 set (P4C_OF_SOURCES
-  p4c-of.cpp
+  backend.cpp
   midend.cpp
+  p4c-of.cpp
 )
 
 # header files
 set (P4C_OF_HEADERS
+  backend.h
   midend.h
+  options.h
 )
 
 set (OF_DIST_HEADERS p4include/of_model.p4)
@@ -42,7 +45,7 @@ set (OF_XFAIL_TESTS
 add_dependencies(p4c_driver linkp4cof)
 
 # Program used to run tests
-set(OF_DRIVER ${P4C_SOURCE_DIR}/backends/p4test/run-p4-sample.py)
+set(OF_DRIVER ${P4C_SOURCE_DIR}/extensions/ofp4/run-of-test.py)
 
 # Tests to run
 set (OF_TEST_SUITES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.p4")
