@@ -1,6 +1,9 @@
 #!/bin/bash
 # Install Nerpa and dependencies on Linux
 
+# Exit when any command fails, since they are all sequential.
+set -e
+
 export NERPA_DIR=$(pwd)
 
 # Recursively initialize git modules.
