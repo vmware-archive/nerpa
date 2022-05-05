@@ -65,11 +65,8 @@ void compile(P4OF::P4OFOptions& options) {
     if (done(program))
         return;
 
-    P4OF::BackEnd backend(options, &midend.refMap, &midend.typeMap);
-    backend.addDebugHook(hook);
-    program->apply(backend);
-    if (backend.program != nullptr)
-        backend.program->emit(options.outputFile);
+    P4OF::BackEnd backend(&midend.refMap, &midend.typeMap);
+    backend.run(options, program);
 }
 
 int main(int argc, char *const argv[]) {
