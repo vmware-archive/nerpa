@@ -98,19 +98,19 @@ pub struct Controller {
 impl Controller {
     /// Create a new handle for Tokio tasks.
     ///
-    /// Passes `switch_client` and `hddlog` to a `ControllerActor`, which allows interaction with the P4 switch and DDlog program, respectively. Runs the actor asynchronously.
+    /// Passes `switch_clients` and `hddlog` to a `ControllerActor`, which allows interaction with a group of P4-enabled switches and DDlog program, respectively. Runs the actor asynchronously.
     ///
     /// # Arguments
-    /// * `switch_client` - P4 Runtime client with extra information.
+    /// * `switch_clients` - P4 Runtime clients with extra information.
     /// * `hddlog` - DDlog program.
     pub fn new(
-        switch_client: SwitchClient,
+        switch_clients: Vec<SwitchClient>,
         hddlog: Arc<HDDlog>,
     ) -> Result<Controller, String> {
         let (sender, receiver) = mpsc::channel(1000);
         let program = ControllerProgram::new(hddlog);
 
-        let mut actor = ControllerActor::new(receiver, switch_client, program);
+        let mut actor = ControllerActor::new(receiver, switch_clients, program);
         tokio::spawn(async move { actor.run().await });
 
         Ok(Self{sender})
@@ -976,8 +976,8 @@ impl SwitchClient {
 struct ControllerActor {
     /// Receives messages from the public-facing handle.
     receiver: mpsc::Receiver<ControllerActorMessage>,
-    /// Client for the P4-enabled switch.
-    switch_client: SwitchClient,
+    /// Clients for each P4-enabled switch.
+    switch_clients: Vec<SwitchClient>,
     /// Handle to the running DDlog program.
     program: ControllerProgram,
 }
@@ -998,20 +998,20 @@ enum ControllerActorMessage {
 }
 
 impl ControllerActor {
-    /// Create a new actor that processes DDlog inputs and pushes them to the P4 switch.
+    /// Create a new actor that processes DDlog inputs and pushes them to the P4-enabled switches.
     ///
     /// # Arguments
     /// * `receiver` - receives messages from the public controller handle.
-    /// * `switch_client` - client for the P4 switch.
+    /// * `switch_clients` - clients for each P4-enabled switch.
     /// * `program` - handle for the DDlog program.
     fn new(
         receiver: mpsc::Receiver<ControllerActorMessage>,
-        switch_client: SwitchClient,
+        switch_clients: Vec<SwitchClient>,
         program: ControllerProgram,
     ) -> Self {
         ControllerActor {
             receiver,
-            switch_client,
+            switch_clients,
             program,
         }
     }
@@ -1036,15 +1036,18 @@ impl ControllerActor {
                 // Start streaming messages from the dataplane.
                 // Set the configuration as a notification per-digest.
                 // TODO: Retry the configuration if it errors.
-                let config_res = self.switch_client.configure_digests(0, 1, 1).await;
-                if config_res.is_err() {
-                    error!("could not configure digests: {:#?}", config_res);
-                }
+                for sc in &mut self.switch_clients {
+                    let config_res = sc.configure_digests(0, 1, 1).await;
+                    if config_res.is_err() {
+                        error!("could not configure digests: {:#?}", config_res);
+                    }
 
-                // Start the dataplane response actor.
-                let (sink, receiver) = self.switch_client.client.0.stream_channel().unwrap();
-                let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_tx);
-                tokio::spawn(async move { digest_actor.run().await });
+                    // Start the dataplane response actor for the client.
+                    let (sink, receiver) = sc.client.0.stream_channel().unwrap();
+                    let digest_actor_tx = mpsc::Sender::clone(&digest_tx);
+                    let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_actor_tx);
+                    tokio::spawn(async move { digest_actor.run().await });
+                }
 
                 // Start processing inputs from OVSDB.
                 let ctx = ovsdb_client::context::OvsdbContext::new(
@@ -1069,13 +1072,16 @@ impl ControllerActor {
                     }
 
                     let ddlog_res = self.program.apply_updates(vec![inp_opt.unwrap()]);
-                    if ddlog_res.is_ok() {
-                        let p4_res = self.switch_client.push_outputs(&ddlog_res.unwrap()).await;
+                    if ddlog_res.is_err() {
+                        error!("could not apply changes to ddlog input relation");
+                    }
+
+                    let ddlog_output = &ddlog_res.unwrap();
+                    for sc in &mut self.switch_clients {
+                        let p4_res = sc.push_outputs(ddlog_output.clone()).await;
                         if p4_res.is_err() {
                             error!("could not push digest output relation to switch: {:#?}", p4_res.err());
                         }
-                    } else {
-                        error!("could not apply changes to ddlog input relation: {:#?}", ddlog_res.err());
                     }
                 };
             },

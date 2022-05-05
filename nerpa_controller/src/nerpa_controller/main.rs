@@ -33,7 +33,7 @@ use std::fs::File;
 // Import the function to run a DDlog program.
 // Note that the crate name changes with the Nerpa program's name.
 // The Nerpa programmer must rename this import.
-use arp_ddlog::run;
+use snvs_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {
@@ -94,53 +94,65 @@ async fn run_controller(
     file_name: String,
     record_file: &mut Option<File>,
 ) {
-    // Create P4Runtime client.
-    let target = String::from("localhost:50051");
-    let env = Arc::new(EnvBuilder::new().build());
-    let ch = ChannelBuilder::new(env).connect(target.as_str());
-    let client = P4RuntimeClient::new(ch);
+    // Run the DDlog program. This computes initial contents to push across switches.
+    let (mut hddlog, initial_contents) = run(1, false).unwrap();
+    hddlog.record_commands(record_file);
 
-    let device_id : u64 = 0;
-    let role_id: u64 = 0;
+    // Define values that are common across all the switch clients.
     let p4info = format!("{}/{}.p4info.bin", file_dir, file_name);
     let opaque = format!("{}/{}.json", file_dir, file_name);
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
 
-    // Set the primary controller on P4Runtime.
-    // This enables use of the StreamChannel RPC.
-    let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
-    if mau_res.is_err() {
-        panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
+    // Define the switch client-specific configurations.
+    // A configuration is of the form (target, device_id, role_id, is_primary).
+    let configs = [
+        ("localhost:50051", 0, 0, true)
+    ];
+
+    let mut switch_clients = Vec::new();
+
+    for config in configs {
+        let (target_str, device_id, role_id, is_primary) = config;
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env).connect(target_str);
+        let client = P4RuntimeClient::new(ch);
+
+        // If primary, set the controller as primary using P4Runtime.
+        // This enables use of the StreamChannel RPC.
+        if is_primary {
+            let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
+            if mau_res.is_err() {
+                panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
+            }
+        }
+
+        // Create a SwitchClient.
+        // Handles communication with the switch.
+        let mut sc = SwitchClient::new(
+            client,
+            p4info.clone(),
+            opaque.clone(),
+            cookie.clone(),
+            action.clone(),
+            device_id,
+            role_id,
+            String::from(target_str),
+        ).await;
+
+        sc.push_outputs(&initial_contents).await.unwrap();
+        switch_clients.push(sc);
     }
 
-    // Create a SwitchClient.
-    // Handles communication with the switch.
-    let mut switch_client = SwitchClient::new(
-        client,
-        p4info,
-        opaque,
-        cookie,
-        action,
-        device_id,
-        role_id,
-        target,
-    ).await;
-
-    // Run the DDlog program.
-    let (mut hddlog, initial_contents) = run(1, false).unwrap();
-    hddlog.record_commands(record_file);
-    switch_client.push_outputs(&initial_contents).await.unwrap();
-
     // Instantiate controller.
-    // We store the DDlog program on the heap. We can safely pass references to heap
-    // memory to both the controller and the OVSDB client.
+    // We store the DDlog program on the heap. This lets us safely pass
+    // references to heap memory to both the controller and OVSDB client.
     let controller_hddlog = Arc::new(hddlog);
     let ovsdb_hddlog = controller_hddlog.clone();
-    let nerpa_controller = Controller::new(switch_client, controller_hddlog).unwrap();
+    let nerpa_controller = Controller::new(switch_clients, controller_hddlog).unwrap();
 
     // Start streaming inputs from OVSDB and from the dataplane.
-    let database = file_name.clone();
     let server = String::from("unix:nerpa.sock");
+    let database = file_name.clone();
     nerpa_controller.stream_inputs(ovsdb_hddlog, server, database).await;
 }
