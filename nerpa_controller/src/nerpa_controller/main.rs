@@ -140,7 +140,7 @@ async fn run_controller(
             String::from(target_str),
         ).await;
 
-        sc.push_outputs(&initial_contents).await.unwrap();
+        sc.push_ddlog_outputs(&initial_contents).await.unwrap();
         switch_clients.push(sc);
     }
 

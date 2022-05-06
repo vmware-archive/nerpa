@@ -389,12 +389,14 @@ impl SwitchClient {
         Ok(())
     }
 
-    /// Push DDlog outputs as table entries in the P4-enabled switch.
+    /// Converts DDlog outputs to P4 table entries and packets to send to the data plane.
     ///
     /// # Arguments
     /// * `delta` - DDlog output relations.
-    #[instrument]
-    pub async fn push_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+    pub async fn ddlog_outputs_to_dataplane(
+        &mut self,
+        delta: &DeltaMap<DDValue>
+    ) -> (Vec<proto::p4runtime::Update>, Vec<proto::p4runtime::PacketOut>) {
         let mut updates = Vec::new();
         let mut packet_outs = Vec::new();
 
@@ -535,6 +537,19 @@ impl SwitchClient {
             }
         }
 
+        (updates, packet_outs)
+    }
+
+    /// Push the dataplane outputs (P4 table entries and packets) to the switch.
+    ///
+    /// # Arguments
+    /// * `updates` - P4 table entries.
+    /// * `packet_outs` - packets to send to the switch.
+    pub async fn push_dataplane_outputs(
+        &mut self,
+        updates: Vec<proto::p4runtime::Update>,
+        packet_outs: Vec<proto::p4runtime::PacketOut>,
+    ) -> Result<(), p4ext::P4Error> {
         let write_res = p4ext::write(
             updates,
             self.device_id,
@@ -562,6 +577,17 @@ impl SwitchClient {
         }
 
         Ok(())
+    }
+
+    /// Push DDlog outputs as table entries in the P4-enabled switch.
+    /// It also sends any packets.
+    ///
+    /// # Arguments
+    /// * `delta` - DDlog output relations.
+    #[instrument]
+    pub async fn push_ddlog_outputs(&mut self, delta: &DeltaMap<DDValue>) -> Result<(), p4ext::P4Error> {
+        let (updates, packet_outs) = self.ddlog_outputs_to_dataplane(delta).await;
+        self.push_dataplane_outputs(updates, packet_outs).await
     }
 
     /// Update the multicast group entry using P4 Runtime.
@@ -1077,8 +1103,15 @@ impl ControllerActor {
                     }
 
                     let ddlog_output = &ddlog_res.unwrap();
+
+                    // We use the first switch client to construct the updates and packets
+                    // that we then send to the switch.
+                    // Assumes that all switches are running the same P4 program.
+                    let (updates, packets) = self.switch_clients[0]
+                        .ddlog_outputs_to_dataplane(ddlog_output.clone()).await;
+
                     for sc in &mut self.switch_clients {
-                        let p4_res = sc.push_outputs(ddlog_output.clone()).await;
+                        let p4_res = sc.push_dataplane_outputs(updates.clone(), packets.clone()).await;
                         if p4_res.is_err() {
                             error!("could not push digest output relation to switch: {:#?}", p4_res.err());
                         }
