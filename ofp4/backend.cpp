@@ -22,25 +22,131 @@ limitations under the License.
 #include "lib/sourceCodeBuilder.h"
 #include "lib/nullstream.h"
 #include "frontends/p4/evaluator/evaluator.h"
+#include "frontends/p4/methodInstance.h"
 #include "resources.h"
 
 namespace P4OF {
 
-/// Class representing a DDlog program.
-class DDlogProgram {
- public:
-    DDlogProgram() = default;
-    void emit(cstring file);
-};
+class DLCodeGenerator : public Inspector {
+    const OFResources& resources;
+    P4::ReferenceMap*    refMap;
+    P4::TypeMap*         typeMap;
 
-void DDlogProgram::emit(cstring file) {
-    auto dlStream = openFile(file, false);
-    if (dlStream != nullptr) {
-        // TODO
-        ;
+    IR::Vector<IR::Node> *declarations;
+    IR::Vector<IR::Type> *alternatives;
+    cstring tableName;
+    IR::DDlogProgram* program;
+
+  public:
+    explicit DLCodeGenerator(
+        const OFResources& resources, P4::ReferenceMap* refMap, P4::TypeMap* typeMap):
+            resources(resources), refMap(refMap), typeMap(typeMap), program(nullptr)
+    { CHECK_NULL(refMap); CHECK_NULL(typeMap); declarations = new IR::Vector<IR::Node>(); }
+
+    IR::DDlogProgram* getProgram() const { return program; }
+
+    cstring makeId(cstring name) {
+        return name.replace(".", "_");
     }
-    dlStream->flush();
-}
+
+    Visitor::profile_t init_apply(const IR::Node* node) override {
+        auto params = new IR::IndexedVector<IR::Parameter>();
+        params->push_back(new IR::Parameter(IR::ID("flow"), IR::Direction::None, IR::Type_String::get()));
+        declarations->push_back(new IR::DDlogRelation(IR::ID("Flow"), IR::Direction::Out, *params));
+        return Inspector::init_apply(node);
+    }
+
+    bool preorder(const IR::Type_Typedef* tdef) override {
+        auto trans = new IR::DDlogTypedef(tdef->name, tdef->type);
+        declarations->push_back(trans);
+        return true;
+    }
+
+    bool preorder(const IR::P4Table* table) override {
+        tableName = makeId(table->externalName());
+        alternatives = nullptr;
+        return true;
+    }
+
+    bool preorder(const IR::Operation_Binary* op) override {
+        ::error(ErrorType::ERR_UNSUPPORTED_ON_TARGET,
+                "%1%: operation not supported", op);
+        return false;
+    }
+
+    bool preorder(const IR::ActionListElement* ale) override {
+        if (!alternatives)
+            alternatives = new IR::Vector<IR::Type>();
+        auto mce = ale->expression->to<IR::MethodCallExpression>();
+        BUG_CHECK(mce, "%1%: expected a method call", ale->expression);
+        auto mi = P4::MethodInstance::resolve(mce, refMap, typeMap);
+        auto ac = mi->to<P4::ActionCall>();
+        cstring alternative = tableName + "Action" + ac->action->externalName();
+        auto fields = new IR::IndexedVector<IR::StructField>();
+        BUG_CHECK(mce->arguments->size() == 0, "%1%: expected no arguments", mce);
+        for (auto p : ac->action->parameters->parameters) {
+            auto field = new IR::StructField(p->srcInfo, p->name, p->type);
+            fields->push_back(field);
+        }
+        auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(makeId(alternative)), *fields);
+        alternatives->push_back(st);
+        return false;
+    }
+
+    void postorder(const IR::P4Table* table) override {
+        cstring typeName = tableName + "Action";
+        // Union type representing all possible actions
+        auto type = new IR::DDlogTypeAlt(*alternatives);
+        auto td = new IR::DDlogTypedef(table->srcInfo, typeName, type);
+        declarations->push_back(td);
+
+        auto key = table->getKey();
+        CHECK_NULL(key);
+        // Parameters of the corresponding P4Runtime relation
+        auto params = new IR::IndexedVector<IR::Parameter>();
+        // Arguments of a tuple expression
+        auto args = new IR::Vector<IR::DDlogExpression>();
+        for (auto ke : key->keyElements) {
+            auto type = typeMap->getType(ke->expression, true);
+            auto match = ke->matchType;
+            if (match->path->name.name == "optional") {
+                type = new IR::DDlogTypeOption(type);
+            }
+
+            auto name = ke->annotations->getSingle(IR::Annotation::nameAnnotation)->getSingleString();
+            auto param = new IR::Parameter(ke->srcInfo, name, IR::Direction::None, type);
+            params->push_back(param);
+
+            auto varName = new IR::DDlogVarName(name);
+            args->push_back(varName);
+        }
+        params->push_back(new IR::Parameter("priority", IR::Direction::None, IR::Type_Bits::get(32)));
+        params->push_back(new IR::Parameter("action", IR::Direction::None, new IR::Type_Name(typeName)));
+        auto rel = new IR::DDlogRelation(table->srcInfo, IR::ID(tableName), IR::Direction::In, *params);
+        declarations->push_back(rel);
+
+        args->push_back(new IR::DDlogVarName("priority"));
+        args->push_back(new IR::DDlogVarName("action"));
+        cstring flowRule = "table=";
+        size_t id = resources.getTableId(table);
+        flowRule += Util::toString(id);
+        flowRule += " priority=${priority}";
+        auto str = new IR::DDlogStringLiteral(flowRule);
+        auto flowTerm = new IR::DDlogAtom(table->srcInfo, "Flow",
+                                          new IR::DDlogTupleExpression({str}));
+        auto rhs = new IR::Vector<IR::DDlogTerm>();
+        auto relationTerm = new IR::DDlogAtom(table->srcInfo, IR::ID(tableName),
+                                              new IR::DDlogTupleExpression(*args));
+        rhs->push_back(relationTerm);
+        auto rule = new IR::DDlogRule(flowTerm, *rhs);
+        declarations->push_back(rule);
+        tableName = "";
+    }
+
+    void end_apply() {
+        program = new IR::DDlogProgram(declarations);
+    }
+};
 
 class ResourceAllocator : public Inspector {
     OFResources& resources;
@@ -141,7 +247,7 @@ class P4OFProgram {
                     "%1%: expected a struct type, not %2%", userMetadataType, umt);
     }
 
-    DDlogProgram* convert() {
+    IR::DDlogProgram* convert() {
         for (auto sf : userMetadataType->fields) {
             resources.allocateRegister(sf);
         }
@@ -149,7 +255,10 @@ class P4OFProgram {
         ResourceAllocator allocator(resources);
         ingress->apply(allocator);
         egress->apply(allocator);
-        return nullptr;
+
+        DLCodeGenerator gen(resources, refMap, typeMap);
+        program->apply(gen);
+        return gen.getProgram();
     }
 };
 
@@ -173,7 +282,13 @@ void BackEnd::run(P4OFOptions& options, const IR::P4Program* program) {
     auto ddlogProgram = ofp.convert();
     if (!ddlogProgram)
         return;
-    ddlogProgram->emit(options.outputFile);
+
+    if (options.outputFile.isNullOrEmpty())
+        return;
+    auto dlStream = openFile(options.outputFile, false);
+    if (dlStream == nullptr)
+        return;
+    ddlogProgram->emit(*dlStream);
 }
 
 }  // namespace P4OF
