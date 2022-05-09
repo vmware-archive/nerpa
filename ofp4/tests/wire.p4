@@ -27,9 +27,10 @@ SOFTWARE.
 #include <of_model.p4>
 
 struct metadata_t {
-    bit<32> b;
-    bit<8>  c;
-    bit<8>  d;
+    bit<32>  b;
+    bit<8>   c;
+    bit<60>  d;
+    bit<120> e;
 }
 
 control WireIngress(inout Headers hdr,
