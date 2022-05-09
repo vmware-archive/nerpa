@@ -10,6 +10,11 @@ set (P4C_OF_SOURCES
   p4c-of.cpp
 )
 
+# IR sources
+set (OF_IR_SRCS
+  ddlog.cpp
+)
+
 # header files
 set (P4C_OF_HEADERS
   backend.h
@@ -20,8 +25,19 @@ set (P4C_OF_HEADERS
 
 set (OF_DIST_HEADERS p4include/of_model.p4)
 
+# These IR sources need to go into the frontend library because
+# they need to be linked to all executables generated.  All IR classes
+# need to be present in all frontends.
+set(OF_FRONTEND_FILES)
+foreach(src IN LISTS OF_IR_SRCS)
+    set(OF_FRONTEND_FILES ${OF_FRONTEND_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/${src})
+endforeach()
+set(EXTENSION_FRONTEND_SOURCES ${EXTENSION_FRONTEND_SOURCES} ${OF_FRONTEND_FILES} PARENT_SCOPE)
+
+# Files with additional IR classes
+set (IR_DEF_FILES ${IR_DEF_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/ddlog.def PARENT_SCOPE)
 # Files to check using cpplint
-add_cpplint_files(${CMAKE_CURRENT_SOURCE_DIR} "${P4C_OF_SOURCES};${P4C_OF_HEADERS}")
+add_cpplint_files(${CMAKE_CURRENT_SOURCE_DIR} "${P4C_OF_SOURCES};${P4C_OF_HEADERS};${OF_IR_SRCS}")
 
 build_unified(P4C_OF_SOURCES)
 
@@ -43,6 +59,7 @@ add_custom_target(linkp4cof
 set (OF_XFAIL_TESTS
 )
 
+add_dependencies(p4c-of genIR frontend)
 add_dependencies(p4c_driver linkp4cof)
 
 # Program used to run tests

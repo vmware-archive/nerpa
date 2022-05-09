@@ -1,0 +1,119 @@
+/* -*-C++-*- */
+/** \addtogroup irdefs
+  * @{
+  */
+/*
+   Internal representation of a DDlog programs
+   The toString() method is used to serialize a DDlog program to text.
+*/
+
+interface IDDlogNode{}
+
+class DDlogTypedef : Type_Declaration, IDDlogNode {
+    Type type;
+    const Type* getP4Type() const override { return this; }
+    toString{ return cstring("typedef ") + name.toString() + " = " + type->toString(); }
+#nodbprint
+}
+
+/// A union type
+class DDlogTypeAlt : Type, IDDlogNode {
+    inline Vector<Type>   alternatives;
+    cstring toString() const override;
+    const Type* getP4Type() const override { return this; }
+#nodbprint
+}
+
+class DDlogTypeStruct : Type_StructLike, IDDlogNode {
+    cstring toString() const override;
+#nodbprint
+}
+
+/// Option<T>
+class DDlogTypeOption : Type, IDDlogNode {
+    Type type;
+    toString{ return cstring("Option<") + type->toString() + ">"; }
+    const Type* getP4Type() const override { return this; }  // not used
+#nodbprint
+}
+
+/// Relation declaration.
+class DDlogRelation : Declaration, IDDlogNode {
+    Direction direction;
+    inline IndexedVector<Parameter> parameters;
+    cstring toString() const override;
+#nodbprint
+}
+
+/// Expressions
+abstract DDlogExpression : IDDlogNode {}
+
+class DDlogStringLiteral : DDlogExpression {
+    cstring contents;
+    toString{ return cstring("\"") + contents.escapeJson() + "\""; }
+#nodbprint
+}
+
+class DDlogSetExpression : DDlogExpression {
+    cstring variable;
+    DDlogExpression rhs;
+    toString{ return variable + " = " + rhs->toString(); }
+#nodbprint
+}
+
+class DDlogMatchCase : IDDlogNode {
+    DDlogExpression label;
+    DDlogExpression result;
+    toString{ return label->toString() + " -> " + result->toString(); }
+#nodbprint
+}
+
+class DDlogMatchExpression : DDlogExpression {
+    DDlogExpression matched;
+    inline Vector<DDlogMatchCase> cases;
+    cstring toString() const override;
+#nodbprint
+}
+
+class DDlogVarName : DDlogExpression {
+    ID id;
+    toString{ return id; }
+#nodbprint
+}
+
+class DDlogTupleExpression : DDlogExpression {
+    inline Vector<DDlogExpression> components;
+    cstring toString() const override;
+#nodbprint
+}
+
+/// Terms in a rule
+abstract DDlogTerm : IDDlogNode {}
+
+class DDlogAtom : DDlogTerm {
+    IR::ID relation;
+    DDlogExpression expression;
+    cstring toString() const override;
+#nodbprint
+}
+
+class DDlogExpressionTerm : DDlogTerm {
+    DDlogExpression expression;
+    toString{ return expression->toString(); }
+#nodbprint
+}
+
+class DDlogRule : IDDlogNode {
+    DDlogTerm lhs;
+    inline Vector<DDlogTerm> rhs;
+    cstring toString() const override;
+#nodbprint
+}
+
+class DDlogProgram : IDDlogNode {
+    Vector<Node> declarations;
+    void emit(std::ostream &o) const;
+#nodbprint
+}
+
+/** @} *//* end group irdefs */
