@@ -15,6 +15,7 @@ set (P4C_OF_HEADERS
   backend.h
   midend.h
   options.h
+  resources.h
 )
 
 set (OF_DIST_HEADERS p4include/of_model.p4)

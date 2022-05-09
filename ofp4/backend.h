@@ -27,18 +27,14 @@ limitations under the License.
 
 namespace P4OF {
 
-/// Class representing a DDlog program.
-class DDlogProgram {
+/// P4 compiler backend for OpenFlow targets.
+class BackEnd {
+    P4::ReferenceMap* refMap;
+    P4::TypeMap*      typeMap;
  public:
-    DDlogProgram() = default;
-
-    void emit(cstring file);
-};
-
-class BackEnd : public PassManager {
- public:
-    DDlogProgram* program;
-    BackEnd(P4OFOptions& options, P4::ReferenceMap* refMap, P4::TypeMap* typeMap);
+    BackEnd(P4::ReferenceMap* refMap, P4::TypeMap* typeMap):
+            refMap(refMap), typeMap(typeMap) {}
+    void run(P4OFOptions& options, const IR::P4Program* program);
 };
 
 }  // namespace P4OF
