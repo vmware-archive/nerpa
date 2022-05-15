@@ -17,49 +17,28 @@ limitations under the License.
 #ifndef _EXTENSIONS_OFP4_RESOURCES_H_
 #define _EXTENSIONS_OFP4_RESOURCES_H_
 
+#include "ir/ir.h"
 #include "frontends/p4/typeMap.h"
 
 /// Model resources of open-flow.
 
 namespace P4OF {
 
-/// This class represents a subrange of an OF register
-struct OFRegister {
-    static const size_t maxRegister = 16;  // maximum register number
-    static const size_t registerSize = 32;  // size of a register in bits
-    static const size_t maxBundleSize = 4;  // xxreg0 has 4 registers, i.e. 128 bits
-
-    size_t number;  // Register number
-    size_t low;     // Low bit number
-    size_t high;    // High bit number
-    size_t bundle;  // How many registers bundled together (1, 2, or 4 allowed)
-
-    cstring toString() const {
-        cstring result = "";
-        size_t n = number;
-        for (size_t i = bundle; i > 1; i >>= 1) {
-            result += "x";
-            n /= 2;
-        }
-        result += "reg" + Util::toString(n);
-        if (high != registerSize * bundle)
-            result += "[" + Util::toString(low) + ".." + Util::toString(high) + "]";
-        return result;
-    }
-};
-
 /// This class reprents the OF resources used by a P4 program
 class OFResources {
     P4::TypeMap* typeMap;
-    std::map<const IR::IDeclaration*, OFRegister*> map;
-    std::map<const IR::P4Table*, size_t> tableId;
+    std::map<const IR::IDeclaration*, const IR::OF_Register*> map;
     size_t       currentRegister = 0;  // current free register
 
  public:
     explicit OFResources(P4::TypeMap* typeMap): typeMap(typeMap)
     { CHECK_NULL(typeMap); }
 
-    OFRegister* allocateRegister(const IR::IDeclaration* decl) {
+    static cstring makeId(cstring name) {
+        return name.replace(".", "_");
+    }
+
+    const IR::OF_Register* allocateRegister(const IR::IDeclaration* decl) {
         // TODO: this wastes a lot of space in the holes; it just
         // allocates from the next aligned register
         auto node = decl->getNode();
@@ -69,42 +48,32 @@ class OFResources {
         if (width != min_width)
             ::error(ErrorType::ERR_INVALID, "%1%: Unsupported type %2%", decl, type);
 
-        if (width > OFRegister::registerSize * OFRegister::maxBundleSize) {
+        if (width > IR::OF_Register::registerSize * IR::OF_Register::maxBundleSize) {
             ::error(ErrorType::ERR_OVERLIMIT, "%1%: Cannot allocate objects with %2% bits",
                     decl, width);
             return nullptr;
         }
         size_t bundle = 1;
-        while (width > bundle * OFRegister::registerSize) {
+        while (width > bundle * IR::OF_Register::registerSize) {
             bundle *= 2;
         }
         // align
         currentRegister = ((currentRegister + (bundle - 1)) / bundle) * bundle;
-        if (currentRegister + bundle >= OFRegister::maxRegister) {
+        if (currentRegister + bundle >= IR::OF_Register::maxRegister) {
             ::error(ErrorType::ERR_OVERLIMIT, "Exhausted register space");
             return nullptr;
         }
-        auto result = new OFRegister;
-        result->number = currentRegister;
+        auto result = new IR::OF_Register(currentRegister, 0, width, bundle,
+                                          makeId(decl->externalName()));
         currentRegister += bundle;
-        result->low = 0;
-        result->high = width;
-        result->bundle = bundle;
         map.emplace(decl, result);
         LOG3("Allocated " << result->toString() << " for " << decl);
         return result;
     }
 
-    size_t allocateTable(const IR::P4Table* table) {
-        size_t id = tableId.size();
-        tableId.emplace(table, id);
-        return id;
-    }
-
-    size_t getTableId(const IR::P4Table* table) const {
-        auto it = tableId.find(table);
-        BUG_CHECK(it != tableId.end(), "%1%: could not find id for table", table);
-        return it->second;
+    const IR::OF_Register* getRegister(const IR::IDeclaration* decl) const {
+        auto result = ::get(map, decl);
+        return result;
     }
 };
 
