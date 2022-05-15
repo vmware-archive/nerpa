@@ -111,7 +111,7 @@ struct Conntrack {
 }
 
 /* Metadata fields.  These are always present for every packet. */
-struct standard_metadata_t {
+struct input_metadata_t {
     /* OVS metadata fields. */
     PortID in_port;             /* Ingress port. */
     bit<32> skb_priority;       /* Linux packet scheduling class. */
@@ -119,40 +119,26 @@ struct standard_metadata_t {
     bit<32> packet_type;        /* OpenFlow packet type.  0 for Ethernet. */
     Tunnel tunnel;
     Conntrack ct;
+}
 
-    /* P4 metadata fields.
-     *
-     * The ingress pipeline should assign values to these fields, which are
-     * initially zero.  The treatment of a packet after it exits the ingress
-     * pipeline depends on their values:
-     *
+// Metadata passed from ingress to the architecture.
+struct ingress_to_arch_t {
+    /*
      * - If 'out_group' is nonzero, the packet is replicated and passed to the
      *   egress pipeline once for each member of the multicast group (as set
      *   through P4Runtime).
-     *
-     * - If 'out_group' is zero and 'out_port' is nonzero, the packet is passed
-     *   to the egress pipeline for that port.
-     *
-     * - If 'out_group' and 'out_port' are zero, the packet is dropped.
-     *
-     * In the egress pipeline, 'out_port' is the port to which the packet will
-     * be delivered.  The egress pipeline may change it, which changes the
-     * output port, or may set it to zero, which will drop it.  'out_group' is
-     * preserved from the ingress pipeline but its value isn't used after the
-     * pipeline runs.
-     *
-     * (Port 0 is never a valid port number in OVS.)
      */
-    bit<16> out_group;
-    PortID out_port;
+    bit<16> out_group;  // 0 by default
+    bool clone;   // false by default
 }
 
-/*
- * Sets 'std.out_group' and 'std.out_port' to zero, which causes the packet to
- * be dropped when the packet reaches the end of the ingress pipeline.
- */
-@pure
-extern void mark_to_drop(inout standard_metadata_t std);
+struct output_metadata_t {
+    /* P4 metadata fields used for both the ingress and the egress pipeline.
+     * - If 'out_port' is zero, the packet is dropped.
+     * (Port 0 is never a valid port number in OVS.)
+     */
+    PortID out_port;
+}
 
 header Ethernet {
     bit<48> src;
@@ -280,14 +266,18 @@ struct Headers {
     NdTll ndtll;
 }
 
-@pipeline
 control Ingress<M>(inout Headers hdr,
-                   inout M meta,
-                   inout standard_metadata_t standard_metadata);
-@pipeline
+                   out M meta,
+                   in input_metadata_t meta_in,
+                   inout ingress_to_arch_t itoa,  // for architecture
+                   inout output_metadata_t meta_out  // sent to egress
+);
+
 control Egress<M>(inout Headers hdr,
-                  inout M meta,
-                  inout standard_metadata_t standard_metadata);
+                  in M meta,
+                  in input_metadata_t meta_in,
+                  inout output_metadata_t meta_out
+);
 
 package OfSwitch<M>(Ingress<M> ig, Egress<M> eg);
 
