@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "ir/ir.h"
 
+// Implementation of methods for the DDlog* IR classes
+
 namespace IR {
 
 void DDlogProgram::emit(std::ostream &o) const {
@@ -69,19 +71,17 @@ cstring DDlogRelation::toString() const {
 
 cstring DDlogTypeStruct::toString() const {
     cstring result = externalName();
-    if (fields.size()) {
-        result += "{";
-        bool first = true;
-        for (auto f : fields) {
-            if (!first)
-                result += ", ";
-            first = false;
-            result += f->name.toString();
-            result += ": ";
-            result += f->type->toString();
-        }
-        result += "}";
+    result += "{";
+    bool first = true;
+    for (auto f : fields) {
+        if (!first)
+            result += ", ";
+        first = false;
+        result += f->name.toString();
+        result += ": ";
+        result += f->type->toString();
     }
+    result += "}";
     return result;
 }
 
@@ -92,28 +92,50 @@ cstring DDlogAtom::toString() const {
 }
 
 cstring DDlogRule::toString() const {
-    cstring result = lhs->toString() + " :- ";
-    bool first = true;
-    for (auto term : rhs) {
-        if (!first)
-            result += ",\n   ";
-        first = false;
-        result += term->toString();
+    cstring result = "";
+    if (!comment.isNullOrEmpty())
+        result = cstring("// ") + comment + "\n";
+    result += lhs->toString();
+    if (rhs.size()) {
+        result += " :- ";
+        bool first = true;
+        for (auto term : rhs) {
+            if (!first)
+                result += ",\n   ";
+            first = false;
+            result += term->toString();
+        }
     }
     result += ".\n";
     return result;
 }
 
+cstring DDlogFunction::toString() const {
+    cstring result = cstring("function ") + name.name;
+    result += "(";
+    bool first = true;
+    for (auto p : parameters->parameters) {
+        if (!first)
+            result += ", ";
+        first = false;
+        result += p->toString();
+    }
+    result += "): ";
+    result += returnType->toString() + " = ";
+    result += body->toString();
+    return result;
+}
+
 cstring DDlogMatchExpression::toString() const {
-    cstring result = "match(" + matched->toString() + ") {";
+    cstring result = "match(" + matched->toString() + ") {\n";
     bool first = true;
     for (auto c : cases) {
         if (!first)
-            result += ",\n    ";
+            result += ",\n";
         first = false;
-        result += c->toString();
+        result += "    " + c->toString();
     }
-    result += "}\n";
+    result += "\n}";
     return result;
 }
 
@@ -127,6 +149,33 @@ cstring DDlogTupleExpression::toString() const {
         result += c->toString();
     }
     result += ")";
+    return result;
+}
+
+cstring DDlogApply::toString() const {
+    cstring result = left->toString();
+    result += "." + function + "(";
+    bool first = true;
+    for (auto c : arguments) {
+        if (!first)
+            result += ", ";
+        first = false;
+        result += c->toString();
+    }
+    result += ")";
+    return result;
+}
+
+cstring DDlogConstructorExpression::toString() const {
+    cstring result = constructor + "{";
+    bool first = true;
+    for (auto c : arguments) {
+        if (!first)
+            result += ", ";
+        first = false;
+        result += c;
+    }
+    result += "}";
     return result;
 }
 

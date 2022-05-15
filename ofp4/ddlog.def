@@ -9,6 +9,12 @@
 
 interface IDDlogNode{}
 
+class DDlogTypeString : Type, IDDlogNode {
+    toString{ return cstring("string"); }
+    const Type* getP4Type() const override { return this; }
+#nodbprint
+}
+
 class DDlogTypedef : Type_Declaration, IDDlogNode {
     Type type;
     const Type* getP4Type() const override { return this; }
@@ -37,6 +43,14 @@ class DDlogTypeOption : Type, IDDlogNode {
 #nodbprint
 }
 
+class DDlogFunction : Declaration, IDDlogNode {
+    Type returnType;
+    ParameterList parameters;
+    DDlogExpression body;
+    cstring toString() const override;
+#nodbprint
+}
+
 /// Relation declaration.
 class DDlogRelation : Declaration, IDDlogNode {
     Direction direction;
@@ -57,7 +71,7 @@ class DDlogStringLiteral : DDlogExpression {
 class DDlogSetExpression : DDlogExpression {
     cstring variable;
     DDlogExpression rhs;
-    toString{ return variable + " = " + rhs->toString(); }
+    toString{ return cstring("var ") + variable + " = " + rhs->toString(); }
 #nodbprint
 }
 
@@ -87,6 +101,22 @@ class DDlogTupleExpression : DDlogExpression {
 #nodbprint
 }
 
+// left.function(arguments)
+class DDlogApply : DDlogExpression {
+    cstring function;
+    DDlogExpression left;
+    inline Vector<DDlogExpression> arguments;
+    cstring toString() const override;
+#nodbprint
+}
+
+class DDlogConstructorExpression : DDlogExpression {
+    cstring constructor;
+    std::vector<cstring> arguments;
+    cstring toString() const override;
+#nodbprint
+}
+
 /// Terms in a rule
 abstract DDlogTerm : IDDlogNode {}
 
@@ -106,6 +136,7 @@ class DDlogExpressionTerm : DDlogTerm {
 class DDlogRule : IDDlogNode {
     DDlogTerm lhs;
     inline Vector<DDlogTerm> rhs;
+    optional cstring comment;
     cstring toString() const override;
 #nodbprint
 }
