@@ -1,0 +1,160 @@
+/* -*-C++-*- */
+/** \addtogroup irdefs
+  * @{
+  */
+/*
+   Internal representation of an Open Flow program (fragment).
+   The toString() method is used to serialize an OF program to text.
+*/
+
+interface IOF_Node {}
+
+abstract OF_Match : IOF_Node {}
+
+abstract OF_Action : IOF_Node {}
+
+class OF_TableMatch : OF_Match {
+    size_t id;
+    cstring toString() const override;
+#nodbprint
+}
+
+abstract OF_Expression : IOF_Node {}
+
+class OF_Constant : OF_Expression {
+    Constant value;
+    OF_Constant(int v) { value = new Constant(v); }
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_Register : OF_Expression {
+    static const size_t maxRegister;  // maximum register number
+    static const size_t registerSize;  // size of a register in bits
+    static const size_t maxBundleSize;  // xxreg0 has 4 registers, i.e. 128 bits
+
+    size_t number;  // Register number
+    size_t low;     // Low bit number
+    size_t high;    // High bit number
+    size_t bundle;  // How many registers bundled together (1, 2, or 4 allowed)
+    optional cstring friendlyName;
+    cstring toString() const;
+    cstring canonicalName() const;
+#nodbprint
+}
+
+/// Build an expression from a DDlog interpolated variable
+class OF_InterpolatedVarExpression : OF_Expression {
+    cstring varname;
+    toString { return "${" + varname + "}"; }
+#nodbprint
+}
+
+class OF_Fieldname : OF_Expression {
+    cstring field;
+    toString{ return field; }
+#nodbprint
+}
+
+class OF_Slice : OF_Expression {
+    OF_Expression base;
+    size_t high;
+    size_t low;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_EqualsMatch : OF_Match {
+    OF_Expression left;
+    OF_Expression right;
+    cstring toString() const override;
+#nodbprint
+}
+
+// E.g., "tcp"
+class OF_ProtocolMatch : OF_Match {
+    cstring proto;
+    cstring toString() const override;
+#nodbprint
+}
+
+/// A sequence of two matches
+class OF_SeqMatch : OF_Match {
+    OF_Match left;
+    OF_Match right;
+    toString{ return left->toString() + " " + right->toString(); }
+#nodbprint
+}
+
+class OF_EmptyAction : OF_Action {
+    toString{ return ""; }
+#nodbprint
+}
+
+class OF_ExplicitAction : OF_Action {
+    cstring action;
+    toString{ return action; }
+#nodbprint
+}
+
+/// Match followed by an action.
+class OF_MatchAndAction : IOF_Node {
+    OF_Match match;
+    OF_Action action;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_MoveAction : OF_Action {
+    OF_Expression src;
+    OF_Expression dest;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_LoadAction : OF_Action {
+    OF_Expression src;
+    OF_Expression dest;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_ResubmitAction : OF_Action {
+    size_t nextTable;
+    cstring toString() const override;
+#nodbprint
+}
+
+/// Build an action from a DDlog interpolated variable
+class OF_InterpolatedVariableAction : OF_Action {
+    cstring varname;
+    toString { return "${" + varname + "}"; }
+#nodbprint
+}
+
+/// A sequence of two actions
+class OF_SeqAction : OF_Action {
+    OF_Action left;
+    OF_Action right;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_DropAction : OF_Action {
+    toString{ return "drop"; }
+#nodbprint
+}
+
+class OF_CloneAction : OF_Action {
+    OF_Action action;
+    toString{ return "clone(" + action->toString() + ")"; }
+#nodbprint
+}
+
+class OF_OutputAction : OF_Action {
+    OF_Expression dest;
+    toString{ return "output(" + dest->toString() + ")"; }
+#nodbprint
+}
+
+/** @} *//* end group irdefs */
