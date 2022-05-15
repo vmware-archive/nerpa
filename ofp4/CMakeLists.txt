@@ -6,6 +6,7 @@ message(STATUS "Start configuring OFP4 back end")
 # Source files
 set (P4C_OF_SOURCES
   backend.cpp
+  controlFlowGraph.cpp
   midend.cpp
   p4c-of.cpp
 )
@@ -13,12 +14,15 @@ set (P4C_OF_SOURCES
 # IR sources
 set (OF_IR_SRCS
   ddlog.cpp
+  of.cpp
 )
 
 # header files
 set (P4C_OF_HEADERS
   backend.h
+  controlFlowGraph.h
   midend.h
+  ofopt.h
   options.h
   resources.h
 )
@@ -35,7 +39,9 @@ endforeach()
 set(EXTENSION_FRONTEND_SOURCES ${EXTENSION_FRONTEND_SOURCES} ${OF_FRONTEND_FILES} PARENT_SCOPE)
 
 # Files with additional IR classes
-set (IR_DEF_FILES ${IR_DEF_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/ddlog.def PARENT_SCOPE)
+set (IR_DEF_FILES ${IR_DEF_FILES}
+     ${CMAKE_CURRENT_SOURCE_DIR}/ddlog.def
+     ${CMAKE_CURRENT_SOURCE_DIR}/of.def PARENT_SCOPE)
 # Files to check using cpplint
 add_cpplint_files(${CMAKE_CURRENT_SOURCE_DIR} "${P4C_OF_SOURCES};${P4C_OF_HEADERS};${OF_IR_SRCS}")
 

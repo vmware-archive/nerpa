@@ -24,6 +24,8 @@ limitations under the License.
 #include "frontends/common/resolveReferences/referenceMap.h"
 #include "frontends/p4/typeMap.h"
 #include "options.h"
+#include "resources.h"
+#include "controlFlowGraph.h"
 
 namespace P4OF {
 
@@ -35,6 +37,55 @@ class BackEnd {
     BackEnd(P4::ReferenceMap* refMap, P4::TypeMap* typeMap):
             refMap(refMap), typeMap(typeMap) {}
     void run(P4OFOptions& options, const IR::P4Program* program);
+};
+
+/// Summary of the structure of a P4 program written for the of_model.p4 target
+class P4OFProgram {
+ public:
+    const IR::P4Program* program = nullptr;
+    const IR::ToplevelBlock* top = nullptr;
+    P4::ReferenceMap*    refMap = nullptr;
+    P4::TypeMap*         typeMap = nullptr;
+    const IR::P4Control* ingress = nullptr;
+    const IR::P4Control* egress = nullptr;
+
+    // These correspond directly to parameters of the Ingress block
+    const IR::Parameter* ingress_hdr = nullptr;
+    const IR::Parameter* ingress_meta = nullptr;
+    const IR::Parameter* ingress_meta_in = nullptr;
+    const IR::Parameter* ingress_itoa = nullptr;
+    const IR::Parameter* ingress_meta_out = nullptr;
+
+    // These correspond directly to parameters of the Egress block
+    const IR::Parameter* egress_hdr = nullptr;
+    const IR::Parameter* egress_meta = nullptr;
+    const IR::Parameter* egress_meta_in = nullptr;
+    const IR::Parameter* egress_meta_out = nullptr;
+
+    // These correspond directly to the types of the parameters of the ingress/egress blocks
+    const IR::Type_Struct* Headers = nullptr;  // type of ingress_hdr and egress_hdr
+    const IR::Type_Struct* input_metadata_t = nullptr;  // type of ingress_meta_in, egress_meta_in
+    const IR::Type_Struct* M = nullptr;  // type of ingress_meta and egress_meta
+    const IR::Type_Struct* ingress_to_arch_t = nullptr;  // type of ingress_itoa
+    const IR::Type_Struct* output_metadata_t = nullptr;  // type of ingress_meta_out,egress_meta_out
+
+    size_t startIngressId;  // CFG node id of the entry point to ingress
+    size_t ingressExitId;   // CFG node id of the ingress exit point
+    size_t multicastId;     // CFG node id of the built-in multicast stage
+    size_t egressStartId;   // CFG node id of the entry point to egress
+    size_t egressExitId;    // CFG node id of the exit point of egress
+    OFResources resources;
+    const IR::OF_Register* outputPortRegister = nullptr;
+    const IR::OF_Register* multicastRegister = nullptr;
+
+    CFG ingress_cfg;
+    CFG egress_cfg;
+
+    P4OFProgram(const IR::P4Program* program, const IR::ToplevelBlock* top,
+                P4::ReferenceMap* refMap, P4::TypeMap* typeMap);
+    void build();
+    void addFixedRules(IR::Vector<IR::Node> *declarations);
+    IR::DDlogProgram* convert();
 };
 
 }  // namespace P4OF
