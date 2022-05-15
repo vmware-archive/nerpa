@@ -95,41 +95,4 @@ cstring OF_SeqAction::toString() const {
     return left->toString() + ", " + right->toString();
 }
 
-class OpenFlowSimplify : public Transform {
-    bool foundResubmit = false;
-
- public:
-    OpenFlowSimplify() { setName("OpenFlowSimplify"); }
-
-    const IR::Node* postorder(IR::OF_Slice* slice) override {
-        if (auto br = slice->base->to<IR::OF_Register>()) {
-            // convert the slice of a register into a register
-            return new IR::OF_Register(
-                br->number, br->low + slice->low, br->low + slice->high, br->bundle);
-        }
-        return slice;
-    }
-
-    const IR::Node* postorder(IR::OF_Action* action) override {
-        if (foundResubmit)
-            return new IR::OF_EmptyAction();
-        return action;
-    }
-
-    const IR::Node* postorder(IR::OF_SeqAction* sequence) override {
-        if (sequence->left->is<IR::OF_EmptyAction>())
-            return sequence->right;
-        if (sequence->right->is<IR::OF_EmptyAction>())
-            return sequence->left;
-        return sequence;
-    }
-
-    const IR::Node* postorder(IR::OF_ResubmitAction* action) override {
-        if (foundResubmit)
-            return new IR::OF_EmptyAction();
-        foundResubmit = true;
-        return action;
-    }
-};
-
 }   // namespace IR
