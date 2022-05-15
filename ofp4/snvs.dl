@@ -98,7 +98,7 @@ function drop(): istring = i"load(0->${r_egress_spec()}), resubmit(,31)"
 /*
  * SnvsIngress
  */
- 
+
 Flow("table=0 priority=100 in_port=${port} actions=${drop()}") :-
     MirrorDstDrop(port).
 Flow("table=0 priority=0 actions=resubmit(,1)").
@@ -120,7 +120,7 @@ Flow("table=2 priority=100 in_port=${port} vlan_tci=${vlan_match} actions=${acti
         InputVlanActionUseTaggedVlan -> "move(vlan_tci[0..11]->${r_vlan()}), resubmit(,3)"
     }.
 Flow("table=2 priority=0 actions=${drop()}").
-  
+
 Flow("table=3 priority=100 priority=${priority} ${port_match}actions=clone(load(1->${r_instance_type()}), resubmit(,31)), resubmit(,4)") :-
     MirrorSelectProduct(port, vlan, priority),
     var port_match = match (port) {
