@@ -25,7 +25,11 @@ extern crate protobuf;
 
 use clap::{App, Arg};
 use grpcio::{ChannelBuilder, EnvBuilder};
-use nerpa_controller::{Controller, SwitchClient};
+use nerpa_controller::{
+    Controller,
+    SwitchClient,
+    SwitchClientConfig,
+};
 use proto::p4runtime_grpc::P4RuntimeClient;
 use std::sync::Arc;
 use std::fs::File;
@@ -83,16 +87,32 @@ pub async fn main() {
         }
     );
 
+    let configs = get_switch_client_configs();
+
     // Run controller.
     let file_dir = String::from(file_dir_opt.unwrap());
     let file_name = String::from(file_name_opt.unwrap());
-    run_controller(file_dir, file_name, &mut record_file).await
+    run_controller(file_dir, file_name, &mut record_file, configs).await
+}
+
+/// Get switch client configurations.
+// TODO: Retrieve these configurations from OVSDB.
+fn get_switch_client_configs() -> Vec<SwitchClientConfig> {
+    vec![
+        SwitchClientConfig {
+            target: format!("localhost:50051"),
+            device_id: 0,
+            role_id: 0,
+            is_primary: true,
+        }
+    ]
 }
 
 async fn run_controller(
     file_dir: String,
     file_name: String,
     record_file: &mut Option<File>,
+    sc_configs: Vec<SwitchClientConfig>,
 ) {
     // Run the DDlog program. This computes initial contents to push across switches.
     let (mut hddlog, initial_contents) = run(1, false).unwrap();
@@ -104,24 +124,17 @@ async fn run_controller(
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
 
-    // Define the switch client-specific configurations.
-    // A configuration is of the form (target, device_id, role_id, is_primary).
-    let configs = [
-        ("localhost:50051", 0, 0, true)
-    ];
-
     let mut switch_clients = Vec::new();
 
-    for config in configs {
-        let (target_str, device_id, role_id, is_primary) = config;
+    for config in sc_configs {
         let env = Arc::new(EnvBuilder::new().build());
-        let ch = ChannelBuilder::new(env).connect(target_str);
+        let ch = ChannelBuilder::new(env).connect(config.target.as_str());
         let client = P4RuntimeClient::new(ch);
 
         // If primary, set the controller as primary using P4Runtime.
         // This enables use of the StreamChannel RPC.
-        if is_primary {
-            let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
+        if config.is_primary {
+            let mau_res = p4ext::master_arbitration_update(config.device_id, &client).await;
             if mau_res.is_err() {
                 panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
             }
@@ -135,9 +148,9 @@ async fn run_controller(
             opaque.clone(),
             cookie.clone(),
             action.clone(),
-            device_id,
-            role_id,
-            String::from(target_str),
+            config.device_id,
+            config.role_id,
+            config.target.clone(),
         ).await;
 
         sc.push_ddlog_outputs(&initial_contents).await.unwrap();

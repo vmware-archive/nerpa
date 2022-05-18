@@ -1209,3 +1209,30 @@ impl DataplaneResponseActor {
         }
     }
 }
+
+/// Configuration for the SwitchClient.
+pub struct SwitchClientConfig {
+    pub target: String,
+    pub device_id: u64,
+    pub role_id: u64,
+    pub is_primary: bool,
+}
+
+impl SwitchClientConfig {
+    /// Create new switch client configuration.
+    fn new(
+        target: String,
+        device_id: u64,
+        role_id: u64,
+        is_primary: bool,
+    ) -> Self {
+        SwitchClientConfig {
+            target,
+            device_id,
+            role_id,
+            is_primary,
+        }
+    }
+
+    // TODO: Convert DDlog output to SwitchClientConfig.
+}
