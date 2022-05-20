@@ -40,7 +40,7 @@ use differential_datalog::api::HDDlog;
 use differential_datalog::{
     DDlog,
     DDlogDynamic,
-    DeltaMap
+    DeltaMap,
 }; 
 use differential_datalog::ddval::DDValue;
 use differential_datalog::program::Update;
@@ -54,7 +54,14 @@ use differential_datalog::record::{
 use dp2ddlog::{digest_to_ddlog, packet_in_to_ddlog};
 
 use futures::{SinkExt, StreamExt};
-use grpcio::{ClientDuplexReceiver, StreamingCallSink};
+use grpcio::{
+    ChannelBuilder,
+    ClientDuplexReceiver,
+    EnvBuilder,
+    StreamingCallSink
+};
+
+use num::BigInt;
 
 use p4ext::{
     ActionRef,
@@ -77,7 +84,7 @@ use protobuf::Message;
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::OsStr,
     fmt,
     fs::File,
@@ -101,16 +108,20 @@ impl Controller {
     /// Passes `switch_clients` and `hddlog` to a `ControllerActor`, which allows interaction with a group of P4-enabled switches and DDlog program, respectively. Runs the actor asynchronously.
     ///
     /// # Arguments
-    /// * `switch_clients` - P4 Runtime clients with extra information.
+    /// * `common_client_state` - common state across the P4 Runtime switch clients, used in initialization.
     /// * `hddlog` - DDlog program.
     pub fn new(
-        switch_clients: Vec<SwitchClient>,
+        common_client_state: SwitchClientCommonState,
         hddlog: Arc<HDDlog>,
     ) -> Result<Controller, String> {
         let (sender, receiver) = mpsc::channel(1000);
         let program = ControllerProgram::new(hddlog);
 
-        let mut actor = ControllerActor::new(receiver, switch_clients, program);
+        let mut actor = ControllerActor::new(
+            receiver,
+            common_client_state,
+            program
+        );
         tokio::spawn(async move { actor.run().await });
 
         Ok(Self{sender})
@@ -231,6 +242,7 @@ pub struct SwitchClient {
     // This is used as a cache for metadata for P4 Runtime PacketOuts.
     packet_meta_field_to_id: HashMap<String, u32>,
     packet_sink: PacketSink,
+    client_id: BigInt,
 }
 
 impl SwitchClient {
@@ -254,6 +266,7 @@ impl SwitchClient {
         device_id: u64,
         role_id: u64,
         target: String,
+        client_id: BigInt,
     ) -> Self {
         p4ext::set_pipeline_config(
             &p4info,
@@ -335,6 +348,7 @@ impl SwitchClient {
             target,
             packet_meta_field_to_id,
             packet_sink,
+            client_id,
         }
     }
 
@@ -409,6 +423,32 @@ impl SwitchClient {
                 
                 match record {
                     Record::NamedStruct(output_name, output_records) => {
+                        // If one element in `output_records` is an Int named `client_id`,
+                        // then the entry converted from this output should be written to
+                        // a specific switch.
+                        // In this case, unless the switch's UUID doesn't match the value
+                        // of the `client_id` field, we would write the value to the switch.
+                        let mut write_to_switch = true;
+                        for output_record in &output_records {
+                            if let (output_record_name, Record::Int(client_id)) = output_record {
+                                let output_record_str = output_record_name.to_string();
+                                if output_record_str.as_str() != "client_id" {
+                                    continue;
+                                }
+
+                                if *client_id != self.client_id {
+                                    write_to_switch = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // This output record should not be written to the corresponding switch.
+                        // We `continue` and check the next record.
+                        if !write_to_switch {
+                            continue;
+                        }
+
                         // Check if the record corresponds to the multicast group.
                         // We assume that there a relevant DDlog relation's name includes "multicast".
                         // A DDlog relation that does not update multicast should not include "multicast" in its name.
@@ -427,7 +467,7 @@ impl SwitchClient {
                             let mut metadata_vec = Vec::new();
 
                             for output_record in output_records.iter() {
-                                // One output record must be a NamedStruct corresponding to the packet.
+                                // One output record might be a NamedStruct corresponding to the packet.
                                 // We convert its Array to a Vec<u8> and use it as the payload in a P4 Runtime PacketOut.
                                 if let (output_record_name, Record::Array(array_kind, array_records)) = output_record {
                                     if output_record_name
@@ -1004,6 +1044,8 @@ struct ControllerActor {
     receiver: mpsc::Receiver<ControllerActorMessage>,
     /// Clients for each P4-enabled switch.
     switch_clients: Vec<SwitchClient>,
+    /// Common state to configure the P4-enabled switches.
+    common_state: SwitchClientCommonState,
     /// Handle to the running DDlog program.
     program: ControllerProgram,
 }
@@ -1028,15 +1070,17 @@ impl ControllerActor {
     ///
     /// # Arguments
     /// * `receiver` - receives messages from the public controller handle.
-    /// * `switch_clients` - clients for each P4-enabled switch.
+    /// * `common_state` - common state to configure the P4-enabled switch clients.
     /// * `program` - handle for the DDlog program.
     fn new(
         receiver: mpsc::Receiver<ControllerActorMessage>,
-        switch_clients: Vec<SwitchClient>,
+        common_state: SwitchClientCommonState,
         program: ControllerProgram,
     ) -> Self {
+        let switch_clients = Vec::<SwitchClient>::new();
         ControllerActor {
             receiver,
+            common_state,
             switch_clients,
             program,
         }
@@ -1056,24 +1100,8 @@ impl ControllerActor {
     async fn handle_message(&mut self, msg: ControllerActorMessage) {        
         match msg {
             ControllerActorMessage::InputMessage {_respond_to, hddlog, server, database} => {
-                let (digest_tx, mut rx) = mpsc::channel::<Option<Update<DDValue>>>(1);
+                let (digest_tx, mut rx) = mpsc::channel::<Option<Vec<Update<DDValue>>>>(1);
                 let ovsdb_tx = mpsc::Sender::clone(&digest_tx);
-
-                // Start streaming messages from the dataplane.
-                // Set the configuration as a notification per-digest.
-                // TODO: Retry the configuration if it errors.
-                for sc in &mut self.switch_clients {
-                    let config_res = sc.configure_digests(0, 1, 1).await;
-                    if config_res.is_err() {
-                        error!("could not configure digests: {:#?}", config_res);
-                    }
-
-                    // Start the dataplane response actor for the client.
-                    let (sink, receiver) = sc.client.0.stream_channel().unwrap();
-                    let digest_actor_tx = mpsc::Sender::clone(&digest_tx);
-                    let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_actor_tx);
-                    tokio::spawn(async move { digest_actor.run().await });
-                }
 
                 // Start processing inputs from OVSDB.
                 let ctx = ovsdb_client::context::OvsdbContext::new(
@@ -1097,21 +1125,25 @@ impl ControllerActor {
                         continue;
                     }
 
-                    let ddlog_res = self.program.apply_updates(vec![inp_opt.unwrap()]);
+                    let inp_vec = inp_opt.unwrap();
+                    if inp_vec.is_empty() {
+                        continue;
+                    }
+
+                    // Process any new switch clients configured in the input.
+                    let client_tx = mpsc::Sender::clone(&digest_tx);
+                    let mut clients = self.ddlog_to_clients(inp_vec.clone(), client_tx).await;
+                    self.switch_clients.append(&mut clients);
+
+                    let ddlog_res = self.program.apply_updates(inp_vec);
                     if ddlog_res.is_err() {
                         error!("could not apply changes to ddlog input relation");
                     }
 
+                    // Push DDlog outputs to the switches.
                     let ddlog_output = &ddlog_res.unwrap();
-
-                    // We use the first switch client to construct the updates and packets
-                    // that we then send to the switch.
-                    // Assumes that all switches are running the same P4 program.
-                    let (updates, packets) = self.switch_clients[0]
-                        .ddlog_outputs_to_dataplane(ddlog_output.clone()).await;
-
                     for sc in &mut self.switch_clients {
-                        let p4_res = sc.push_dataplane_outputs(updates.clone(), packets.clone()).await;
+                        let p4_res = sc.push_ddlog_outputs(ddlog_output.clone()).await;
                         if p4_res.is_err() {
                             error!("could not push digest output relation to switch: {:#?}", p4_res.err());
                         }
@@ -1119,6 +1151,208 @@ impl ControllerActor {
                 };
             },
         }
+    }
+
+    async fn ddlog_to_clients(
+        &mut self,
+        updates: Vec<Update<DDValue>>,
+        client_tx: mpsc::Sender<Option<Vec<Update<DDValue>>>>,
+    ) -> Vec<SwitchClient> {
+        let mut clients = Vec::<SwitchClient>::new();
+
+        let mut configs = Vec::<SwitchClientConfig>::new();
+
+        // TODO: Parse the configs from the updates.
+        for upd in updates {
+            // Filter out updates whose names do not include "client".
+            if !format!("{:#?}", upd).to_lowercase().contains("client") {
+                continue;
+            }
+
+            // Extract the value and convert it to a Record.
+            let val_opt = upd.get_value();
+            if val_opt.is_none() {
+                continue;
+            }
+
+            let record = val_opt.unwrap().clone().into_record();
+
+            // Use the DDlog record to define a switch client config.
+            let mut config = SwitchClientConfig::default();
+
+            // Check if the record can be used to construct a valid config.
+            let mut valid_config = true;
+            match record {
+                Record::NamedStruct(_name, recs) => {
+                    // Check that the DDlog record fields for the client are as expected.
+                    let config_keys_vec = vec![
+                        String::from("_uuid"),
+                        String::from("target"),
+                        String::from("device_id"),
+                        String::from("role_id"),
+                        String::from("is_primary"),
+                    ];
+                    let num_config_keys = config_keys_vec.len();
+                    let config_keys: HashSet<String> = config_keys_vec.into_iter().collect();
+
+                    let mut record_keys_vec: Vec<String> = vec![];
+                    for (record_name, _) in recs.clone().iter() {
+                        record_keys_vec.push(record_name.to_string());
+                    }
+
+                    if record_keys_vec.len() != num_config_keys {
+                        debug!("client output record had incorrect number of fields");
+                        continue;
+                    }
+
+                    let record_keys: HashSet<String> = record_keys_vec.into_iter().collect();
+
+                    if config_keys != record_keys {
+                        debug!("client config record did not have expected fields");
+                        continue;
+                    }
+
+                    // Use the records to define the fields of a switch client configuration.
+                    for (rec_name, rec_record) in recs.iter() {
+                        let rec_key = rec_name.to_string();
+                        match rec_key.as_str() {
+                            "target" => {
+                                if let Record::String(target_record) = rec_record {
+                                    config.target = target_record.to_string();
+                                } else {
+                                    debug!("DDlog record for switch client had non-String value of target");
+                                    valid_config = false;
+                                    break;
+                                }
+                            },
+                            "device_id" => {
+                                if let Record::Int(device_record) = rec_record {
+                                    let device_opt = device_record.to_u64();
+                                    if device_opt.is_some() {
+                                        config.device_id = device_opt.unwrap();
+                                    } else {
+                                        debug!("DDlog record for switch client had None value of device_id");
+                                        valid_config = false;
+                                        break;
+                                    }
+                                } else {
+                                    debug!("DDlog record for switch client had non-Int value of device_id");
+                                    valid_config = false;
+                                    break;
+                                }
+                            },
+                            "role_id" => {
+                                if let Record::Int(role_record) = rec_record {
+                                    let role_opt = role_record.to_u64();
+                                    if role_opt.is_some() {
+                                        config.role_id = role_opt.unwrap();
+                                    } else {
+                                        debug!("DDlog record for switch client had None value of role_id");
+                                        valid_config = false;
+                                        break;
+                                    }
+                                } else {
+                                    debug!("DDlog record for switch client had non-Int value of role_id");
+                                    valid_config = false;
+                                    break;
+                                }
+                            },
+                            "is_primary" => {
+                                if let Record::Bool(ip_record) = rec_record {
+                                    config.is_primary = *ip_record;
+                                } else {
+                                    debug!("DDlog record for switch client had non-Bool value of is_primary");
+                                    valid_config = false;
+                                    break;
+                                }
+                            },
+                            "_uuid" => {
+                                if let Record::Int(uuid_record) = rec_record {
+                                    config.client_id = uuid_record.clone();
+                                } else {
+                                    debug!("DDlog record for switch clien had non-Int value of uuid");
+                                    valid_config = false;
+                                    break;
+                                }
+                            },
+                            _ => {
+                                debug!("invalid field in DDlog record for switch client: {:#?}", rec_key);
+                                valid_config = false;
+                                break;
+                            }
+                        }
+                    }
+                },
+                _ => continue,
+            }
+
+            // If we can form a valid switch config, construct and
+            // append it to a vector of configurations.
+            if !valid_config {
+                error!("record for switch client config was invalid");
+                continue;
+            }
+
+            configs.push(config);
+        }
+
+        // If no configurations were constructed from the updates,
+        // early-return an empty vector of clients.
+        if configs.is_empty() {
+            return clients;
+        }
+
+        // Create a SwitchClient for each config from the management plane.
+        for config in configs {
+            let env = Arc::new(EnvBuilder::new().build());
+            let ch = ChannelBuilder::new(env).connect(config.target.as_str());
+            let client = P4RuntimeClient::new(ch);
+
+            // Create a SwitchClient.
+            // Handles communication with the switch.
+            let mut sc = SwitchClient::new(
+                client,
+                self.common_state.p4info.clone(),
+                self.common_state.json.clone(),
+                self.common_state.cookie.clone(),
+                self.common_state.action.clone(),
+                config.device_id,
+                config.role_id,
+                config.target.clone(),
+                config.client_id,
+            ).await;
+
+            // If primary, set the controller as primary using P4Runtime.
+            // This enables use of the StreamChannel RPC.
+            if config.is_primary {
+                let mau_res = p4ext::master_arbitration_update(config.device_id, &sc.client.0).await;
+                if mau_res.is_err() {
+                    panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
+                }
+            }
+
+            // Start streaming messages from the dataplane.
+            // Set the configuration as a notification per-digest.
+            // TODO: Retry configuration if it errors.
+            let config_res = sc.configure_digests(0, 1, 1).await;
+            if config_res.is_err() {
+                error!("could not configure digests: {:#?}", config_res);
+            }
+
+            // Start the dataplane response for the client.
+            let (sink, receiver) = sc.client.0.stream_channel().unwrap();
+            let digest_actor_tx = mpsc::Sender::clone(&client_tx);
+            let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_actor_tx);
+            tokio::spawn(async move { digest_actor.run().await });
+
+            // Push initial contents to the switch.
+            sc.push_ddlog_outputs(&self.common_state.initial_contents).await.unwrap();
+
+            // Add the client to the vector for return.
+            clients.push(sc);
+        }
+
+        clients
     }
 }
 
@@ -1129,7 +1363,7 @@ struct DataplaneResponseActor {
     /// Receives messages from the data plane.
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
     /// Sends DDlog updates to the controller actor.
-    to_controller: mpsc::Sender<Option<Update<DDValue>>>
+    to_controller: mpsc::Sender<Option<Vec<Update<DDValue>>>>
 }
 
 impl DataplaneResponseActor {
@@ -1142,7 +1376,7 @@ impl DataplaneResponseActor {
     fn new(
         to_data_plane: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
-        to_controller: mpsc::Sender<Option<Update<DDValue>>>
+        to_controller: mpsc::Sender<Option<Vec<Update<DDValue>>>>
     ) -> Self {
         Self { to_data_plane, receiver, to_controller }
     }
@@ -1150,8 +1384,10 @@ impl DataplaneResponseActor {
     /// Run the actor indefinitely. Handle each received message. 
     async fn run(&mut self) {
         // Send a master arbitration update. This lets the actor properly stream responses from the dataplane.
+        // TODO: Make `device_id` configurable.
         let mut update = MasterArbitrationUpdate::new();
         update.set_device_id(0);
+
         let mut smr = StreamMessageRequest::new();
         smr.set_arbitration(update);
         let req_result = self.to_data_plane.send((smr, grpcio::WriteFlags::default())).await;
@@ -1211,28 +1447,30 @@ impl DataplaneResponseActor {
 }
 
 /// Configuration for the SwitchClient.
+#[derive(Default, Debug)]
 pub struct SwitchClientConfig {
+    /// Hardware/software entity hosting P4 Runtime (e.g., "localhost:50051").
     pub target: String,
+    /// ID of the P4-enabled device.
     pub device_id: u64,
+    /// Desired role ID for the corresponding controller.
     pub role_id: u64,
+    /// Whether or not the corresponding controller is primary within its role.
     pub is_primary: bool,
+    /// The client ID, corresponding to its OVSDB UUID.
+    pub client_id: BigInt,
 }
 
-impl SwitchClientConfig {
-    /// Create new switch client configuration.
-    fn new(
-        target: String,
-        device_id: u64,
-        role_id: u64,
-        is_primary: bool,
-    ) -> Self {
-        SwitchClientConfig {
-            target,
-            device_id,
-            role_id,
-            is_primary,
-        }
-    }
-
-    // TODO: Convert DDlog output to SwitchClientConfig.
+/// Common state across the SwitchClients.
+pub struct SwitchClientCommonState {
+    /// Initial relations in the DDlog program.
+    pub initial_contents: DeltaMap<DDValue>,
+    /// Filepath for P4info binary file.
+    pub p4info: String,
+    /// Filepath for JSON representation of compiled P4 program.
+    pub json: String,
+    /// Metadata used by the control plane to identify a forwarding pipeline configuration.
+    pub cookie: String,
+    /// Configuration action for the forwarding pipeline. 
+    pub action: String,
 }

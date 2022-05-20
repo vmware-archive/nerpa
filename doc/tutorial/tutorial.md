@@ -46,7 +46,7 @@ Alternately, you can execute the script instructions manually one-by-one.
 This should create a Nerpa program in `nerpa_controlplane/tutorial`, composed of the following files:
 * `tutorial.dl`: Datalog program implementing the control plane, that will run on a centralized controller
 * `tutorial.p4`: P4 program implementing the data plane, that will run on a software switch
-* `tutorial.ovsschema`: OVSDB schema specifying the management plane 
+* `tutorial.ovsschema`: OVSDB schema specifying the management plane and the structure of clients used to talk to the switch
 * `commands.txt`: commands sent to the P4 switch's command-line interface and used to initialize the control plane
 * `init-ovsdb.sh`: transactions for OVSDB's initial contents. These can be commands using `ovsdb-tool` or `ovsdb-client`, with transactions formatted as JSONs as per [RFC 7047](https://www.ietf.org/rfc/rfc7047.txt).
 
@@ -72,14 +72,27 @@ These files should have the following contents.
 // import tutorial_dp as tutorial_dp
 // import Tutorial_mp as tutorial_mp
 ```
-* `tutorial.ovsschema` should contain this empty schema.
+* `tutorial.ovsschema` should contain this schema.
 ```
 {
     "name": "tutorial",
-    "tables": {},
+    "tables": {
+        "Client": {
+            "columns": {
+                "target": {"type": "string"},
+                "device_id": {"type": "integer"},
+                "role_id": {"type": "integer"},
+                "is_primary": {"type": "boolean"}
+            },
+            "isRoot": false
+        },
+    },
     "version": "1.0.0"
 }
 ```
+
+The Client table represents a client for communication with a P4-enabled switch, over P4Runtime. Changes to this table are used to add and remove switches from the network. This allows more fine-grained control of individual devices while controlling multiple devices (e.g., sending packets to/from a specific switch, or altering table entries on a specific switch).
+
 * `tutorial.p4` should be an empty P4 program.
 
 ### Program the Management Plane

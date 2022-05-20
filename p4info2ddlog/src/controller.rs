@@ -147,6 +147,7 @@ clap = \"2.33.3\"
 futures = \"0.3.12\"
 grpcio = \"0.9.0\"
 itertools = \"0.10.0\"
+num = { version = "0.3", features = ["serde"] }
 num-traits = \"0.2.14\"
 p4ext = {{path = \"../p4ext\"}}
 proto = {{path = \"../proto\"}}

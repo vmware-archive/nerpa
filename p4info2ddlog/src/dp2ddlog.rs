@@ -133,7 +133,7 @@ fn write_digest(
 ) -> Result<String> {
     let mut d2d_out = String::new();
 
-    writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Option<Update<DDValue>> {{")?;
+    writeln!(d2d_out, "pub fn digest_to_ddlog(digest_id: u32, digest_data: &P4Data) -> Option<Vec<Update<DDValue>>> {{")?;
     if digests.len() == 0 {
         writeln!(d2d_out, "  return None;")?;
         writeln!(d2d_out, "}}")?;
@@ -149,7 +149,7 @@ fn write_digest(
 
         writeln!(d2d_out, "    {} => {{", d.get_preamble().get_id())?;
 
-        writeln!(d2d_out, "      Some(Update::Insert {{")?;
+        writeln!(d2d_out, "      Some(vec![Update::Insert {{")?;
         writeln!(d2d_out, "        relid: Relations::{}_dp_{} as RelId,", prog_name, digest_name)?;
         writeln!(d2d_out, "        v: types__{}_dp::{} {{", prog_name, digest_name)?;
 
@@ -184,7 +184,7 @@ fn write_digest(
         }
 
         writeln!(d2d_out, "        }}.into_ddvalue(),")?; // close brace for Update.v
-        writeln!(d2d_out, "      }})")?; // close brace for Update
+        writeln!(d2d_out, "      }}])")?; // close brace for Update
         writeln!(d2d_out, "    }},")?; // close brace for match arm
     }
     writeln!(d2d_out, "    _ => panic!(\"Invalid digest ID: {{}}\", digest_id)")?;
@@ -208,7 +208,7 @@ fn write_packet(
         false => ("packet_out", "PacketOut")
     };
 
-    writeln!(d2d_out, "pub fn {}_to_ddlog(p: {}) -> Option<Update<DDValue>> {{", filter, inp_type)?;
+    writeln!(d2d_out, "pub fn {}_to_ddlog(p: {}) -> Option<Vec<Update<DDValue>>> {{", filter, inp_type)?;
 
     // Filter the controller metadata array to the element with name `packet_in`.
     // p4c allows there to be only one header with this name/annotation.
@@ -227,7 +227,7 @@ fn write_packet(
 
     writeln!(d2d_out, "  let payload = p.get_payload();")?;
     writeln!(d2d_out, "  let metadata = p.get_metadata().to_vec();")?;
-    writeln!(d2d_out, "  Some(Update::Insert{{")?;
+    writeln!(d2d_out, "  Some(vec![Update::Insert{{")?;
     writeln!(d2d_out, "    relid: Relations::{}_dp_{} as RelId,", prog_name, inp_type)?;
     writeln!(d2d_out, "    v: types__{}_dp::{} {{", prog_name, inp_type)?;
     for pm in packet_metadata.get_metadata().iter() {
@@ -257,7 +257,7 @@ fn write_packet(
     }
     writeln!(d2d_out, "      packet: ddlog_std::Vec::from(p.get_payload()),")?;
     writeln!(d2d_out, "    }}.into_ddvalue(),")?; // close brace for value
-    writeln!(d2d_out, "  }})")?; // close brace for the update
+    writeln!(d2d_out, "  }}])")?; // close brace for the update
     writeln!(d2d_out, "}}")?; // close brace for `fn`
 
     return Ok(d2d_out);

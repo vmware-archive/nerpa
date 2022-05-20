@@ -136,7 +136,7 @@ pub async fn process_ovsdb_inputs(
     mut ctx: context::OvsdbContext,
     server: String,
     database: String,
-    respond_to: mpsc::Sender<Option<Update<DDValue>>>,
+    respond_to: mpsc::Sender<Option<Vec<Update<DDValue>>>>,
 ) -> Result<(), String> {
     let server_cs = ffi::CString::new(server.as_str()).unwrap();
     let database_cs = ffi::CString::new(database.as_str()).unwrap();
@@ -206,11 +206,9 @@ pub async fn process_ovsdb_inputs(
             ctx.parse_updates(event_updates)
         };
 
-        for update in updates {
-            let send_res = respond_to.send(Some(update)).await;
-            if send_res.is_err() {
-                println!("could not send update from ovsdb client to controller: {:#?}", send_res.err());
-            }
+        let send_res = respond_to.send(Some(updates)).await;
+        if send_res.is_err() {
+            println!("could not send update from ovsdb client to controller: {:#?}", send_res.err());
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
