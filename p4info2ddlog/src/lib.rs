@@ -358,9 +358,9 @@ pub fn p4info_to_ddlog(
     for cm in p4info.get_controller_packet_metadata().iter() {
         // The name 'packet_in' corresponds to messages from the dataplane to the controller.
         let cm_name = cm.get_preamble().get_name();
-        let (relation_type, relation_name) = match cm_name {
-            "packet_in" => ("input", "PacketIn"),
-            "packet_out" => ("output", "PacketOut"),
+        let (relation_type, relation_name, is_packet_in) = match cm_name {
+            "packet_in" => ("input", "PacketIn", true),
+            "packet_out" => ("output", "PacketOut", false),
             _ => continue,
         };
 
@@ -369,7 +369,14 @@ pub fn p4info_to_ddlog(
         for cmm in cm_meta.iter() {
             writeln!(output, "    {}: bit<{}>,", cmm.get_name(), cmm.get_bitwidth())?;
         }
-        writeln!(output, "    packet: Vec<bit<8>>")?;
+
+        if is_packet_in {
+            writeln!(output, "    packet: Vec<bit<8>>,")?;
+            writeln!(output, "    client_id: int")?;
+        } else {
+            writeln!(output, "    packet: Vec<bit<8>>")?;
+        }
+
         writeln!(output, ")")?;
     }
 

@@ -1319,7 +1319,7 @@ impl ControllerActor {
                 config.device_id,
                 config.role_id,
                 config.target.clone(),
-                config.client_id,
+                config.client_id.clone(),
             ).await;
 
             // If primary, set the controller as primary using P4Runtime.
@@ -1342,7 +1342,17 @@ impl ControllerActor {
             // Start the dataplane response for the client.
             let (sink, receiver) = sc.client.0.stream_channel().unwrap();
             let digest_actor_tx = mpsc::Sender::clone(&client_tx);
-            let mut digest_actor = DataplaneResponseActor::new(sink, receiver, digest_actor_tx);
+
+            let dp_resp_metadata = DataplaneResponseMetadata {
+                client_id: config.client_id,
+            };
+
+            let mut digest_actor = DataplaneResponseActor::new(
+                sink,
+                receiver,
+                digest_actor_tx,
+                dp_resp_metadata
+            );
             tokio::spawn(async move { digest_actor.run().await });
 
             // Push initial contents to the switch.
@@ -1356,6 +1366,12 @@ impl ControllerActor {
     }
 }
 
+/// Contains metadata used in the DataplaneResponseActor's responses.
+struct DataplaneResponseMetadata {
+    /// UUID of the configuration of the client switch in OVSDB.
+    pub client_id: BigInt,
+}
+
 /// Actor that processes responses from the dataplane.
 struct DataplaneResponseActor {
     /// Sends message to the data plane.
@@ -1363,7 +1379,9 @@ struct DataplaneResponseActor {
     /// Receives messages from the data plane.
     receiver: ClientDuplexReceiver<StreamMessageResponse>,
     /// Sends DDlog updates to the controller actor.
-    to_controller: mpsc::Sender<Option<Vec<Update<DDValue>>>>
+    to_controller: mpsc::Sender<Option<Vec<Update<DDValue>>>>,
+    /// Metadata for relations sent from the dataplane.
+    metadata: DataplaneResponseMetadata,
 }
 
 impl DataplaneResponseActor {
@@ -1373,12 +1391,19 @@ impl DataplaneResponseActor {
     /// * `to_data_plane` - sends messages to the data plane.
     /// * `receiver` - receives messages from the data plane.
     /// * `to_controller` - sends DDlog updates to the controller actor.
+    /// * `metadata` - metadata used in sending messages to/from the data plane.
     fn new(
         to_data_plane: StreamingCallSink<StreamMessageRequest>,
         receiver: ClientDuplexReceiver<StreamMessageResponse>,
-        to_controller: mpsc::Sender<Option<Vec<Update<DDValue>>>>
+        to_controller: mpsc::Sender<Option<Vec<Update<DDValue>>>>,
+        metadata: DataplaneResponseMetadata,
     ) -> Self {
-        Self { to_data_plane, receiver, to_controller }
+        Self {
+            to_data_plane,
+            receiver,
+            to_controller,
+            metadata,
+        }
     }
 
     /// Run the actor indefinitely. Handle each received message. 
@@ -1429,7 +1454,7 @@ impl DataplaneResponseActor {
                         }
                     },
                     packet(p) => {
-                        let dd_update_opt = packet_in_to_ddlog(p);
+                        let dd_update_opt = packet_in_to_ddlog(p, self.metadata.client_id.clone());
                         debug!("received packetin update: {:#?}", dd_update_opt);
 
                         let channel_res = self.to_controller.send(dd_update_opt).await;

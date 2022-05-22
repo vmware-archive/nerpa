@@ -55,6 +55,7 @@ path = \"src/lib.rs\"
 byteorder = \"1.4.3\"
 differential_datalog = {{path = \"{}/differential_datalog\"}}
 {} = {{path = \"{}\"}}
+num = {{ version = \"0.3\", features = [\"serde\"] }}
 proto = {{path = \"../proto\"}}
 types = {{path = \"{}/types\"}}
 types__{}_dp = {{path = \"{}/types/{}_dp\"}}
@@ -89,6 +90,7 @@ pub fn write_rs(
     writeln!(d2d_out, "use byteorder::{{NetworkEndian, ByteOrder}};")?;
     writeln!(d2d_out, "use differential_datalog::program::{{RelId, Update}};")?;
     writeln!(d2d_out, "use differential_datalog::ddval::{{DDValConvert, DDValue}};")?;
+    writeln!(d2d_out, "use num::BigInt;")?;
     writeln!(d2d_out, "use proto::p4runtime::{{PacketIn, PacketMetadata, PacketOut}};")?;
 
     writeln!(d2d_out, "use {}_ddlog::Relations;", prog_name)?;
@@ -208,7 +210,11 @@ fn write_packet(
         false => ("packet_out", "PacketOut")
     };
 
-    writeln!(d2d_out, "pub fn {}_to_ddlog(p: {}) -> Option<Vec<Update<DDValue>>> {{", filter, inp_type)?;
+    if is_packet_in {
+        writeln!(d2d_out, "pub fn packet_in_to_ddlog(p: PacketIn, client_id: BigInt) -> Option<Vec<Update<DDValue>>> {{")?;
+    } else {
+        writeln!(d2d_out, "pub fn packet_out_to_ddlog(p: PacketOut) -> Option<Vec<Update<DDValue>>> {{")?;
+    }
 
     // Filter the controller metadata array to the element with name `packet_in`.
     // p4c allows there to be only one header with this name/annotation.
@@ -255,6 +261,11 @@ fn write_packet(
 
         writeln!(d2d_out, "      {}: {},", field_name, field_value)?;
     }
+
+    if is_packet_in {
+        writeln!(d2d_out, "      client_id: client_id.clone(),")?;
+    }
+
     writeln!(d2d_out, "      packet: ddlog_std::Vec::from(p.get_payload()),")?;
     writeln!(d2d_out, "    }}.into_ddvalue(),")?; // close brace for value
     writeln!(d2d_out, "  }}])")?; // close brace for the update
