@@ -1,6 +1,15 @@
 {
     "name": "snvs",
     "tables": {
+        "Client": {
+            "columns": {
+                "target": {"type": "string"},
+                "device_id": {"type": "integer"},
+                "role_id": {"type": "integer"},
+                "is_primary": {"type": "boolean"}
+            },
+            "isRoot": false
+        },
         "FloodVlan": {
             "columns": {"id": {"type": "integer"}}
         },
