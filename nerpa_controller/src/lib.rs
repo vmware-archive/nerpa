@@ -1201,14 +1201,14 @@ impl ControllerActor {
                     }
 
                     if record_keys_vec.len() != num_config_keys {
-                        debug!("client output record had incorrect number of fields");
+                        error!("client output record had incorrect number of fields");
                         continue;
                     }
 
                     let record_keys: HashSet<String> = record_keys_vec.into_iter().collect();
 
                     if config_keys != record_keys {
-                        debug!("client config record did not have expected fields");
+                        error!("client config record did not have expected fields");
                         continue;
                     }
 
