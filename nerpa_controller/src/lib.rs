@@ -1345,6 +1345,7 @@ impl ControllerActor {
 
             let dp_resp_metadata = DataplaneResponseMetadata {
                 client_id: config.client_id,
+                device_id: config.device_id,
             };
 
             let mut digest_actor = DataplaneResponseActor::new(
@@ -1370,6 +1371,8 @@ impl ControllerActor {
 struct DataplaneResponseMetadata {
     /// UUID of the configuration of the client switch in OVSDB.
     pub client_id: BigInt,
+    /// ID of the P4-enabled device
+    pub device_id: u64,
 }
 
 /// Actor that processes responses from the dataplane.
@@ -1409,9 +1412,8 @@ impl DataplaneResponseActor {
     /// Run the actor indefinitely. Handle each received message. 
     async fn run(&mut self) {
         // Send a master arbitration update. This lets the actor properly stream responses from the dataplane.
-        // TODO: Make `device_id` configurable.
         let mut update = MasterArbitrationUpdate::new();
-        update.set_device_id(0);
+        update.set_device_id(self.metadata.device_id);
 
         let mut smr = StreamMessageRequest::new();
         smr.set_arbitration(update);
