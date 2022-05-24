@@ -1304,7 +1304,14 @@ impl Table {
                 .iter()
                 .map(|x| ActionRef::new_from_proto(x, actions))
                 .collect(),
-            const_default_action: None, // XXX
+            const_default_action: {
+                let act_opt = actions.get(&t.const_default_action_id);
+                if act_opt.is_some() {
+                    Some(act_opt.unwrap().clone())
+                } else {
+                    None
+                }
+            },
             max_entries: if t.size > 0 {
                 Some(t.size as u64)
             } else {

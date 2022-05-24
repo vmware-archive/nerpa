@@ -224,6 +224,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ddlog_profiler"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "differential-dataflow",
+ "fnv",
+ "once_cell",
+ "sequence_trie",
+ "serde",
+ "serde_json",
+ "timely",
+]
+
+[[package]]
 name = "ddshow-sink"
 version = "0.1.1"
 source = "git+https://github.com/ddlog-dev/ddshow?branch=ddlog-4#376e0c808e230f91f86bcfbaa38073e7a7151686"
@@ -270,7 +284,7 @@ dependencies = [
  "abomonation",
  "abomonation_derive",
  "crossbeam-channel",
- "csv",
+ "ddlog_profiler",
  "ddshow-sink",
  "differential-dataflow",
  "dogsdogsdogs",
@@ -279,8 +293,8 @@ dependencies = [
  "fnv",
  "libc",
  "num",
+ "once_cell",
  "ordered-float",
- "sequence_trie",
  "serde",
  "serde_json",
  "timely",
@@ -772,9 +786,9 @@ checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 
 [[package]]
 name = "once_cell"
-version = "1.7.2"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af8b08b04175473088b46763e51ee54da5f9a164bc162f615b91bc179dbf15a3"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "ordered-float"
