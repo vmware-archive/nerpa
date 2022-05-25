@@ -1283,7 +1283,7 @@ pub struct Table {
     pub match_fields: Vec<MatchField>,
     /// Set of possible actions for the table.
     pub actions: Vec<ActionRef>,
-    const_default_action: Option<Action>,
+    pub const_default_action: Option<Action>,
     //action_profile: Option<ActionProfile>,
     //direct_counter: Option<DirectCounter>,
     //direct_meter: Option<DirectMeter>,
@@ -1619,18 +1619,21 @@ pub fn get_pipeline_config(
 /// * `table_action` - the action to execute on match.
 /// * `field_matches` - values to match on.
 /// * `priority` - used to order entries.
+/// * `is_default_action` - used to modify the default action.
 pub fn build_table_entry_update(
     update_type: proto::p4runtime::Update_Type,
     table_id: u32,
     table_action: proto::p4runtime::TableAction,
     field_matches: Vec<proto::p4runtime::FieldMatch>,
-    priority: i32, 
+    priority: i32,
+    is_default_action: bool,
 ) -> proto::p4runtime::Update {
     let mut table_entry = proto::p4runtime::TableEntry::new();
     table_entry.set_table_id(table_id);
     table_entry.set_action(table_action);
     table_entry.set_field_match(protobuf::RepeatedField::from_vec(field_matches));
     table_entry.set_priority(priority);
+    table_entry.set_is_default_action(is_default_action);
 
     let mut entity = proto::p4runtime::Entity::new();
     entity.set_table_entry(table_entry);
