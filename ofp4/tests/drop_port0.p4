@@ -18,49 +18,48 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* "Wire" pipeline for ofp4.
+/* drop_port0 pipeline for ofp4.
  *
- * This implements a very simple P4 program.  Packets that arrive on port 1
- * are output to port 2, and vice versa.  Other packets are dropped.
+ * Packets that arrive on port 0 are dropped.
  */
 
 #include <of_model.p4>
 
 struct metadata_t {}
 
-control WireIngress(inout Headers hdr,
-                    out metadata_t meta,
-                    in input_metadata_t meta_in,
-                    inout ingress_to_arch_t itoa,
-                    inout output_metadata_t meta_out) {
-    action SetOutPort(PortID port) {
-        meta_out.out_port = port;
+control PIngress(inout Headers hdr,
+                 out metadata_t meta,
+                 in input_metadata_t meta_in,
+                 inout ingress_to_arch_t itoa,
+                 inout output_metadata_t meta_out) {
+    action Drop() {
+        meta_out.out_port = 0;
+        exit;
     }
 
-    table MapPorts {
+    table DropPort0 {
         key = { meta_in.in_port: exact @name("in_port"); }
-        actions = { SetOutPort; }
+        actions = { Drop; }
         const entries = {
-            1: SetOutPort(2);
-            2: SetOutPort(1);
+            0: Drop();
         }
     }
 
     apply {
-        MapPorts.apply();
+        DropPort0.apply();
     }
 }
 
-control WireEgress(inout Headers hdr,
-                   inout metadata_t meta,
-                   in input_metadata_t meta_in,
-                   inout output_metadata_t from_ingress) {
+control PEgress(inout Headers hdr,
+                inout metadata_t meta,
+                in input_metadata_t meta_in,
+                inout output_metadata_t from_ingress) {
     apply {
         // Nothing to do.
     }
 }
 
 OfSwitch (
-    WireIngress(),
-    WireEgress()
+    PIngress(),
+    PEgress()
 ) main;

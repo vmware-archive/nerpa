@@ -44,7 +44,6 @@ limitations under the License.
 #include "midend/nestedStructs.h"
 #include "midend/noMatch.h"
 #include "midend/predication.h"
-#include "midend/removeExits.h"
 #include "midend/removeMiss.h"
 #include "midend/simplifyKey.h"
 #include "midend/tableHit.h"
@@ -59,11 +58,7 @@ MidEnd::MidEnd(P4OFOptions& options) {
         new P4::RemoveMiss(&refMap, &typeMap),
         new P4::EliminateNewtype(&refMap, &typeMap),
         new P4::EliminateSerEnums(&refMap, &typeMap),
-        new P4::SimplifyKey(&refMap, &typeMap,
-                            new P4::OrPolicy(
-                                new P4::IsValid(&refMap, &typeMap),
-                                new P4::IsLikeLeftValue())),
-        new P4::RemoveExits(&refMap, &typeMap),
+        new P4::SimplifyKey(&refMap, &typeMap, new P4::IsLikeLeftValue()),
         new P4::ConstantFolding(&refMap, &typeMap),
         new P4::ExpandLookahead(&refMap, &typeMap),
         new P4::ExpandEmit(&refMap, &typeMap),

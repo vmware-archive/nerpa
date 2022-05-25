@@ -100,8 +100,8 @@ def process_file(options, argv):
     if options.verbose:
         print("Writing temporary files into ", tmpdir)
     stderr = tmpdir + "/" + basename + "-stderr"
-    p4runtimeFile = tmpdir + "/" + basename + ".p4info.txt"
-    outputFile = tmpdir + "/" + basename + ".dl"
+    p4runtimeFile = tmpdir + "/" + base + ".p4info.txt"
+    outputFile = tmpdir + "/" + base + ".dl"
 
     if not os.path.isfile(options.p4filename):
         raise Exception("No such file " + options.p4filename)
@@ -111,6 +111,11 @@ def process_file(options, argv):
     result = run_timeout(options, args, TIMEOUT, stderr)
     if result != SUCCESS:
         print("Error compiling")
+
+    args = ["ddlog", "-i", outputFile]
+    result = run_timeout(options, args, TIMEOUT, None)
+    if result != SUCCESS:
+        print("Error compiling DDlog output")
 
     if options.cleanupTmp:
         if options.verbose:
