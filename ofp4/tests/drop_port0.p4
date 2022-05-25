@@ -51,7 +51,7 @@ control PIngress(inout Headers hdr,
 }
 
 control PEgress(inout Headers hdr,
-                in metadata_t meta,
+                inout metadata_t meta,
                 in input_metadata_t meta_in,
                 inout output_metadata_t from_ingress) {
     apply {

@@ -205,7 +205,7 @@ control SnvsIngress(inout Headers hdr,
 }
 
 control SnvsEgress(inout Headers hdr,
-                   in metadata meta,
+                   inout metadata meta,
                    in input_metadata_t meta_in,
                    inout output_metadata_t meta_out) {
     // Output VLAN processing.

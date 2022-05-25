@@ -121,8 +121,9 @@ cstring DDlogFunction::toString() const {
         result += p->toString();
     }
     result += "): ";
-    result += returnType->toString() + " = ";
+    result += returnType->toString() + "{\n";
     result += body->toString();
+    result += "\n}";
     return result;
 }
 

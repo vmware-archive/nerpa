@@ -63,7 +63,7 @@ class OFResources {
             ::error(ErrorType::ERR_OVERLIMIT, "Exhausted register space");
             return nullptr;
         }
-        auto result = new IR::OF_Register(currentRegister, 0, width, bundle,
+        auto result = new IR::OF_Register(currentRegister, 0, width-1, bundle,
                                           makeId(decl->externalName()));
         currentRegister += bundle;
         map.emplace(decl, result);

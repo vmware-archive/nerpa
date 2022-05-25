@@ -274,7 +274,7 @@ control Ingress<M>(inout Headers hdr,
 );
 
 control Egress<M>(inout Headers hdr,
-                  in M meta,
+                  inout M meta,  // not used outside, but R/W this way
                   in input_metadata_t meta_in,
                   inout output_metadata_t meta_out
 );

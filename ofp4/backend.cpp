@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 
 #include "backend.h"
-#include "ofopt.h"
+#include "ofvisitors.h"
 #include "ir/ir.h"
 #include "lib/sourceCodeBuilder.h"
 #include "lib/nullstream.h"
@@ -37,9 +37,12 @@ class ActionTranslator : public Inspector {
     // The same expression is sometimes translated differently if
     // doing a match or generating an action.
     bool translateMatch;
+    size_t exitBlockId = 0;
 
  public:
-    explicit ActionTranslator(P4OFProgram* model): model(model) {}
+    explicit ActionTranslator(P4OFProgram* model): model(model) {
+        visitDagOnce = false;
+    }
 
     bool preorder(const IR::PathExpression* path) override {
         auto decl = model->refMap->getDeclaration(path->path, true);
@@ -262,7 +265,7 @@ class ActionTranslator : public Inspector {
     }
 
     bool preorder(const IR::ExitStatement*) override {
-        currentTranslation = new IR::OF_ResubmitAction(model->egressExitId);
+        currentTranslation = new IR::OF_ResubmitAction(exitBlockId);
         return false;
     }
 
@@ -272,7 +275,8 @@ class ActionTranslator : public Inspector {
         return currentTranslation;
     }
 
-    const IR::IOF_Node* translate(const IR::Node* node, bool match) {
+    const IR::IOF_Node* translate(const IR::Node* node, bool match, size_t exitId) {
+        exitBlockId = exitId;
         currentTranslation = nullptr;
         translateMatch = match;
         node->apply(*this);
@@ -282,7 +286,7 @@ class ActionTranslator : public Inspector {
 
 static const IR::DDlogAtom* makeFlowAtom(const IR::OF_MatchAndAction* value) {
     auto opt = value->apply(OpenFlowSimplify());
-    auto str = new IR::DDlogStringLiteral(opt->toString());
+    auto str = new IR::DDlogStringLiteral(OpenFlowPrint::toString(opt));
     auto atom = new IR::DDlogAtom("Flow", new IR::DDlogTupleExpression({str}));
     return atom;
 }
@@ -327,7 +331,7 @@ class DeclarationGenerator : public Inspector {
  public:
     DeclarationGenerator(P4OFProgram* model, IR::Vector<IR::Node> *declarations):
             model(model), declarations(declarations) {
-        setName("DeclarationGenerator");
+        setName("DeclarationGenerator"); visitDagOnce = false;
         actionTranslator = new ActionTranslator(model);
     }
 
@@ -344,20 +348,14 @@ class DeclarationGenerator : public Inspector {
         params->push_back(new IR::Parameter(
             IR::ID("mcast_id"), IR::Direction::None, IR::Type_Bits::get(16)));
         params->push_back(new IR::Parameter(
-            IR::ID("port"), IR::Direction::None, IR::Type_Bits::get(9)));
+            IR::ID("port"), IR::Direction::None, IR::Type_Bits::get(16)));
         declarations->push_back(new IR::DDlogRelation(
             IR::ID("MulticastGroup"), IR::Direction::In, *params));
 
-        // initialize metadata values
+        // TODO: maybe this table should be removed
         auto flowRule = new IR::OF_MatchAndAction(
             new IR::OF_TableMatch(0),
-            new IR::OF_SeqAction(
-                new IR::OF_SeqAction(
-                    new IR::OF_LoadAction(
-                        new IR::OF_Constant(0), model->outputPortRegister),
-                    new IR::OF_LoadAction(
-                        new IR::OF_Constant(0), model->multicastRegister)),
-                new IR::OF_ResubmitAction(model->startIngressId)));
+            new IR::OF_ResubmitAction(model->startIngressId));
         declarations->push_back(makeFlowRule(flowRule, "initialize output port and output group"));
         return Inspector::init_apply(node);
     }
@@ -458,11 +456,12 @@ class FlowGenerator : public Inspector {
     P4OFProgram* model;
     IR::Vector<IR::Node>* declarations;
     ActionTranslator* actionTranslator;
+    size_t exitBlockId;
 
  public:
     FlowGenerator(P4OFProgram* model, IR::Vector<IR::Node> *declarations):
             model(model), declarations(declarations) {
-        setName("FlowGenerator");
+        setName("FlowGenerator"); visitDagOnce = false;
         CHECK_NULL(model); CHECK_NULL(declarations);
         actionTranslator = new ActionTranslator(model);
     }
@@ -509,11 +508,11 @@ class FlowGenerator : public Inspector {
             }
             cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
             auto cExp = new IR::DDlogConstructorExpression(alternative, args);
-            auto body = actionTranslator->translate(ac->action->body, false);
+            auto body = actionTranslator->translate(ac->action->body, false, exitBlockId);
             auto action = body->checkedTo<IR::OF_Action>();
             action = new IR::OF_SeqAction(action, successor);
             auto opt = action->apply(OpenFlowSimplify());
-            auto matched = new IR::DDlogStringLiteral(opt->toString());
+            auto matched = new IR::DDlogStringLiteral(OpenFlowPrint::toString(opt));
             auto mc = new IR::DDlogMatchCase(cExp, matched);
             actionCases->push_back(mc);
         }
@@ -524,7 +523,7 @@ class FlowGenerator : public Inspector {
             // key evaluation
             if (keys) {
                 for (auto k : keys->keyElements) {
-                    auto key = actionTranslator->translate(k->expression, false);
+                    auto key = actionTranslator->translate(k->expression, false, exitBlockId);
                     if (key == nullptr)
                         return;
                     // The parameter name generated above for the corresponding key field
@@ -579,8 +578,8 @@ class FlowGenerator : public Inspector {
                 auto it = entry->getKeys()->components.begin();
                 for (auto k : keys->keyElements) {
                     auto v = *it++;
-                    auto key = actionTranslator->translate(k->expression, true);
-                    auto value = actionTranslator->translate(v, true);
+                    auto key = actionTranslator->translate(k->expression, true, exitBlockId);
+                    auto value = actionTranslator->translate(v, true, exitBlockId);
                     match = new IR::OF_SeqMatch(
                         match,
                         new IR::OF_EqualsMatch(
@@ -593,7 +592,7 @@ class FlowGenerator : public Inspector {
                 CHECK_NULL(ac);
                 auto spec = ac->specialize(model->refMap);
                 CHECK_NULL(spec);
-                auto callTranslation = actionTranslator->translate(spec->body, false);
+                auto callTranslation = actionTranslator->translate(spec->body, false, exitBlockId);
                 auto ofaction = callTranslation->checkedTo<IR::OF_Action>();
 
                 CFG::Node* next = findActionSuccessor(table, ac->action);
@@ -621,7 +620,7 @@ class FlowGenerator : public Inspector {
     void convertIf(CFG::IfNode* node) {
         LOG2("Converting " << node);
         size_t id = node->id;
-        auto expr = actionTranslator->translate(node->statement->condition, true);
+        auto expr = actionTranslator->translate(node->statement->condition, true, exitBlockId);
 
         for (auto e : node->successors.edges) {
             const IR::OF_Match* match = new IR::OF_TableMatch(id);
@@ -651,7 +650,8 @@ class FlowGenerator : public Inspector {
         }
     }
 
-    void generate(CFG &cfg) {
+    void generate(CFG &cfg, size_t exitId) {
+        exitBlockId = exitId;
         for (auto node : cfg.allNodes) {
             if (auto tn = node->to<CFG::TableNode>())
                 convertTable(tn);
@@ -673,7 +673,7 @@ const IR::DDlogFunction* regDeclAsDDlog(const IR::OF_Register* reg,
         IR::ID("r_" + reg->friendlyName),
         new IR::DDlogTypeString(),
         new IR::ParameterList(),
-        new IR::DDlogStringLiteral(reg->canonicalName()));
+        new IR::DDlogStringLiteral(reg->canonicalName(false)));
     ddlog->push_back(result);
     return result;
 }
@@ -683,7 +683,7 @@ class ResourceAllocator : public Inspector {
     IR::Vector<IR::Node>* ddlog;
  public:
     ResourceAllocator(OFResources& resources, IR::Vector<IR::Node>* ddlog):
-            resources(resources), ddlog(ddlog) {}
+            resources(resources), ddlog(ddlog) { visitDagOnce = false; }
     bool preorder(const IR::Declaration_Variable* decl) {
         auto reg = resources.allocateRegister(decl);
         regDeclAsDDlog(reg, ddlog);
@@ -880,8 +880,8 @@ IR::DDlogProgram* P4OFProgram::convert() {
     program->apply(dgen);
 
     FlowGenerator rgen(this, decls);
-    rgen.generate(ingress_cfg);
-    rgen.generate(egress_cfg);
+    rgen.generate(ingress_cfg, ingressExitId);
+    rgen.generate(egress_cfg, egressExitId);
     addFixedRules(decls);
 
     auto result = new IR::DDlogProgram(decls);

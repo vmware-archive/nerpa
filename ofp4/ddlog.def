@@ -120,13 +120,18 @@ class DDlogConstructorExpression : DDlogExpression {
 /// Terms in a rule
 abstract DDlogTerm : IDDlogNode {}
 
+/// An atom is a term of the form Relation(arguments)
+// We never use negated rules in out code generator.
 class DDlogAtom : DDlogTerm {
     IR::ID relation;
+    // In general a TupleExpression
     DDlogExpression expression;
     cstring toString() const override;
 #nodbprint
 }
 
+/// An expression that appears as a term, e.g.,
+/// x = y
 class DDlogExpressionTerm : DDlogTerm {
     DDlogExpression expression;
     toString{ return expression->toString(); }

@@ -8,6 +8,7 @@ set (P4C_OF_SOURCES
   backend.cpp
   controlFlowGraph.cpp
   midend.cpp
+  ofvisitors.cpp
   p4c-of.cpp
 )
 
@@ -22,7 +23,7 @@ set (P4C_OF_HEADERS
   backend.h
   controlFlowGraph.h
   midend.h
-  ofopt.h
+  ofvisitors.h
   options.h
   resources.h
 )

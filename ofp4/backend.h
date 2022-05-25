@@ -69,6 +69,7 @@ class P4OFProgram {
     const IR::Type_Struct* ingress_to_arch_t = nullptr;  // type of ingress_itoa
     const IR::Type_Struct* output_metadata_t = nullptr;  // type of ingress_meta_out,egress_meta_out
 
+    // These will be used as OF table=ID nodes in the generated code.
     size_t startIngressId;  // CFG node id of the entry point to ingress
     size_t ingressExitId;   // CFG node id of the ingress exit point
     size_t multicastId;     // CFG node id of the built-in multicast stage

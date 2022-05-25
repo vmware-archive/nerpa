@@ -26,7 +26,7 @@ const size_t OF_Register::maxRegister = 16;  // maximum register number
 const size_t OF_Register::registerSize = 32;  // size of a register in bits
 const size_t OF_Register::maxBundleSize = 4;  // xxreg0 has 4 registers, i.e. 128 bits
 
-cstring OF_Register::canonicalName() const {
+cstring OF_Register::canonicalName(bool match) const {
     cstring result = "";
     size_t n = number;
     for (size_t i = bundle; i > 1; i >>= 1) {
@@ -34,8 +34,16 @@ cstring OF_Register::canonicalName() const {
         n /= 2;
     }
     result += "reg" + Util::toString(n);
-    if (high != registerSize * bundle)
-        result += "[" + Util::toString(low) + ".." + Util::toString(high) + "]";
+    if (match) {
+        auto mask = Constant::GetMask(high) ^ Constant::GetMask(low);
+        result += "/" + Util::toString(mask.value, 0, false, 16);
+    } else {
+        if (high != registerSize * bundle)
+            result += "[" + Util::toString(low);
+        if (high > low)
+            result += ".." + Util::toString(high);
+        result += "]";
+    }
     return result;
 }
 
@@ -45,7 +53,7 @@ cstring OF_Register::toString() const {
     // interpolated string.
     if (friendlyName)
         return "${r_" + friendlyName + "()}";
-    return canonicalName();
+    return canonicalName(false);
 }
 
 cstring OF_ResubmitAction::toString() const {
@@ -76,7 +84,7 @@ cstring OF_Slice::toString() const {
 }
 
 cstring OF_MatchAndAction::toString() const {
-    return match->toString() + " actions=(" + action->toString() + ")";
+    return match->toString() + " actions=" + action->toString();
 }
 
 cstring OF_MoveAction::toString() const {

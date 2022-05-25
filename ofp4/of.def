@@ -4,7 +4,6 @@
   */
 /*
    Internal representation of an Open Flow program (fragment).
-   The toString() method is used to serialize an OF program to text.
 */
 
 interface IOF_Node {}
@@ -39,7 +38,7 @@ class OF_Register : OF_Expression {
     size_t bundle;  // How many registers bundled together (1, 2, or 4 allowed)
     optional cstring friendlyName;
     cstring toString() const;
-    cstring canonicalName() const;
+    cstring canonicalName(bool match) const;
 #nodbprint
 }
 
@@ -137,6 +136,11 @@ class OF_SeqAction : OF_Action {
     OF_Action left;
     OF_Action right;
     cstring toString() const override;
+    validate{
+        BUG_CHECK(!left->is<OF_DropAction>() &&
+                  !right->is<OF_DropAction>(),
+                  "%1%: Drop cannot be used in a sequence", this);
+    }
 #nodbprint
 }
 
@@ -152,6 +156,7 @@ class OF_CloneAction : OF_Action {
 }
 
 class OF_OutputAction : OF_Action {
+    // Limited to constants and slices of fields and registers
     OF_Expression dest;
     toString{ return "output(" + dest->toString() + ")"; }
 #nodbprint
