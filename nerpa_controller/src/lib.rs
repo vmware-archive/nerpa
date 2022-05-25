@@ -560,7 +560,7 @@ impl SwitchClient {
 
                         // Check if the update should be to the default action.
                         // When using P4Runtime, the default action can be set by a Write RPC with a
-                        //`TableEntry message for which the `FieldMatch` field is empty.
+                        // `TableEntry` message for which the `FieldMatch` field is empty.
                         //
                         // We assume that a relevant DDlog relation's name, lowercased, includes "defaultaction".
                         // A DDlog relation that does not update the default action should not
