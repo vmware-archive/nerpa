@@ -128,14 +128,16 @@ control SnvsIngress(inout headers hdr,
     // Drop packets received on mirror destination port.
     table MirrorDstDrop {
         key = { standard_metadata.ingress_port: exact @name("port"); }
-        actions = { Drop; }
+        actions = { Drop; NoAction; }
+        const default_action = NoAction;
     }
 
     // Drop packets to reserved Ethernet multicast address.
     @nerpa_singleton
     table ReservedMcastDstDrop {
         key = { hdr.eth.dst: exact @name("dst"); }
-        actions = { Drop; }
+        actions = { Drop; NoAction; }
+        const default_action = NoAction;
     }
 
     // Input VLAN processing.
@@ -162,6 +164,7 @@ control SnvsIngress(inout headers hdr,
             meta.vlan: optional @name("vlan");
         }
         actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     // Tracks VLANs in which all packets are flooded.
@@ -170,7 +173,8 @@ control SnvsIngress(inout headers hdr,
     }
     table FloodVlan {
         key = { meta.vlan: exact @name("vlan"); }
-        actions = { set_flood; }
+        actions = { set_flood; NoAction; }
+        const default_action = NoAction;
     }
 
     // Known VLAN+MAC -> port mappings.
@@ -180,11 +184,12 @@ control SnvsIngress(inout headers hdr,
     // don't support that.  So we need two different tables.
     table LearnedSrc {
         key = {
-	    meta.vlan: exact @name("vlan");
-	    hdr.eth.src: exact @name("mac");
-	    standard_metadata.ingress_port: exact @name("port");
-	}
-	actions = { NoAction; }
+            meta.vlan: exact @name("vlan");
+            hdr.eth.src: exact @name("mac");
+            standard_metadata.ingress_port: exact @name("port");
+        }
+        actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     PortID output;
@@ -193,10 +198,11 @@ control SnvsIngress(inout headers hdr,
     }
     table LearnedDst {
         key = {
-	    meta.vlan: exact @name("vlan");
-	    hdr.eth.dst: exact @name("mac");
-	}
-	actions = { KnownDst; }
+            meta.vlan: exact @name("vlan");
+            hdr.eth.dst: exact @name("mac");
+        }
+	    actions = { KnownDst; NoAction; }
+        const default_action = NoAction;
     }
 
     apply {
@@ -262,6 +268,7 @@ control SnvsEgress(inout headers hdr,
             meta.vlan: optional @name("vlan");
         }
         actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     // Priority tagging mode.
@@ -271,6 +278,7 @@ control SnvsEgress(inout headers hdr,
             hdr.vlan.isValid() && hdr.vlan.pcp != 0: exact @name("nonzero_pcp") @nerpa_bool;
         }
         actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     apply {

@@ -272,6 +272,15 @@ pub fn p4info_to_ddlog(
                 }
                 writeln!(output, ")")?;
             }
+
+            // If the table does not have a constant `default_action`, then we
+            // create a relation to configure the default action.
+            // TODO: Check the form of this relation.
+            if needs_actions && table.const_default_action.is_none() {
+                writeln!(output, "output relation {}DefaultAction(", table_name)?;
+                writeln!(output, "    action: {}Action", table_name)?;
+                writeln!(output, ")")?;
+            }
         }
     }
 

@@ -513,6 +513,7 @@ impl SwitchClient {
                         };
                         let table_id = table.preamble.id;
 
+                        let mut update_type = proto::p4runtime::Update_Type::INSERT;
                         let mut action_opt: Option<TableAction> = None;
                         let mut field_match_vec = Vec::<FieldMatch>::new();
                         let mut priority: i32 = 0;
@@ -557,14 +558,33 @@ impl SwitchClient {
                             }
                         }
 
+                        // Check if the update should be to the default action.
+                        // When using P4Runtime, the default action can be set by a Write RPC with a
+                        // `TableEntry` message for which the `FieldMatch` field is empty.
+                        //
+                        // We assume that a relevant DDlog relation's name, lowercased, includes "defaultaction".
+                        // A DDlog relation that does not update the default action should not
+                        // include "defaultaction" in its name (case-insensitive).
+                        let mut is_default_action = false;
+                        if output_name.as_ref().to_lowercase().contains("defaultaction") {
+                            if field_match_vec.len() != 0 {
+                                error!("default action write RPC must have empty field match vector");
+                                continue;
+                            }
+
+                            update_type = proto::p4runtime::Update_Type::MODIFY;
+                            is_default_action = true;
+                        }
+
                         // If we found a table and action, construct a P4 table entry update.
                         if let Some(table_action) = action_opt {
                             let update = p4ext::build_table_entry_update(
-                                proto::p4runtime::Update_Type::INSERT,
+                                update_type,
                                 table_id,
                                 table_action,
                                 field_match_vec,
                                 priority,
+                                is_default_action,
                             );
                             updates.push(update);
                         }
