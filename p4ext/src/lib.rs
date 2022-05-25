@@ -1619,7 +1619,7 @@ pub fn get_pipeline_config(
 /// * `table_action` - the action to execute on match.
 /// * `field_matches` - values to match on.
 /// * `priority` - used to order entries.
-/// * `is_default_action` - used to modify the default action.
+/// * `is_default_action` - if true, we are updating the default action.
 pub fn build_table_entry_update(
     update_type: proto::p4runtime::Update_Type,
     table_id: u32,
