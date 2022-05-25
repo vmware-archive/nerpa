@@ -1,6 +1,9 @@
 #!/bin/bash
 # Install Nerpa and dependencies on Linux
 
+# Exit when any command fails, since they are all sequential.
+set -e
+
 export NERPA_DIR=$(pwd)
 
 # Recursively initialize git modules.
@@ -22,9 +25,11 @@ if [[ -z $DDLOG_HOME ]]; then
 fi
 
 # Install P4 with dependencies.
-echo "Installing P4 software..."
-git clone https://github.com/jafingerhut/p4-guide
-./p4-guide/bin/install-p4dev-v2.sh |& tee log.txt
+if [ ! -d p4-guide ]; then
+    echo "Installing P4 software..."
+    git clone https://github.com/jafingerhut/p4-guide
+    ./p4-guide/bin/install-p4dev-v2.sh |& tee log.txt
+fi
 
 # Configure PI.
 echo "Configuring PI..."
@@ -33,7 +38,7 @@ CONFIGURE="./configure --prefix=$NERPA_DEPS/inst CPPFLAGS=-I$NERPA_DEPS/inst/inc
 
 # Configure the behavioral model switch.
 echo "Configuring behavioral model..."
-(cd behavioral-model && autogen.sh && $CONFIGURE --with-pi)
+(cd behavioral-model && ./autogen.sh && $CONFIGURE --with-pi)
 (cd behavioral-model && make install)
 (cd behavioral-model/targets/simple_switch_grpc/ && ./autogen.sh && $CONFIGURE && make install)
 
