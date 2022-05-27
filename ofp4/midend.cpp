@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "frontends/common/constantFolding.h"
 #include "frontends/common/resolveReferences/resolveReferences.h"
+#include "frontends/p4/typeChecking/typeChecker.h"
 #include "frontends/p4/evaluator/evaluator.h"
 #include "frontends/p4/fromv1.0/v1model.h"
 #include "frontends/p4/moveDeclarations.h"
@@ -88,6 +89,7 @@ MidEnd::MidEnd(P4OFOptions& options) {
         new P4::HSIndexSimplifier(&refMap, &typeMap),
         new P4::SynthesizeActions(&refMap, &typeMap),
         new P4::MoveActionsToTables(&refMap, &typeMap),
+        new P4::TypeChecking(&refMap, &typeMap),
         new P4::MidEndLast()
     });
     if (options.excludeMidendPasses) {

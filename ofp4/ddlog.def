@@ -82,6 +82,14 @@ class DDlogMatchCase : IDDlogNode {
 #nodbprint
 }
 
+class DDlogIfExpression : DDlogExpression {
+    DDlogExpression condition;
+    DDlogExpression left;
+    DDlogExpression right;
+    cstring toString() const override;
+#nodbprint
+}
+
 class DDlogMatchExpression : DDlogExpression {
     DDlogExpression matched;
     inline Vector<DDlogMatchCase> cases;

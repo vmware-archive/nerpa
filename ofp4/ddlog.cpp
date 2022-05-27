@@ -110,6 +110,16 @@ cstring DDlogRule::toString() const {
     return result;
 }
 
+cstring DDlogIfExpression::toString() const {
+    cstring result = cstring("if (");
+    result += condition->toString();
+    result += ") ";
+    result += left->toString();
+    result += " else ";
+    result += right->toString();
+    return result;
+}
+
 cstring DDlogFunction::toString() const {
     cstring result = cstring("function ") + name.name;
     result += "(";
@@ -118,11 +128,13 @@ cstring DDlogFunction::toString() const {
         if (!first)
             result += ", ";
         first = false;
-        result += p->toString();
+        result += p->name;
+        result += ": ";
+        result += p->type->toString();
     }
     result += "): ";
-    result += returnType->toString() + "{\n";
-    result += body->toString();
+    result += returnType->toString() + " {\n";
+    result += body->toString().indent(4);
     result += "\n}";
     return result;
 }

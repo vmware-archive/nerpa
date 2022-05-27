@@ -25,6 +25,7 @@ limitations under the License.
 #include "frontends/p4/evaluator/evaluator.h"
 #include "frontends/p4/methodInstance.h"
 #include "frontends/p4/evaluator/substituteParameters.h"
+#include "frontends/p4/parameterSubstitution.h"
 #include "resources.h"
 
 namespace P4OF {
@@ -38,10 +39,24 @@ class ActionTranslator : public Inspector {
     // doing a match or generating an action.
     bool translateMatch;
     size_t exitBlockId = 0;
+    const P4::ParameterSubstitution* substitution;
 
  public:
-    explicit ActionTranslator(P4OFProgram* model): model(model) {
+    ActionTranslator(P4OFProgram* model,
+                     const P4::ParameterSubstitution* substitution = nullptr):
+            model(model), substitution(substitution) {
         visitDagOnce = false;
+    }
+
+    bool preorder(const IR::Parameter* param) override {
+        currentTranslation = nullptr;
+        if (substitution) {
+            auto arg = substitution->lookup(param);
+            if (!arg)
+                return false;
+            visit(arg->expression);
+        }
+        return false;
     }
 
     bool preorder(const IR::PathExpression* path) override {
@@ -324,7 +339,8 @@ static bool tableHasPriority(const IR::P4Table* table) {
 class DeclarationGenerator : public Inspector {
     P4OFProgram* model;
     IR::Vector<IR::Node> *declarations;
-    IR::Vector<IR::Type> *alternatives;
+    IR::Vector<IR::Type> *tableActions;
+    IR::Vector<IR::Type> *defaultActions;
     cstring tableName;
     ActionTranslator *actionTranslator;
 
@@ -368,28 +384,41 @@ class DeclarationGenerator : public Inspector {
 
     bool preorder(const IR::P4Table* table) override {
         tableName = genTableName(table);
-        alternatives = nullptr;
+        tableActions = new IR::Vector<IR::Type>();
+        defaultActions = new IR::Vector<IR::Type>();
         return true;
     }
 
     bool preorder(const IR::ActionListElement* ale) override {
-        if (!alternatives)
-            alternatives = new IR::Vector<IR::Type>();
+        auto annos = ale->getAnnotations();
+        bool defaultOnly = annos->getSingle(
+            IR::Annotation::defaultOnlyAnnotation) != nullptr;
+        bool tableOnly = annos->getSingle(
+            IR::Annotation::tableOnlyAnnotation) != nullptr;
+
         auto mce = ale->expression->to<IR::MethodCallExpression>();
         BUG_CHECK(mce, "%1%: expected a method call", ale->expression);
         auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
         auto ac = mi->to<P4::ActionCall>();
+        CHECK_NULL(ac);
 
         /// Generate a type in union type for the table declaration
-        cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
         auto fields = new IR::IndexedVector<IR::StructField>();
         BUG_CHECK(mce->arguments->size() == 0, "%1%: expected no arguments", mce);
         for (auto p : ac->action->parameters->parameters) {
             auto field = new IR::StructField(p->srcInfo, p->name, p->type);
             fields->push_back(field);
         }
-        auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
-        alternatives->push_back(st);
+        if (!defaultOnly) {
+            cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
+            auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
+            tableActions->push_back(st);
+        }
+        if (!tableOnly) {
+            cstring alternative = makeId(tableName + "DefaultAction" + ac->action->externalName());
+            auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
+            defaultActions->push_back(st);
+        }
         return false;
     }
 
@@ -399,9 +428,10 @@ class DeclarationGenerator : public Inspector {
         auto key = table->getKey();
         auto entries = table->getEntries();
         bool hasPriority = tableHasPriority(table);
+
         if (key && !entries) {
             // Union type representing all possible actions
-            auto type = new IR::DDlogTypeAlt(*alternatives);
+            auto type = new IR::DDlogTypeAlt(*tableActions);
             auto td = new IR::DDlogTypedef(table->srcInfo, typeName, type);
             declarations->push_back(td);
 
@@ -429,6 +459,28 @@ class DeclarationGenerator : public Inspector {
                 "action", IR::Direction::None, new IR::Type_Name(typeName)));
             auto rel = new IR::DDlogRelation(
                 table->srcInfo, IR::ID(tableName), IR::Direction::In, *params);
+            declarations->push_back(rel);
+        }
+
+        auto defaultAction = table->getDefaultAction();
+        CHECK_NULL(defaultAction);  // always inserted by front-end
+        CHECK_NULL(table->properties);
+        auto daprop = table->properties->getProperty(IR::TableProperties::defaultActionPropertyName);
+        CHECK_NULL(daprop);
+        if (!daprop->isConstant) {
+            cstring daTypeName = typeName + "DefaultAction";
+            auto type = new IR::DDlogTypeAlt(*defaultActions);
+            auto td = new IR::DDlogTypedef(table->srcInfo, daTypeName, type);
+            declarations->push_back(td);
+
+            auto params = new IR::IndexedVector<IR::Parameter>();
+            if (hasPriority)
+                params->push_back(new IR::Parameter(
+                    "priority", IR::Direction::None, IR::Type_Bits::get(32)));
+            params->push_back(new IR::Parameter(
+                "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
+            auto rel = new IR::DDlogRelation(
+                table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
             declarations->push_back(rel);
         }
         tableName = "";
@@ -466,6 +518,25 @@ class FlowGenerator : public Inspector {
         actionTranslator = new ActionTranslator(model);
     }
 
+    void generateActionCall(const IR::MethodCallExpression* actionCall,
+                            const IR::OF_Match* match,
+                            const CFG::TableNode* cfgtable) {
+        auto mi = P4::MethodInstance::resolve(actionCall, model->refMap, model->typeMap);
+        auto ac = mi->to<P4::ActionCall>();
+        CHECK_NULL(ac);
+        auto at = new ActionTranslator(model, &ac->substitution);
+        auto callTranslation = at->translate(ac->action->body, false, exitBlockId);
+        auto ofaction = callTranslation->checkedTo<IR::OF_Action>();
+
+        CFG::Node* next = findActionSuccessor(cfgtable, ac->action);
+        // BUG_CHECK(next, "%1%: no successor", p4table);
+        // TODO
+        auto successor = new IR::OF_ResubmitAction(next ? next->id : 0);
+        ofaction = new IR::OF_SeqAction(ofaction, successor);
+        auto flowRule = new IR::OF_MatchAndAction(match, ofaction);
+        declarations->push_back(makeFlowRule(flowRule, cfgtable->table->externalName()));
+    }
+
     void convertTable(CFG::TableNode* table) {
         LOG2("Converting " << table);
         size_t id = table->id;
@@ -475,26 +546,37 @@ class FlowGenerator : public Inspector {
         auto actions = p4table->getActionList();
         cstring tableName = genTableName(p4table);
         bool hasPriority = tableHasPriority(p4table);
+        const IR::OF_Match* tablematch = new IR::OF_TableMatch(id);
 
-        auto actionCases = new IR::Vector<IR::DDlogMatchCase>();
-        auto args = new IR::Vector<IR::DDlogExpression>();
+        auto tableCases = new IR::Vector<IR::DDlogMatchCase>();
+        auto tableArgs = new IR::Vector<IR::DDlogExpression>();
+        auto defaultCases = new IR::Vector<IR::DDlogMatchCase>();
+        auto defaultArgs = new IR::Vector<IR::DDlogExpression>();
+
         if (keys) {
             for (auto ke : keys->keyElements) {
                 auto name = ke->annotations->getSingle(
                     IR::Annotation::nameAnnotation)->getSingleString();
                 auto varName = new IR::DDlogVarName(name);
-                args->push_back(varName);
+                tableArgs->push_back(varName);
             }
         }
         if (hasPriority)
-            args->push_back(new IR::DDlogVarName("priority"));
-        args->push_back(new IR::DDlogVarName("action"));
+            tableArgs->push_back(new IR::DDlogVarName("priority"));
+        auto acvar = new IR::DDlogVarName("action");
+        tableArgs->push_back(acvar);
+        defaultArgs->push_back(acvar);
 
         for (auto ale : actions->actionList) {
             auto mce = ale->expression->to<IR::MethodCallExpression>();
             BUG_CHECK(mce, "%1%: expected a method call", ale->expression);
             auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
             auto ac = mi->to<P4::ActionCall>();
+            auto annos = ale->getAnnotations();
+            bool defaultOnly = annos->getSingle(
+                IR::Annotation::defaultOnlyAnnotation) != nullptr;
+            bool tableOnly = annos->getSingle(
+                IR::Annotation::tableOnlyAnnotation) != nullptr;
 
             CFG::Node* next = findActionSuccessor(table, ac->action);
             // BUG_CHECK(next, "%1%: no successor", p4table);
@@ -502,24 +584,34 @@ class FlowGenerator : public Inspector {
             auto successor = new IR::OF_ResubmitAction(next ? next->id : 0);
 
             /// Generate matching code for the rule
-            std::vector<cstring> args;
+            std::vector<cstring> keyargs;
             for (auto p : ac->action->parameters->parameters) {
-                args.push_back(p->name);
+                keyargs.push_back(p->name);
             }
-            cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
-            auto cExp = new IR::DDlogConstructorExpression(alternative, args);
             auto body = actionTranslator->translate(ac->action->body, false, exitBlockId);
             auto action = body->checkedTo<IR::OF_Action>();
             action = new IR::OF_SeqAction(action, successor);
             auto opt = action->apply(OpenFlowSimplify());
             auto matched = new IR::DDlogStringLiteral(OpenFlowPrint::toString(opt));
-            auto mc = new IR::DDlogMatchCase(cExp, matched);
-            actionCases->push_back(mc);
+
+            if (!defaultOnly) {
+                cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
+                auto cExp = new IR::DDlogConstructorExpression(alternative, keyargs);
+                auto mc = new IR::DDlogMatchCase(cExp, matched);
+                tableCases->push_back(mc);
+            }
+            if (!tableOnly) {
+                cstring alternative = makeId(
+                    tableName + "DefaultAction" + ac->action->externalName());
+                auto cExp = new IR::DDlogConstructorExpression(alternative, keyargs);
+                auto mc = new IR::DDlogMatchCase(cExp, matched);
+                defaultCases->push_back(mc);
+            }
         }
 
         if (!entries) {
             /// Table has no const entries: generate OF rules dynamically
-            const IR::OF_Match* match = new IR::OF_TableMatch(id);
+            auto match = tablematch;
             // key evaluation
             if (keys) {
                 for (auto k : keys->keyElements) {
@@ -550,20 +642,19 @@ class FlowGenerator : public Inspector {
             auto flowTerm = makeFlowAtom(flowRule);
             auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
             auto relationTerm = new IR::DDlogAtom(p4table->srcInfo, IR::ID(tableName),
-                                                  new IR::DDlogTupleExpression(*args));
-            // TODO: how do tables represent default_action values?
+                                                  new IR::DDlogTupleExpression(*tableArgs));
             if (keys)
                 ruleRhs->push_back(relationTerm);
 
             const IR::DDlogExpression* computeAction;
-            if (actionCases->size() == 0) {
+            if (tableCases->size() == 0) {
                 BUG("%1%: table with empty actions list", p4table);
-            } else if (actionCases->size() == 1) {
+            } else if (tableCases->size() == 1) {
                 // no DDlog "match" needed
-                computeAction = actionCases->at(0)->result;
+                computeAction = tableCases->at(0)->result;
             } else {
                 computeAction = new IR::DDlogMatchExpression(
-                    new IR::DDlogVarName("action"), *actionCases);
+                    new IR::DDlogVarName("action"), *tableCases);
             }
             auto set = new IR::DDlogSetExpression("actions", computeAction);
             ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
@@ -587,22 +678,45 @@ class FlowGenerator : public Inspector {
                             value->checkedTo<IR::OF_Expression>()));
                 }
                 auto actionCall = entry->getAction()->checkedTo<IR::MethodCallExpression>();
-                auto mi = P4::MethodInstance::resolve(actionCall, model->refMap, model->typeMap);
-                auto ac = mi->to<P4::ActionCall>();
-                CHECK_NULL(ac);
-                auto spec = ac->specialize(model->refMap);
-                CHECK_NULL(spec);
-                auto callTranslation = actionTranslator->translate(spec->body, false, exitBlockId);
-                auto ofaction = callTranslation->checkedTo<IR::OF_Action>();
-
-                CFG::Node* next = findActionSuccessor(table, ac->action);
-                // BUG_CHECK(next, "%1%: no successor", p4table);
-                // TODO
-                auto successor = new IR::OF_ResubmitAction(next ? next->id : 0);
-                ofaction = new IR::OF_SeqAction(ofaction, successor);
-                auto flowRule = new IR::OF_MatchAndAction(match, ofaction);
-                declarations->push_back(makeFlowRule(flowRule, p4table->name));
+                generateActionCall(actionCall, match, table);
             }
+        }
+
+        // Handle default action
+        auto defaultAction = p4table->getDefaultAction();
+        CHECK_NULL(defaultAction);  // always inserted by front-end
+        auto daprop = p4table->properties->getProperty(IR::TableProperties::defaultActionPropertyName);
+        CHECK_NULL(daprop);
+        if (daprop->isConstant) {
+            // Constant default action: generate a fixed rule.
+            auto match = new IR::OF_SeqMatch(
+                tablematch,
+                new IR::OF_EqualsMatch(
+                    new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
+            generateActionCall(defaultAction->checkedTo<IR::MethodCallExpression>(), match, table);
+        } else {
+            auto flowRule = new IR::OF_MatchAndAction(
+                tablematch,
+                new IR::OF_InterpolatedVariableAction("actions"));
+            auto flowTerm = makeFlowAtom(flowRule);
+            auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
+            auto relationTerm = new IR::DDlogAtom(p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
+                                                  new IR::DDlogTupleExpression(*defaultArgs));
+            ruleRhs->push_back(relationTerm);
+            const IR::DDlogExpression* computeAction;
+            if (defaultCases->size() == 0) {
+                BUG("%1%: table with empty default actions list", p4table);
+            } else if (defaultCases->size() == 1) {
+                // no DDlog "match" needed
+                computeAction = defaultCases->at(0)->result;
+            } else {
+                computeAction = new IR::DDlogMatchExpression(
+                    new IR::DDlogVarName("action"), *defaultCases);
+            }
+            auto set = new IR::DDlogSetExpression("actions", computeAction);
+            ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
+            auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
+            declarations->push_back(rule);
         }
     }
 
@@ -625,7 +739,7 @@ class FlowGenerator : public Inspector {
         for (auto e : node->successors.edges) {
             const IR::OF_Match* match = new IR::OF_TableMatch(id);
             CFG::Node* next = e->endpoint;
-            auto action = new IR::OF_ResubmitAction(next->id);
+            auto action = new IR::OF_ResubmitAction(next ? next->id : 0);
             const IR::OF_MatchAndAction* ma;
             if (e->getBool()) {
                 // if condition is true
@@ -665,17 +779,28 @@ class FlowGenerator : public Inspector {
     }
 };
 
-const IR::DDlogFunction* regDeclAsDDlog(const IR::OF_Register* reg,
-                                        IR::Vector<IR::Node>* ddlog) {
-    if (!reg || reg->friendlyName.isNullOrEmpty())
-        return nullptr;
-    auto result = new IR::DDlogFunction(
-        IR::ID("r_" + reg->friendlyName),
-        new IR::DDlogTypeString(),
-        new IR::ParameterList(),
-        new IR::DDlogStringLiteral(reg->canonicalName(false)));
-    ddlog->push_back(result);
-    return result;
+/// Allocates a register and inserts a declaration for a function
+/// returning the register in the DDlog program
+const IR::OF_Register* allocateRegister(
+    const IR::Declaration* decl,
+    OFResources& resources,
+    IR::Vector<IR::Node>* ddlog) {
+    auto reg = resources.allocateRegister(decl);
+    if (reg && !reg->friendlyName.isNullOrEmpty()) {
+        auto ddfunc = new IR::DDlogFunction(
+            IR::ID("r_" + reg->friendlyName),
+            new IR::DDlogTypeString(),
+            new IR::ParameterList({
+                new IR::Parameter(IR::ID("ismatch"),
+                                  IR::Direction::None,
+                                  IR::Type_Boolean::get())}),
+            new IR::DDlogIfExpression(
+                new IR::DDlogVarName("ismatch"),
+                new IR::DDlogStringLiteral(reg->asDDlogString(true)),
+                new IR::DDlogStringLiteral(reg->asDDlogString(false))));
+        ddlog->push_back(ddfunc);
+    }
+    return reg;
 }
 
 class ResourceAllocator : public Inspector {
@@ -685,8 +810,7 @@ class ResourceAllocator : public Inspector {
     ResourceAllocator(OFResources& resources, IR::Vector<IR::Node>* ddlog):
             resources(resources), ddlog(ddlog) { visitDagOnce = false; }
     bool preorder(const IR::Declaration_Variable* decl) {
-        auto reg = resources.allocateRegister(decl);
-        regDeclAsDDlog(reg, ddlog);
+        (void)allocateRegister(decl, resources, ddlog);
         return false;
     }
 };
@@ -761,7 +885,7 @@ void P4OFProgram::addFixedRules(IR::Vector<IR::Node> *declarations) {
                 "to_vec",
                 new IR::DDlogApply(
                     "group_by",
-                    new IR::DDlogStringLiteral(clone->toString()),
+                    new IR::DDlogStringLiteral(OpenFlowPrint::toString(clone)),
                     { new IR::DDlogVarName("mcast_id") }),
                 {}),
             { new IR::DDlogStringLiteral(", ") }));
@@ -841,20 +965,17 @@ IR::DDlogProgram* P4OFProgram::convert() {
     auto decls = new IR::Vector<IR::Node>();
 
     for (auto sf : output_metadata_t->fields) {
-        auto reg = resources.allocateRegister(sf);
-        regDeclAsDDlog(reg, decls);
+        auto reg = allocateRegister(sf, resources, decls);
         if (sf->name == "out_port")
             outputPortRegister = reg;
     }
     for (auto sf : ingress_to_arch_t->fields) {
-        auto reg = resources.allocateRegister(sf);
-        regDeclAsDDlog(reg, decls);
+        auto reg = allocateRegister(sf, resources, decls);
         if (sf->name == "out_group")
             multicastRegister = reg;
     }
     for (auto sf : M->fields) {
-        auto reg = resources.allocateRegister(sf);
-        (void)regDeclAsDDlog(reg, decls);
+        (void)allocateRegister(sf, resources, decls);
     }
 
     CHECK_NULL(outputPortRegister);

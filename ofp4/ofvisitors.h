@@ -21,6 +21,7 @@ limitations under the License.
 
 namespace P4OF {
 
+/// Optimize an open-flow program
 class OpenFlowSimplify : public Transform {
     bool foundResubmit = false;
 
@@ -36,26 +37,25 @@ class OpenFlowSimplify : public Transform {
         return slice;
     }
 
-    const IR::Node* postorder(IR::OF_Action* action) override {
+    const IR::Node* preorder(IR::OF_SeqAction* sequence) override {
+        // Stop at the first "resubmit".  OF allows multiple resubmits,
+        // but we never generate them
+        visit(sequence->left);
         if (foundResubmit)
-            return new IR::OF_EmptyAction();
-        return action;
-    }
-
-    const IR::Node* postorder(IR::OF_SeqAction* sequence) override {
-        if (foundResubmit)
-            return new IR::OF_EmptyAction();
+            return sequence->left;
+        visit(sequence->right);
+        // Strip out EmptyAction from a sequence of actions
         if (sequence->left->is<IR::OF_EmptyAction>())
             return sequence->right;
         if (sequence->right->is<IR::OF_EmptyAction>())
             return sequence->left;
+        prune();
         return sequence;
     }
 
-    const IR::Node* postorder(IR::OF_ResubmitAction* action) override {
-        if (foundResubmit)
-            return new IR::OF_EmptyAction();
+    const IR::Node* preorder(IR::OF_ResubmitAction* action) override {
         foundResubmit = true;
+        prune();
         return action;
     }
 };
