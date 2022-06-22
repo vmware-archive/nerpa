@@ -1326,20 +1326,30 @@ impl Table {
     /// Extracts and returns the pipeline name from this `Table`.  (The P4 compiler names tables as
     /// `<pipeline>.<table>`.)  Returns None if the table's name isn't in the expected format.
     pub fn pipeline_name(&self) -> Option<&str> {
-        match self.preamble.name.split('.').collect::<Vec<_>>().as_slice() {
-            [pipeline_name, _table_name] => Some(pipeline_name),
-            _ => None
+        let pipeline_name_vec = self.preamble.name.split('.').collect::<Vec<_>>();
+        if pipeline_name_vec.len() > 1 {
+            return Some(pipeline_name_vec[0]);
         }
+
+        None
     }
 
     /// Extracts and returns the table name from this `Table`.  (The P4 compiler names tables as
     /// `<pipeline>.<table>`.)  Returns the table's full name if its name isn't in the expected
     /// format.
     pub fn base_name(&self) -> &str {
-        match self.preamble.name.split('.').collect::<Vec<_>>().as_slice() {
-            [_pipeline_name, table_name] => table_name,
-            _ => self.preamble.name.as_str()
+        // match self.preamble.name.split('.').collect::<Vec<_>>().as_slice() {
+        //     [_pipeline_name, table_name] => table_name,
+        //     _ => self.preamble.name.as_str()
+        // }
+
+        let pipeline_name_vec = self.preamble.name.split('.').collect::<Vec<_>>();
+        let num_pipeline_names = pipeline_name_vec.len();
+        if num_pipeline_names > 1 {
+            return pipeline_name_vec[num_pipeline_names-1];
         }
+
+        self.preamble.name.as_str()
     }
 
     /// Returns true if this table has a priority field, otherwise false.  Table entries have a

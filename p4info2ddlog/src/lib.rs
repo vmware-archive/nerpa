@@ -381,7 +381,7 @@ pub fn p4info_to_ddlog(
 
         if is_packet_in {
             writeln!(output, "    packet: Vec<bit<8>>,")?;
-            writeln!(output, "    client_id: int")?;
+            writeln!(output, "    client_id: signed<128>")?;
         } else {
             writeln!(output, "    packet: Vec<bit<8>>")?;
         }

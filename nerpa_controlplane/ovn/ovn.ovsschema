@@ -9,7 +9,7 @@
                 "is_primary": {"type": "boolean"}
             },
             "isRoot": false
-        },
+        }
     },
     "version": "1.0.0"
 }

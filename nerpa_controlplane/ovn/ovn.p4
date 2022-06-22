@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021 VMware, Inc.
+Copyright (c) 2022 VMware, Inc.
 SPDX-License-Identifier: MIT
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,24 +22,12 @@ SOFTWARE.
 #include <core.p4>
 #include <v1model.p4>
 
-struct metadata {}
-
-struct headers {}
-
-parser OvnParser(
-    packet_in packet,
-    out headers hdr,
-    inout metadata meta,
-    inout standard_metadata_t standard_metadata
-) {
-    state start {
-        transition accept;
-    }
-}
+#include "include/control/acl.p4"
+#include "include/parser.p4"
 
 control OvnVerifyChecksum(
-    inout headers hdr,
-    inout metadata meta
+    inout parsed_headers_t hdr,
+    inout ovn_metadata_t meta
 ) {
     apply {}
 }
@@ -47,10 +35,12 @@ control OvnVerifyChecksum(
 // TODO: Understand how to incorporate the logical router tables.
 // We've only incorporated the logical switch tables thus far.
 control OvnIngress(
-    inout headers hdr,
-    inout metadata meta,
-    inout standard_metadata_t standard_metadata
-) {    
+    inout parsed_headers_t hdr,
+    inout ovn_metadata_t meta,
+    inout standard_metadata_t std_meta
+) {
+    Acl() acl;
+
     apply {
         // TODO: Table 0 - admission control framework.
 
@@ -59,6 +49,7 @@ control OvnIngress(
         // TODO: Table 1 - pre-ACL.
 
         // TODO: Table 2 - ACL.
+        acl.apply(hdr, meta, std_meta);
 
         // TODO: Table 3 - destination lookup, broadcast and multicast handling.
 
@@ -71,8 +62,8 @@ control OvnIngress(
 // TODO: Understand how to incorporate the logical router tables.
 // We've only incorporated the logical switch tables thus far.
 control OvnEgress(
-    inout headers hdr,
-    inout metadata meta,
+    inout parsed_headers_t hdr,
+    inout ovn_metadata_t meta,
     inout standard_metadata_t standard_metadata
 ) {
     apply {
@@ -85,15 +76,15 @@ control OvnEgress(
 }
 
 control OvnComputeChecksum(
-    inout headers hdr,
-    inout metadata meta
+    inout parsed_headers_t hdr,
+    inout ovn_metadata_t meta
 ) {
     apply {}
 }
 
 control OvnDeparser(
     packet_out packet,
-    in headers hdr
+    in parsed_headers_t hdr
 ) {
     apply {
         packet.emit(hdr);
