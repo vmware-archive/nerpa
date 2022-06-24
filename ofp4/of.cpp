@@ -26,16 +26,23 @@ const size_t OF_Register::maxRegister = 16;  // maximum register number
 const size_t OF_Register::registerSize = 32;  // size of a register in bits
 const size_t OF_Register::maxBundleSize = 4;  // xxreg0 has 4 registers, i.e. 128 bits
 
-cstring OF_Register::canonicalName(bool match) const {
-    cstring result = "";
+cstring OF_Register::toString() const {
+    return asDDlogString("true");
+}
+
+cstring OF_Register::asDDlogString(bool inMatch) const {
+    // A register is written differently depending on the position
+    // in the OF statement.
     size_t n = number;
+    cstring regName = "reg" + Util::toString(n);
+    cstring result = "";
     for (size_t i = bundle; i > 1; i >>= 1) {
         result += "x";
         n /= 2;
     }
-    result += "reg" + Util::toString(n);
-    if (match) {
-        auto mask = Constant::GetMask(high) ^ Constant::GetMask(low);
+    result += regName;
+    if (inMatch) {
+        auto mask = Constant::GetMask(high+1) ^ Constant::GetMask(low);
         result += "/" + Util::toString(mask.value, 0, false, 16);
     } else {
         if (high != registerSize * bundle)
@@ -45,15 +52,6 @@ cstring OF_Register::canonicalName(bool match) const {
         result += "]";
     }
     return result;
-}
-
-cstring OF_Register::toString() const {
-    // If the register has a "friendly" name it is used as a DDlog
-    // function name which generates the register name as an
-    // interpolated string.
-    if (friendlyName)
-        return "${r_" + friendlyName + "()}";
-    return canonicalName(false);
 }
 
 cstring OF_ResubmitAction::toString() const {

@@ -64,6 +64,7 @@ add_custom_target(linkp4cof
   )
 
 set (OF_XFAIL_TESTS
+      "${P4C_SOURCE_DIR}/extensions/ofp4/tests/snvs.p4"
 )
 
 add_dependencies(p4c-of genIR frontend)

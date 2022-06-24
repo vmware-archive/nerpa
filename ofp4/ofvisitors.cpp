@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "ofvisitors.h"
+#include "ir/ir.h"
 
 namespace P4OF {
 
@@ -29,10 +30,12 @@ bool OpenFlowPrint::preorder(const IR::OF_Constant* e) {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_Register* e) {
-    if (findContext<const IR::OF_Match>()) {
-        buffer += e->canonicalName(true);
+    bool inMatch = findContext<const IR::OF_Match>();
+    cstring ms = Util::toString(inMatch);
+    if (!e->friendlyName.isNullOrEmpty()) {
+        buffer += "${r_" + e->friendlyName + "(" + ms + ")}";
     } else {
-        buffer += e->canonicalName(false);
+        buffer += e->asDDlogString(ms);
     }
     return false;
 }
@@ -48,12 +51,22 @@ bool OpenFlowPrint::preorder(const IR::OF_Fieldname* e)  {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_Slice* e)  {
-    buffer += e->toString();
+    bool inMatch = findContext<const IR::OF_Match>();
+    if (inMatch) {
+        visit(e->base);
+        auto mask = IR::Constant::GetMask(e->high) ^ IR::Constant::GetMask(e->low);
+        buffer += "/" + Util::toString(mask.value, 0, false, 16);
+    } else {
+        visit(e->base);
+        buffer += "[" + Util::toString(e->low) + ".." + Util::toString(e->high) + "]";
+    }
     return false;
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_EqualsMatch* e)  {
-    buffer += e->toString();
+    visit(e->left);
+    buffer += "=";
+    visit(e->right);
     return false;
 }
 
@@ -86,12 +99,20 @@ bool OpenFlowPrint::preorder(const IR::OF_MatchAndAction* e)  {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_MoveAction* e)  {
-    buffer += e->toString();
+    buffer += "move(";
+    visit(e->src);
+    buffer += "->";
+    visit(e->dest);
+    buffer += ")";
     return false;
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_LoadAction* e)  {
-    buffer += e->toString();
+    buffer += "load(";
+    visit(e->src);
+    buffer += "->";
+    visit(e->dest);
+    buffer += ")";
     return false;
 }
 
@@ -118,12 +139,16 @@ bool OpenFlowPrint::preorder(const IR::OF_DropAction* e)  {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_CloneAction* e)  {
-    buffer += e->toString();
+    buffer += "clone(";
+    visit(e->action);
+    buffer += ")";
     return false;
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_OutputAction* e)  {
-    buffer += e->toString();
+    buffer += "output(";
+    visit(e->dest);
+    buffer += ")";
     return false;
 }
 

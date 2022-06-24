@@ -38,7 +38,8 @@ class OF_Register : OF_Expression {
     size_t bundle;  // How many registers bundled together (1, 2, or 4 allowed)
     optional cstring friendlyName;
     cstring toString() const;
-    cstring canonicalName(bool match) const;
+    /// Generates a DDlog expression that returns the register at runtime.
+    cstring asDDlogString(bool inMatch) const;
 #nodbprint
 }
 

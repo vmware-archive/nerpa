@@ -39,7 +39,8 @@ control PIngress(inout Headers hdr,
 
     table DropPort {
         key = { meta_in.in_port: exact @name("in_port"); }
-        actions = { Drop; }
+        actions = { Drop; NoAction; }
+        const default_action = NoAction();
     }
 
     apply {

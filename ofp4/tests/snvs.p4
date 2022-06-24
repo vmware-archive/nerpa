@@ -101,7 +101,7 @@ control SnvsIngress(inout Headers hdr,
             hdr.vlan.vid: optional @name("vid");
         }
         actions = { Drop; SetVlan; UseTaggedVlan; }
-        default_action = Drop;
+        const default_action = Drop;
     }
 
     // Mirroring packet selection.
