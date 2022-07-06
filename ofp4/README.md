@@ -40,6 +40,12 @@ controls Open vSwitch.  It accepts P4Runtime connections from a
 controller and connects to an Open vSwitch instance over OpenFlow and
 OVSDB.
 
+For more information about ofp4, please see the P4 Workshop 2022
+presentation.  The [extended abstract](p4-workshop-paper.pdf) and
+[slides](p4-workshop-slides.pdf) for this talk are available in this
+directory, as well as
+[video](https://www.youtube.com/watch?v=OpBa7s8EcLg) on YouTube.
+
 ofp4 is an experimental prototype.
 
 So far, ofp4 accepts P4Runtime connections and allows multicast groups
