@@ -966,7 +966,8 @@ impl TryFrom<&proto::p4runtime::TableEntry> for TableEntry {
 }
 impl From<&TableEntry> for proto::p4runtime::TableEntry {
     fn from(te: &TableEntry) -> proto::p4runtime::TableEntry {
-        let (meter_config, counter_data, idle_timeout_ns, time_since_last_hit, unknown_fields, cached_size)
+        let (meter_config, counter_data, meter_counter_data, idle_timeout_ns,
+             time_since_last_hit, unknown_fields, cached_size)
             = Default::default();
         proto::p4runtime::TableEntry {
             table_id: te.key.table_id,
@@ -976,6 +977,7 @@ impl From<&TableEntry> for proto::p4runtime::TableEntry {
             controller_metadata: te.value.controller_metadata,
             meter_config,
             counter_data,
+            meter_counter_data,
             is_default_action: te.key.is_default_action,
             idle_timeout_ns,
             time_since_last_hit,
