@@ -17,7 +17,7 @@ limitations under the License.
 #include "ofvisitors.h"
 #include "ir/ir.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 bool OpenFlowPrint::preorder(const IR::OF_TableMatch* e) {
     buffer += e->toString();
@@ -152,4 +152,4 @@ bool OpenFlowPrint::preorder(const IR::OF_OutputAction* e)  {
     return false;
 }
 
-}  // namespace P4OF
+}  // namespace OFP4

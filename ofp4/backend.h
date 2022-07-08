@@ -27,7 +27,7 @@ limitations under the License.
 #include "resources.h"
 #include "controlFlowGraph.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 /// P4 compiler backend for OpenFlow targets.
 class BackEnd {
@@ -36,11 +36,11 @@ class BackEnd {
  public:
     BackEnd(P4::ReferenceMap* refMap, P4::TypeMap* typeMap):
             refMap(refMap), typeMap(typeMap) {}
-    void run(P4OFOptions& options, const IR::P4Program* program);
+    void run(OFP4Options& options, const IR::P4Program* program);
 };
 
 /// Summary of the structure of a P4 program written for the of_model.p4 target
-class P4OFProgram {
+class OFP4Program {
  public:
     const IR::P4Program* program = nullptr;
     const IR::ToplevelBlock* top = nullptr;
@@ -82,13 +82,13 @@ class P4OFProgram {
     CFG ingress_cfg;
     CFG egress_cfg;
 
-    P4OFProgram(const IR::P4Program* program, const IR::ToplevelBlock* top,
+    OFP4Program(const IR::P4Program* program, const IR::ToplevelBlock* top,
                 P4::ReferenceMap* refMap, P4::TypeMap* typeMap);
     void build();
     void addFixedRules(IR::Vector<IR::Node> *declarations);
     IR::DDlogProgram* convert();
 };
 
-}  // namespace P4OF
+}  // namespace OFP4
 
 #endif  /* _EXTENSIONS_OFP4_BACKEND_H_ */

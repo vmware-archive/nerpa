@@ -19,20 +19,20 @@ limitations under the License.
 
 #include "frontends/common/options.h"
 
-namespace P4OF {
+namespace OFP4 {
 
-class P4OFOptions : public CompilerOptions {
+class OFP4Options : public CompilerOptions {
  public:
     // file to output to
     cstring outputFile = nullptr;
 
-    P4OFOptions() {
+    OFP4Options() {
         registerOption("-o", "outfile",
                 [this](const char* arg) { outputFile = arg; return true; },
                 "Write output to outfile");
     }
 };
 
-}  // namespace P4OF
+}  // namespace OFP4
 
 #endif  /* _EXTENSIONS_OFP4_OPTIONS_H_ */

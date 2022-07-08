@@ -26,7 +26,7 @@ limitations under the License.
 #include "frontends/common/resolveReferences/referenceMap.h"
 #include "lib/ordered_set.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 class CFG final : public IHasDbPrint {
  public:
@@ -177,6 +177,6 @@ class CFG final : public IHasDbPrint {
     { for (auto n : allNodes) n->computeSuccessors(); }
 };
 
-}  // namespace P4OF
+}  // namespace OFP4
 
 #endif /* EXTENSIONS_OFP4_CONTROLFLOWGRAPH_H_ */

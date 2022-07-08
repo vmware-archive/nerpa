@@ -40,31 +40,7 @@ const bit<32> PKT_INSTANCE_TYPE_REPLICATION = 5;
 const bit<32> PKT_INSTANCE_TYPE_RESUBMIT = 6;
 
 bool eth_addr_is_multicast(in EthernetAddress a) {
-    if (a[40:40] == 0) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
-bool eth_addr_is_not_multicast(in EthernetAddress a) {
-    if (a[40:40] == 1) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
-bool pcp_is_nonzero(in PCP pcp) {
-    if (pcp[0:0] == 1) {
-        return true;
-    } else if (pcp[1:1] == 1) {
-        return true;
-    } else if (pcp[2:2] == 1) {
-        return true;
-    } else {
-        return false;
-    }
+    return a[40:40] != 0;
 }
 
 const PortID DROP_PORT = 511;   // This is meaningful to simple_switch.
@@ -197,7 +173,7 @@ control SnvsIngress(inout Headers hdr,
 
         // If the source MAC isn't known, send it to the control plane to
 	// be learned.
-        if (!meta.flood && eth_addr_is_not_multicast(hdr.eth.src)
+        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)
 	    && !LearnedSrc.apply().hit) {
 #if 0 /* Disabled because we don't have digests yet. */
 	    LearnDigest d;
@@ -210,7 +186,7 @@ control SnvsIngress(inout Headers hdr,
 
         // Look up destination MAC.
         output = FLOOD_PORT;
-        if (!meta.flood && eth_addr_is_not_multicast(hdr.eth.dst)) {
+        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)) {
             LearnedDst.apply();
 	}
 
@@ -247,7 +223,7 @@ control SnvsEgress(inout Headers hdr,
     table PriorityTagging {
         key = {
             meta_out.out_port: exact @name("port");
-            hdr.vlan.present == 1 && pcp_is_nonzero(hdr.vlan.pcp): exact @name("nonzero_pcp") @nerpa_bool;
+            hdr.vlan.present == 1 && hdr.vlan.pcp != 0: exact @name("nonzero_pcp") @nerpa_bool;
         }
         actions = { NoAction; }
     }
@@ -271,25 +247,12 @@ control SnvsEgress(inout Headers hdr,
       bool tag_vlan = OutputVlan.apply().hit;
       VlanID vid = tag_vlan ? meta.vlan : 0;
       bool include_vlan_header = tag_vlan || PriorityTagging.apply().hit;
-#if 0 /* Does not compile. */
       if (include_vlan_header && hdr.vlan.present == 0) {
           hdr.vlan.present = 1;
 	  hdr.vlan.vid = vid;
       } else if (!include_vlan_header && hdr.vlan.present == 1) {
           hdr.vlan.present = 0;
       }
-#else /* This equivalent version does compile. */
-      if (include_vlan_header) {
-          if (hdr.vlan.present == 0) {
-	      hdr.vlan.present = 1;
-	      hdr.vlan.vid = vid;
-	  }
-      } else {
-          if (hdr.vlan.present == 1) {
-              hdr.vlan.present = 0;
-          }
-      }
-#endif
     }
 }
 
