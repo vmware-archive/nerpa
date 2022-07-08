@@ -40,7 +40,21 @@ const bit<32> PKT_INSTANCE_TYPE_REPLICATION = 5;
 const bit<32> PKT_INSTANCE_TYPE_RESUBMIT = 6;
 
 bool eth_addr_is_multicast(in EthernetAddress a) {
-    return (a & (1 << 40)) != 0;
+    if (a[40:40] == 0) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+bool eth_addr_is_not_multicast(in EthernetAddress a) {
+    if (a[40:40] == 1) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 }
 
 const PortID DROP_PORT = 511;   // This is meaningful to simple_switch.
@@ -173,7 +187,7 @@ control SnvsIngress(inout Headers hdr,
 
         // If the source MAC isn't known, send it to the control plane to
 	// be learned.
-        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)
+        if (!meta.flood && eth_addr_is_not_multicast(hdr.eth.src)
 	    && !LearnedSrc.apply().hit) {
 #if 0 /* Disabled because we don't have digests yet. */
 	    LearnDigest d;
@@ -186,7 +200,7 @@ control SnvsIngress(inout Headers hdr,
 
         // Look up destination MAC.
         output = FLOOD_PORT;
-        if (!meta.flood && !eth_addr_is_multicast(hdr.eth.dst)) {
+        if (!meta.flood && eth_addr_is_not_multicast(hdr.eth.dst)) {
             LearnedDst.apply();
 	}
 
