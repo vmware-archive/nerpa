@@ -21,16 +21,16 @@ limitations under the License.
 #include "frontends/common/options.h"
 #include "options.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 class MidEnd : public PassManager {
  public:
     P4::ReferenceMap    refMap;
     P4::TypeMap         typeMap;
 
-    explicit MidEnd(P4OFOptions& options);
+    explicit MidEnd(OFP4Options& options);
 };
 
-}   // namespace P4OF
+}   // namespace OFP4
 
 #endif /* _EXTENSIONS_OFP4_MIDEND_H_ */

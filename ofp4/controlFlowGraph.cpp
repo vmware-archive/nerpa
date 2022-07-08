@@ -27,7 +27,7 @@ limitations under the License.
 #include "lib/ordered_map.h"
 #include "lib/ordered_set.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 unsigned CFG::Node::crtId = 1;  // start at 1
 
@@ -240,4 +240,4 @@ void CFG::build(const IR::P4Control* cc, P4::ReferenceMap* refMap, P4::TypeMap* 
     LOG2(this);
 }
 
-}  // namespace P4OF
+}  // namespace OFP4

@@ -28,11 +28,11 @@ limitations under the License.
 #include "frontends/p4/parameterSubstitution.h"
 #include "resources.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 /// Can be used to translate action bodies or expressions into OF actions/expressions
 class ActionTranslator : public Inspector {
-    P4OFProgram* model;
+    OFP4Program* model;
     // Result is deposited here.
     const IR::IOF_Node* currentTranslation;
     // The same expression is sometimes translated differently if
@@ -42,7 +42,7 @@ class ActionTranslator : public Inspector {
     const P4::ParameterSubstitution* substitution;
 
  public:
-    ActionTranslator(P4OFProgram* model,
+    ActionTranslator(OFP4Program* model,
                      const P4::ParameterSubstitution* substitution = nullptr):
             model(model), substitution(substitution) {
         visitDagOnce = false;
@@ -337,7 +337,7 @@ static bool tableHasPriority(const IR::P4Table* table) {
 
 /// Generates code for DDlog declarations.
 class DeclarationGenerator : public Inspector {
-    P4OFProgram* model;
+    OFP4Program* model;
     IR::Vector<IR::Node> *declarations;
     IR::Vector<IR::Type> *tableActions;
     IR::Vector<IR::Type> *defaultActions;
@@ -345,7 +345,7 @@ class DeclarationGenerator : public Inspector {
     ActionTranslator *actionTranslator;
 
  public:
-    DeclarationGenerator(P4OFProgram* model, IR::Vector<IR::Node> *declarations):
+    DeclarationGenerator(OFP4Program* model, IR::Vector<IR::Node> *declarations):
             model(model), declarations(declarations) {
         setName("DeclarationGenerator"); visitDagOnce = false;
         actionTranslator = new ActionTranslator(model);
@@ -465,7 +465,8 @@ class DeclarationGenerator : public Inspector {
         auto defaultAction = table->getDefaultAction();
         CHECK_NULL(defaultAction);  // always inserted by front-end
         CHECK_NULL(table->properties);
-        auto daprop = table->properties->getProperty(IR::TableProperties::defaultActionPropertyName);
+        auto daprop = table->properties->getProperty(
+            IR::TableProperties::defaultActionPropertyName);
         CHECK_NULL(daprop);
         if (!daprop->isConstant) {
             cstring daTypeName = typeName + "DefaultAction";
@@ -474,9 +475,6 @@ class DeclarationGenerator : public Inspector {
             declarations->push_back(td);
 
             auto params = new IR::IndexedVector<IR::Parameter>();
-            if (hasPriority)
-                params->push_back(new IR::Parameter(
-                    "priority", IR::Direction::None, IR::Type_Bits::get(32)));
             params->push_back(new IR::Parameter(
                 "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
             auto rel = new IR::DDlogRelation(
@@ -505,13 +503,13 @@ static CFG::Node* findActionSuccessor(const CFG::Node* node, const IR::P4Action*
 
 /// Generates DDlog Flow rules
 class FlowGenerator : public Inspector {
-    P4OFProgram* model;
+    OFP4Program* model;
     IR::Vector<IR::Node>* declarations;
     ActionTranslator* actionTranslator;
     size_t exitBlockId;
 
  public:
-    FlowGenerator(P4OFProgram* model, IR::Vector<IR::Node> *declarations):
+    FlowGenerator(OFP4Program* model, IR::Vector<IR::Node> *declarations):
             model(model), declarations(declarations) {
         setName("FlowGenerator"); visitDagOnce = false;
         CHECK_NULL(model); CHECK_NULL(declarations);
@@ -685,7 +683,8 @@ class FlowGenerator : public Inspector {
         // Handle default action
         auto defaultAction = p4table->getDefaultAction();
         CHECK_NULL(defaultAction);  // always inserted by front-end
-        auto daprop = p4table->properties->getProperty(IR::TableProperties::defaultActionPropertyName);
+        auto daprop = p4table->properties->getProperty(
+            IR::TableProperties::defaultActionPropertyName);
         CHECK_NULL(daprop);
         if (daprop->isConstant) {
             // Constant default action: generate a fixed rule.
@@ -700,8 +699,9 @@ class FlowGenerator : public Inspector {
                 new IR::OF_InterpolatedVariableAction("actions"));
             auto flowTerm = makeFlowAtom(flowRule);
             auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
-            auto relationTerm = new IR::DDlogAtom(p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
-                                                  new IR::DDlogTupleExpression(*defaultArgs));
+            auto relationTerm = new IR::DDlogAtom(
+                p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
+                new IR::DDlogTupleExpression(*defaultArgs));
             ruleRhs->push_back(relationTerm);
             const IR::DDlogExpression* computeAction;
             if (defaultCases->size() == 0) {
@@ -815,13 +815,13 @@ class ResourceAllocator : public Inspector {
     }
 };
 
-P4OFProgram::P4OFProgram(const IR::P4Program* program, const IR::ToplevelBlock* top,
+OFP4Program::OFP4Program(const IR::P4Program* program, const IR::ToplevelBlock* top,
                 P4::ReferenceMap* refMap, P4::TypeMap* typeMap):
         program(program), top(top), refMap(refMap), typeMap(typeMap), resources(typeMap) {
     CHECK_NULL(refMap); CHECK_NULL(typeMap); CHECK_NULL(top); CHECK_NULL(program);
 }
 
-void P4OFProgram::addFixedRules(IR::Vector<IR::Node> *declarations) {
+void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     // drop if output port is 0
     auto flowRule = new IR::OF_MatchAndAction(
         new IR::OF_SeqMatch(
@@ -905,7 +905,7 @@ static const IR::Type_Struct* getStructType(P4::TypeMap* typeMap, const IR::Para
     return res;
 }
 
-void P4OFProgram::build() {
+void OFP4Program::build() {
     auto pack = top->getMain();
     CHECK_NULL(pack);
     if (pack->type->name != "OfSwitch")
@@ -960,7 +960,7 @@ void P4OFProgram::build() {
     egress_meta_out = *it;
 }
 
-IR::DDlogProgram* P4OFProgram::convert() {
+IR::DDlogProgram* OFP4Program::convert() {
     // Collect here the DDlog program
     auto decls = new IR::Vector<IR::Node>();
 
@@ -1009,7 +1009,7 @@ IR::DDlogProgram* P4OFProgram::convert() {
     return result;
 }
 
-void BackEnd::run(P4OFOptions& options, const IR::P4Program* program) {
+void BackEnd::run(OFP4Options& options, const IR::P4Program* program) {
     P4::EvaluatorPass evaluator(refMap, typeMap);
     program = program->apply(evaluator);
     if (::errorCount() > 0)
@@ -1022,7 +1022,7 @@ void BackEnd::run(P4OFOptions& options, const IR::P4Program* program) {
                   IR::P4Program::main);
         return;
     }
-    P4OFProgram ofp(program, top, refMap, typeMap);
+    OFP4Program ofp(program, top, refMap, typeMap);
     ofp.build();
     if (::errorCount() > 0)
         return;
@@ -1038,4 +1038,4 @@ void BackEnd::run(P4OFOptions& options, const IR::P4Program* program) {
     ddlogProgram->emit(*dlStream);
 }
 
-}  // namespace P4OF
+}  // namespace OFP4

@@ -49,10 +49,11 @@ limitations under the License.
 #include "midend/simplifyKey.h"
 #include "midend/tableHit.h"
 #include "midend/removeAssertAssume.h"
+#include "lower.h"
 
-namespace P4OF {
+namespace OFP4 {
 
-MidEnd::MidEnd(P4OFOptions& options) {
+MidEnd::MidEnd(OFP4Options& options) {
     setName("MidEnd");
     addPasses({
         options.ndebug ? new P4::RemoveAssertAssume(&refMap, &typeMap) : nullptr,
@@ -85,11 +86,11 @@ MidEnd::MidEnd(P4OFOptions& options) {
         new P4::CompileTimeOperations(),
         new P4::TableHit(&refMap, &typeMap),
         new P4::EliminateSwitch(&refMap, &typeMap),
-        new P4::EvaluatorPass(&refMap, &typeMap),
         new P4::HSIndexSimplifier(&refMap, &typeMap),
+        new OFP4::Lower(&refMap, &typeMap),
         new P4::SynthesizeActions(&refMap, &typeMap),
         new P4::MoveActionsToTables(&refMap, &typeMap),
-        new P4::TypeChecking(&refMap, &typeMap),
+        new P4::SimplifyControlFlow(&refMap, &typeMap),
         new P4::MidEndLast()
     });
     if (options.excludeMidendPasses) {
@@ -97,4 +98,4 @@ MidEnd::MidEnd(P4OFOptions& options) {
     }
 }
 
-}  // namespace P4OF
+}  // namespace OFP4
