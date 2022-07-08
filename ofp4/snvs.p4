@@ -62,10 +62,10 @@ struct LearnDigest {
 }
 
 control SnvsIngress(inout Headers hdr,
-out metadata meta,
-in input_metadata_t meta_in,
-inout ingress_to_arch_t itoa,
-inout output_metadata_t meta_out) {
+                    out metadata meta,
+                    in input_metadata_t meta_in,
+		    inout ingress_to_arch_t itoa,
+		    inout output_metadata_t meta_out) {
     action Drop() {
         meta_out.out_port = 0;
         exit;
@@ -102,7 +102,7 @@ inout output_metadata_t meta_out) {
         default_action = Drop;
     }
 
-    #if 0
+#if 0
     // Mirroring packet selection.
     table MirrorSelectProduct {
         key = {
@@ -111,7 +111,7 @@ inout output_metadata_t meta_out) {
         }
         actions = { NoAction; }
     }
-    #endif
+#endif
 
     // Tracks VLANs in which all packets are flooded.
     action set_flood() {
@@ -160,12 +160,12 @@ inout output_metadata_t meta_out) {
         // Input VLAN processing.
         InputVlan.apply();
 
-        #if 0 /* Disabled because we don't have an equivalent to "clone" in this architecture yet. */
+#if 0 /* Disabled because we don't have an equivalent to "clone" in this architecture yet. */
         // Mirroring packet selection.
         if (MirrorSelectProduct.apply().hit) {
             clone(CloneType.I2E, 1);
         }
-        #endif
+#endif
 
         // Is this a flood VLAN?
         meta.flood = false;
@@ -174,14 +174,14 @@ inout output_metadata_t meta_out) {
         // If the source MAC isn't known, send it to the control plane to
 	// be learned.
         if (!meta.flood && !eth_addr_is_multicast(hdr.eth.src)
-	&& !LearnedSrc.apply().hit) {
-            #if 0 /* Disabled because we don't have digests yet. */
+	    && !LearnedSrc.apply().hit) {
+#if 0 /* Disabled because we don't have digests yet. */
 	    LearnDigest d;
 	    d.port = meta_in.in_port;
 	    d.vlan = meta.vlan;
 	    d.mac = hdr.eth.src;
 	    digest<LearnDigest>(MAC_LEARN_RCVR, d);
-            #endif
+#endif
 	}
 
         // Look up destination MAC.
@@ -207,9 +207,9 @@ inout output_metadata_t meta_out) {
 }
 
 control SnvsEgress(inout Headers hdr,
-inout metadata meta,
-in input_metadata_t meta_in,
-inout output_metadata_t meta_out) {
+                   inout metadata meta,
+                   in input_metadata_t meta_in,
+		   inout output_metadata_t meta_out) {
     // Output VLAN processing.
     table OutputVlan {
         key = {
@@ -229,34 +229,34 @@ inout output_metadata_t meta_out) {
     }
 
     apply {
-        #if 0 /* Disabled because we don't have "clone" yet. */
-        // If this is a clone for the purpose of port mirroring, we're all
-        // done.
-        if (itoa.clone) {
-            exit;
-        }
-        #endif
+#if 0 /* Disabled because we don't have "clone" yet. */
+      // If this is a clone for the purpose of port mirroring, we're all
+      // done.
+      if (itoa.clone) {
+          exit;
+      }
+#endif
 
-        // Drop loopback.
-        if (meta_out.out_port == meta_in.in_port) {
-            meta_out.out_port = 0;
-            exit;
-        }
+      // Drop loopback.
+      if (meta_out.out_port == meta_in.in_port) {
+          meta_out.out_port = 0;
+          exit;
+      }
 
-        // Output VLAN processing, including priority tagging.
-        bool tag_vlan = OutputVlan.apply().hit;
-        VlanID vid = tag_vlan ? meta.vlan : 0;
-        bool include_vlan_header = tag_vlan || PriorityTagging.apply().hit;
-        if (include_vlan_header && hdr.vlan.present == 0) {
-            hdr.vlan.present = 1;
-	    hdr.vlan.vid = vid;
-        } else if (!include_vlan_header && hdr.vlan.present == 1) {
-            hdr.vlan.present = 0;
-        }
+      // Output VLAN processing, including priority tagging.
+      bool tag_vlan = OutputVlan.apply().hit;
+      VlanID vid = tag_vlan ? meta.vlan : 0;
+      bool include_vlan_header = tag_vlan || PriorityTagging.apply().hit;
+      if (include_vlan_header && hdr.vlan.present == 0) {
+          hdr.vlan.present = 1;
+	  hdr.vlan.vid = vid;
+      } else if (!include_vlan_header && hdr.vlan.present == 1) {
+          hdr.vlan.present = 0;
+      }
     }
 }
 
 OfSwitch (
-SnvsIngress(),
-SnvsEgress()
+    SnvsIngress(),
+    SnvsEgress()
 ) main;
