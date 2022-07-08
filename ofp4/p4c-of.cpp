@@ -37,13 +37,13 @@ limitations under the License.
 #include "backend.h"
 #include "options.h"
 
-using P4OFContext = P4CContextWithOptions<P4OF::P4OFOptions>;
+using OFP4Context = P4CContextWithOptions<OFP4::OFP4Options>;
 
 bool done(const IR::P4Program* program) {
     return program == nullptr || ::errorCount() > 0;
 }
 
-void compile(P4OF::P4OFOptions& options) {
+void compile(OFP4::OFP4Options& options) {
     auto hook = options.getDebugHook();
     const IR::P4Program * program = P4::parseP4File(options);
     if (done(program))
@@ -59,13 +59,13 @@ void compile(P4OF::P4OFOptions& options) {
         return;
 
     P4::serializeP4RuntimeIfRequired(program, options);
-    P4OF::MidEnd midend(options);
+    OFP4::MidEnd midend(options);
     midend.addDebugHook(hook);
     program = program->apply(midend);
     if (done(program))
         return;
 
-    P4OF::BackEnd backend(&midend.refMap, &midend.typeMap);
+    OFP4::BackEnd backend(&midend.refMap, &midend.typeMap);
     backend.run(options, program);
 }
 
@@ -73,8 +73,8 @@ int main(int argc, char *const argv[]) {
     setup_gc_logging();
     setup_signals();
 
-    AutoCompileContext autoP4TestContext(new P4OFContext);
-    auto& options = P4OFContext::get().options();
+    AutoCompileContext autoP4TestContext(new OFP4Context);
+    auto& options = OFP4Context::get().options();
     options.langVersion = CompilerOptions::FrontendVersion::P4_16;
     options.compilerVersion = "0.1";
 

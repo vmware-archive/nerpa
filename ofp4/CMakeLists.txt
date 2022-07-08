@@ -7,6 +7,7 @@ message(STATUS "Start configuring OFP4 back end")
 set (P4C_OF_SOURCES
   backend.cpp
   controlFlowGraph.cpp
+  lower.cpp
   midend.cpp
   ofvisitors.cpp
   p4c-of.cpp
@@ -22,6 +23,7 @@ set (OF_IR_SRCS
 set (P4C_OF_HEADERS
   backend.h
   controlFlowGraph.h
+  lower.h
   midend.h
   ofvisitors.h
   options.h
@@ -64,7 +66,7 @@ add_custom_target(linkp4cof
   )
 
 set (OF_XFAIL_TESTS
-      "${P4C_SOURCE_DIR}/extensions/ofp4/tests/snvs.p4"
+#      "${P4C_SOURCE_DIR}/extensions/ofp4/tests/snvs.p4"
 )
 
 add_dependencies(p4c-of genIR frontend)

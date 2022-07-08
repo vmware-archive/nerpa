@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "ir/ir.h"
 
-namespace P4OF {
+namespace OFP4 {
 
 /// Optimize an open-flow program
 class OpenFlowSimplify : public Transform {
@@ -98,6 +98,6 @@ class OpenFlowPrint : public Inspector {
     }
 };
 
-}  // namespace P4OF
+}  // namespace OFP4
 
 #endif  /* _EXTENSIONS_OFP4_OFVISITORS_H_ */
