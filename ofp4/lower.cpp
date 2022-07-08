@@ -65,7 +65,7 @@ const IR::Node* LowerExpressions::postorder(IR::P4Control* control) {
 }
 
 const IR::Node* LowerExpressions::postorder(IR::Operation_Relation* expression) {
-    if (findContext<IR::AssignmentStatement>() || // Do not simplify if inside an if condition...
+    if (findContext<IR::AssignmentStatement>() ||  // Do not simplify if inside an if condition...
         (expression->is<IR::Neq>() && findContext<IR::Expression>())) {
         // ... except if the condition is complex.
         auto type = typeMap->getType(getOriginal(), true);
