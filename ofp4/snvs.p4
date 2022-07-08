@@ -55,6 +55,16 @@ bool eth_addr_is_not_multicast(in EthernetAddress a) {
     }
 }
 
+bool pcp_is_nonzero(in PCP pcp) {
+    if (pcp[0:0] == 1) {
+        return true;
+    } else if (pcp[1:1] == 1) {
+        return true;
+    } else if (pcp[2:2] == 1) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 const PortID DROP_PORT = 511;   // This is meaningful to simple_switch.
@@ -237,7 +247,7 @@ control SnvsEgress(inout Headers hdr,
     table PriorityTagging {
         key = {
             meta_out.out_port: exact @name("port");
-            hdr.vlan.present == 1 && hdr.vlan.pcp != 0: exact @name("nonzero_pcp") @nerpa_bool;
+            hdr.vlan.present == 1 && pcp_is_nonzero(hdr.vlan.pcp): exact @name("nonzero_pcp") @nerpa_bool;
         }
         actions = { NoAction; }
     }
