@@ -99,7 +99,7 @@ struct Conntrack {
 
     /* The following fields require a match to a valid connection tracking state
      * as a prerequisite, in addition to the IP or IPv6 ethertype
-     * match. Examples of valid connection tracking state matches in‐ clude
+     * match. Examples of valid connection tracking state matches include
      * ct_state=+new, ct_state=+est, ct_state=+rel, and ct_state=+trk-inv. */
     bit<32> ct_nw_src;
     bit<32> ct_nw_dst;
@@ -141,8 +141,13 @@ struct output_metadata_t {
 }
 
 header Ethernet {
+    @name("dl_src")
     bit<48> src;
+
+    @name("dl_dst")
     bit<48> dst;
+
+    @name("dl_type")
     bit<16> type;
 }
 
@@ -152,99 +157,201 @@ header Vlan {
     bit<12> vid;
 }
 
+@of_prereq("mpls")
 header Mpls {
+    @name("mpls_label")
     bit<32> label;              // Label (low 20 bits).
+
+    @name("mpls_tc")
     bit<8> tc;                  // Traffic class (low 3 bits).
+
+    @name("mpls_bos")
     bit<8> bos;                 // Bottom of Stack (low bit only).
+
+    @name("mpls_ttl")
     bit<8> ttl;                 // Time to live.
 }
 
 const bit<8> FRAG_ANY = 1 << 0;   // Set for any IP fragment.
 const bit<8> FRAG_LATER = 1 << 1; // Set for IP fragment with nonzero offset.
 
+@of_prereq("ipv4")
 header Ipv4 {
+    @name("nw_src")
     bit<32> src;
+
+    @name("nw_dst")
     bit<32> dst;
+
+    @name("nw_proto")
     bit<8> proto;
+
+    @name("nw_ttl")
     bit<8> ttl;
+
+    @name("nw_frag")
     bit<8> frag;                // 0, or FRAG_ANY, or (FRAG_ANY | FRAG_LATER)
-    bit<8> tos;                 // DSCP in top 6 bits, ECN in low 2 bits.
+
+    @name("ip_dscp")
+    bit<6> dscp;
+
+    @name("ip_ecn")
+    bit<2> ecn;
 }
 
+@of_prereq("ipv6")
 header Ipv6 {
+    @name("ipv6_src")
     bit<128> src;
+
+    @name("ipv6_dst")
     bit<128> dst;
+
+    @name("nw_proto")
     bit<8> proto;
+
+    @name("nw_ttl")
     bit<8> ttl;
+
+    @name("nw_frag")
     bit<8> frag;                // 0, or FRAG_ANY, or (FRAG_ANY | FRAG_LATER)
-    bit<8> tos;                 // DSCP in top 6 bits, ECN in low 2 bits.
+
+    @name("ip_dscp")
+    bit<6> dscp;
+
+    @name("ip_ecn")
+    bit<2> ecn;
 }
 
+@of_prereq("arp")
 header Arp {
+    @name("arp_op")
     bit<16> op;
+
+    @name("arp_spa")
     bit<32> spa;
+
+    @name("arp_tpa")
     bit<32> tpa;
+
+    @name("arp_sha")
     bit<48> sha;
+
+    @name("arp_tha")
     bit<48> tha;
 }
 
 // Network Service Header (https://www.rfc-editor.org/rfc/rfc8300.html).
+@of_prereq("nsh")
 header Nsh {
+    @name("nsh_flags")
     bit<8> flags;
+
+    @name("nsh_ttl")
     bit<8> ttl;
+
+    @name("nsh_mdtype")
     bit<8> mdtype;
+
+    @name("nsh_np")
     bit<8> np;
+
+    @name("nsh_spi")
     bit<32> spi;                // Low 24 bits only.
+
+    @name("nsh_si")
     bit<8> si;
+
+    @name("nsh_c1")
     bit<32> c1;
+
+    @name("nsh_c2")
     bit<32> c2;
+
+    @name("nsh_c3")
     bit<32> c3;
+
+    @name("nsh_c4")
     bit<32> c4;
 }
 
+@of_prereq("tcp")		// XXX this is an IPv4 specific prerequisite, prehaps we need TcpV4 and TcpV6 headers instead.
 struct Tcp {
+    @name("tp_src")
     bit<16> src;
+
+    @name("tp_dst")
     bit<16> dst;
+
+    @name("tcp_flags")
     bit<16> flags;              // Low 12 bits only.
 }
 
+@of_prereq("udp")		// XXX this is an IPv4 specific prerequisite, prehaps we need UdpV4 and UdpV6 headers instead.
 struct Udp {
+    @name("tp_src")
     bit<16> src;
+
+    @name("tp_dst")
     bit<16> dst;
 }
 
+@of_prereq("sctp")		// XXX this is an IPv4 specific prerequisite, prehaps we need SctpV4 and SctpV6 headers instead.
 struct Sctp {
+    @name("sctp_src")
     bit<16> src;
+
+    @name("sctp_dst")
     bit<16> dst;
 }
 
+@of_prereq("icmp")
 struct Icmp {
+    @name("icmp_type")
     bit<8> type;
+
+    @name("icmp_code")
     bit<8> code;
 }
 
+@of_prereq("icmpv6")
 struct Icmpv6 {
+    @name("icmpv6_type")
     bit<8> type;
-    bit<8> code;
-}
 
-// IPv6 neighbor discovery.
-// Valid only if Icmpv6 'type' is 135 or 136 and 'code' is 0.
-struct Nd {
-    bit<128> target;
-    bit<32> reserved;
-    bit<8> options_type;
+    @name("icmpv6_code")
+    bit<8> code;
 }
 
 // IPv6 neighbor discovery source link layer.
-// Valid only if the Icmpv6 'type' is 135 and 'code' is 0.
+@of_prereq("icmpv6,icmpv6_type=135,icmpv6_code=0")
 struct NdSll {
+    @name("nd_target")
+    bit<128> target;
+
+    @name("nd_reserved")
+    bit<32> reserved;
+
+    @name("nd_options_type")
+    bit<8> options_type;
+
+    @name("nd_sll")
     bit<48> sll;
 }
 
 // IPv6 neighbor discovery target link layer.
-// Valid only if the Icmpv6 'type' is 136 and 'code' is 0.
+@of_prereq("icmpv6,icmpv6_type=136,icmpv6_code=0")
 struct NdTll {
+    @name("nd_target")
+    bit<128> target;
+
+    @name("nd_reserved")
+    bit<32> reserved;
+
+    @name("nd_options_type")
+    bit<8> options_type;
+
+    @name("nd_tll")
     bit<48> tll;
 }
 
@@ -261,7 +368,6 @@ struct Headers {
     Sctp sctp;
     Icmp icmp;
     Icmpv6 icmpv6;
-    Nd nd;
     NdSll ndsll;
     NdTll ndtll;
 }
