@@ -27,7 +27,7 @@ const size_t OF_Register::registerSize = 32;  // size of a register in bits
 const size_t OF_Register::maxBundleSize = 4;  // xxreg0 has 4 registers, i.e. 128 bits
 
 cstring OF_Register::toString() const {
-    return asDDlogString("true");
+    return asDDlogString(true);
 }
 
 cstring OF_Register::asDDlogString(bool inMatch) const {
