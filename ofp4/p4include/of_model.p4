@@ -23,6 +23,13 @@ For complete details on the fields and metadata described here, please
 read the Open vSwitch protocol header fields manual available at
 http://www.openvswitch.org/support/dist-docs/ovs-fields.7.pdf
 
+The p4c-of backend used with this model uses annotations as follows:
+
+  - For fields, the @name annotation is the OpenFlow name of the field.
+
+  - On a field or a header, @of_prereq specifies an extra clause to
+    add to the OpenFlow match, for supplying a prerequisite.  On a
+    header, @of_prereq provides a prerequisite for all its fields.
 */
 
 #ifndef _OF_MODEL_P4
