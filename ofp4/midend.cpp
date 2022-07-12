@@ -20,6 +20,7 @@ limitations under the License.
 #include "frontends/p4/evaluator/evaluator.h"
 #include "frontends/p4/fromv1.0/v1model.h"
 #include "frontends/p4/moveDeclarations.h"
+#include "frontends/p4/parseAnnotations.h"
 #include "frontends/p4/simplify.h"
 #include "frontends/p4/strengthReduction.h"
 #include "frontends/p4/toP4/toP4.h"
@@ -53,9 +54,20 @@ limitations under the License.
 
 namespace OFP4 {
 
+/*
+ * Parse OfP4-specific annotations.
+ */
+class ParseAnnotations : public P4::ParseAnnotations {
+ public:
+    ParseAnnotations() : P4::ParseAnnotations("ofp4", false, {
+                PARSE("of_prereq", StringLiteral),
+            }) { }
+};
+
 MidEnd::MidEnd(OFP4Options& options) {
     setName("MidEnd");
     addPasses({
+        new ParseAnnotations(),
         options.ndebug ? new P4::RemoveAssertAssume(&refMap, &typeMap) : nullptr,
         new P4::RemoveMiss(&refMap, &typeMap),
         new P4::EliminateNewtype(&refMap, &typeMap),

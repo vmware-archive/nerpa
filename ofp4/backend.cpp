@@ -133,11 +133,27 @@ class ActionTranslator : public Inspector {
             auto baseDecl = model->refMap->getDeclaration(path->path, true);
             if (baseDecl == model->ingress_hdr ||
                 baseDecl == model->egress_hdr) {
-                if (translateMatch)
-                    currentTranslation = new IR::OF_Fieldname(
-                        parent->member + "," + member->member);
-                else
-                    currentTranslation = new IR::OF_Fieldname(member->member);
+                // Use the @name on the field definition as the name.
+                auto name = member->member.name;
+                auto parentType = model->typeMap->getType(member->expr, true);
+                auto st = parentType->to<IR::Type_StructLike>();
+                auto field = st ? st->getField(member->member) : nullptr;
+                if (field != nullptr) {
+                    name = field->externalName();
+                }
+
+                if (translateMatch && field) {
+                    // If there's an @of_prereq on the field or the header,
+                    // put that at the beginning separated by a comma,
+                    // e.g. "ip,ip_src=1.2.34".
+                    auto prereq = field->getAnnotation("of_prereq");
+                    if (prereq == nullptr)
+                        prereq = st->getAnnotation("of_prereq");
+                    if (prereq != nullptr) {
+                        name = prereq->getSingleString() + "," + name;
+                    }
+                }
+                currentTranslation = new IR::OF_Fieldname(name);
             }
         }
         if (!currentTranslation) {
