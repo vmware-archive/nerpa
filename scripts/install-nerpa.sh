@@ -38,7 +38,6 @@ CONFIGURE="./configure --prefix=$NERPA_DEPS/inst CPPFLAGS=-I$NERPA_DEPS/inst/inc
 echo "Configuring behavioral model..."
 (cd behavioral-model && autogen.sh && $CONFIGURE --with-pi)
 (cd behavioral-model && make install)
-(cd behavioral-model/targets/simple_switch_grpc/ && ./autogen.sh && $CONFIGURE && make install)
 
 # Configure the p4c compiler.
 echo "Configuring p4c..."
