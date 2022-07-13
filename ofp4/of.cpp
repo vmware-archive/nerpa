@@ -30,22 +30,20 @@ cstring OF_Register::toString() const {
     return asDDlogString("true");
 }
 
+cstring OF_Register::mask() const {
+    auto mask = Constant::GetMask(high+1) ^ Constant::GetMask(low);
+    return Util::toString(mask.value, 0, false, 16);
+}
+
 cstring OF_Register::asDDlogString(bool inMatch) const {
     // A register is written differently depending on the position
     // in the OF statement.
-    size_t n = number;
-    cstring regName = "reg" + Util::toString(n);
-    cstring result = "";
-    for (size_t i = bundle; i > 1; i >>= 1) {
-        result += "x";
-        n /= 2;
-    }
-    result += regName;
-    if (inMatch) {
-        auto mask = Constant::GetMask(high+1) ^ Constant::GetMask(low);
-        result += "/" + Util::toString(mask.value, 0, false, 16);
-    } else {
-        if (high != registerSize * bundle)
+    if (!isSlice())
+        return name;
+
+    cstring result = name;
+    if (!inMatch) {
+        if (high != size)
             result += "[" + Util::toString(low);
         if (high > low)
             result += ".." + Util::toString(high);

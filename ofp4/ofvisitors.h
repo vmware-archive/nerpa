@@ -32,7 +32,8 @@ class OpenFlowSimplify : public Transform {
         if (auto br = slice->base->to<IR::OF_Register>()) {
             // convert the slice of a register into a register
             return new IR::OF_Register(
-                br->number, br->low + slice->low, br->low + slice->high, br->bundle);
+                br->name, br->size, br->low + slice->low, br->low + slice->high,
+                br->friendlyName);
         }
         return slice;
     }

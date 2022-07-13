@@ -32,14 +32,16 @@ class OF_Register : OF_Expression {
     static const size_t registerSize;  // size of a register in bits
     static const size_t maxBundleSize;  // xxreg0 has 4 registers, i.e. 128 bits
 
-    size_t number;  // Register number
+    cstring name;   // e.g. "xreg1"
+    size_t size;    // Field size in bits
     size_t low;     // Low bit number
     size_t high;    // High bit number
-    size_t bundle;  // How many registers bundled together (1, 2, or 4 allowed)
     optional cstring friendlyName;
     cstring toString() const;
     /// Generates a DDlog expression that returns the register at runtime.
     cstring asDDlogString(bool inMatch) const;
+    cstring mask() const;
+    bool isSlice() const { return low != 0 || high != size - 1; }
 #nodbprint
 }
 

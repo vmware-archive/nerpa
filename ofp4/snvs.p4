@@ -238,10 +238,12 @@ control SnvsEgress(inout Headers hdr,
 #endif
 
       // Drop loopback.
+#if 0 /* Disabled because comparing multibit values is difficult */
       if (meta_out.out_port == meta_in.in_port) {
           meta_out.out_port = 0;
           exit;
       }
+#endif
 
       // Output VLAN processing, including priority tagging.
       bool tag_vlan = OutputVlan.apply().hit;
