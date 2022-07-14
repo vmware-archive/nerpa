@@ -71,7 +71,7 @@ bool OpenFlowPrint::preorder(const IR::OF_EqualsMatch* e)  {
         buffer += "=";
         if (field->low) {
             buffer += "${";
-            if (auto value = e->right->to<IR::OF_Constant>()) {
+            if (e->right->to<IR::OF_Constant>()) {
                 visit(e->right);
             } else if (auto value = e->right->to<IR::OF_InterpolatedVarExpression>()) {
                 buffer += value->varname;
