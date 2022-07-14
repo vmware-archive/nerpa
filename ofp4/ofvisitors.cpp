@@ -31,11 +31,10 @@ bool OpenFlowPrint::preorder(const IR::OF_Constant* e) {
 
 bool OpenFlowPrint::preorder(const IR::OF_Register* e) {
     bool inMatch = findContext<const IR::OF_Match>();
-    cstring ms = Util::toString(inMatch);
     if (!e->friendlyName.isNullOrEmpty()) {
-        buffer += "${r_" + e->friendlyName + "(" + ms + ")}";
+        buffer += "${r_" + e->friendlyName + "(" + Util::toString(inMatch) + ")}";
     } else {
-        buffer += e->asDDlogString(ms);
+        buffer += e->asDDlogString(inMatch);
     }
     return false;
 }
