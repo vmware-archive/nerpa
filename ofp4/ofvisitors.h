@@ -30,10 +30,11 @@ class OpenFlowSimplify : public Transform {
 
     const IR::Node* postorder(IR::OF_Slice* slice) override {
         if (auto br = slice->base->to<IR::OF_Register>()) {
-            // convert the slice of a register into a register
+            // Convert the slice of a register into a register.  We
+            // intentionally drop the register's friendlyName here because
+            // a friendlyName always refers to the whole register.
             return new IR::OF_Register(
-                br->name, br->size, br->low + slice->low, br->low + slice->high,
-                br->friendlyName);
+                br->name, br->size, br->low + slice->low, br->low + slice->high);
         }
         return slice;
     }
