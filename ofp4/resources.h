@@ -18,6 +18,7 @@ limitations under the License.
 #define _EXTENSIONS_OFP4_RESOURCES_H_
 
 #include "lib/algorithm.h"
+#include "lib/stringify.h"
 #include "ir/ir.h"
 #include "frontends/p4/typeMap.h"
 
@@ -59,9 +60,11 @@ class OFResources {
             return nullptr;
         }
 
-        size_t bundle = 1;
-        while (width > bundle * IR::OF_Register::registerSize) {
-            bundle *= 2;
+        cstring name = "";
+        size_t size = IR::OF_Register::registerSize;
+        while (width > size) {
+            size *= 2;
+            name += "x";
         }
 
         bool found = false;
@@ -93,9 +96,11 @@ class OFResources {
             assert(!byteMask[i]);
             byteMask[i] = true;
         }
-        auto result = new IR::OF_Register(index / bytesPerRegister,
+        name += "reg" + Util::toString(index / bytesPerRegister);
+        auto result = new IR::OF_Register(name,
+                                          size,
                                           (index % bytesPerRegister) * 8,
-                                          (index % bytesPerRegister) * 8 + width-1, bundle,
+                                          (index % bytesPerRegister) * 8 + width-1,
                                           makeId(decl->externalName()));
         map.emplace(decl, result);
         LOG3("Allocated " << result->toString() << " for " << decl);

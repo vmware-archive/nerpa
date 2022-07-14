@@ -64,9 +64,32 @@ bool OpenFlowPrint::preorder(const IR::OF_Slice* e)  {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_EqualsMatch* e)  {
-    visit(e->left);
-    buffer += "=";
-    visit(e->right);
+    auto field = e->left->to<IR::OF_Register>();
+    if (field != nullptr && field->isSlice()) {
+        /* field=value/mask */
+        visit(e->left);
+        buffer += "=";
+        if (field->low) {
+            buffer += "${";
+            if (auto value = e->right->to<IR::OF_Constant>()) {
+                visit(e->right);
+            } else if (auto value = e->right->to<IR::OF_InterpolatedVarExpression>()) {
+                buffer += value->varname;
+            } else {
+                BUG("%1%: don't know how to shift left for matching", e->toString());
+                visit(e->right);
+            }
+            buffer += " << " + Util::toString(field->low) + "}";
+        } else {
+            visit(e->right);
+        }
+        buffer += "/" + field->mask();
+    } else {
+        /* field=value */
+        visit(e->left);
+        buffer += "=";
+        visit(e->right);
+    }
     return false;
 }
 

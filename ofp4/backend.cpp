@@ -108,6 +108,7 @@ class ActionTranslator : public Inspector {
 
     bool preorder(const IR::Member* member) override {
         currentTranslation = nullptr;
+        const IR::Annotation *prereq = nullptr;
         if (auto path = member->expr->to<IR::PathExpression>()) {
             auto baseDecl = model->refMap->getDeclaration(path->path, true);
             auto baseType = model->typeMap->getType(baseDecl->getNode(), true);
@@ -125,7 +126,7 @@ class ActionTranslator : public Inspector {
             } else if (baseDecl == model->ingress_meta_in ||
                        baseDecl == model->egress_meta_in) {
                 if (name == "in_port")
-                    currentTranslation = new IR::OF_Fieldname("in_port");
+                    currentTranslation = new IR::OF_Register("in_port", 16, 0, 15);
             }
         } else if (auto parent = member->expr->to<IR::Member>()) {
             // All headers are two-level nested.
@@ -136,24 +137,18 @@ class ActionTranslator : public Inspector {
                 // Use the @name on the field definition as the name.
                 auto name = member->member.name;
                 auto parentType = model->typeMap->getType(member->expr, true);
-                auto st = parentType->to<IR::Type_StructLike>();
-                auto field = st ? st->getField(member->member) : nullptr;
-                if (field != nullptr) {
-                    name = field->externalName();
-                }
+                auto st = parentType->checkedTo<IR::Type_StructLike>();
+                auto field = st->getField(member->member);
+                BUG_CHECK(field, "%1% unexpectedly lacks member %2%", st, field);
 
-                if (translateMatch && field) {
-                    // If there's an @of_prereq on the field or the header,
-                    // put that at the beginning separated by a comma,
-                    // e.g. "ip,ip_src=1.2.34".
-                    auto prereq = field->getAnnotation("of_prereq");
+                name = field->externalName();
+                auto size = field->type->width_bits();
+                currentTranslation = new IR::OF_Register(name, size, 0, size - 1);
+                if (translateMatch) {
+                    prereq = field->getAnnotation("of_prereq");
                     if (prereq == nullptr)
                         prereq = st->getAnnotation("of_prereq");
-                    if (prereq != nullptr) {
-                        name = prereq->getSingleString() + "," + name;
-                    }
                 }
-                currentTranslation = new IR::OF_Fieldname(name);
             }
         }
         if (!currentTranslation) {
@@ -167,6 +162,12 @@ class ActionTranslator : public Inspector {
                     currentTranslation->to<IR::OF_Expression>(),
                     new IR::OF_Constant(1));
             }
+        }
+        if (prereq != nullptr) {
+            auto prereq_match = new IR::OF_Fieldname(prereq->getSingleString());
+            currentTranslation = new IR::OF_SeqMatch(
+                prereq_match->to<IR::OF_Match>(),
+                currentTranslation->to<IR::OF_Match>());
         }
         return false;
     }
