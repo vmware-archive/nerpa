@@ -27,6 +27,10 @@ The p4c-of backend used with this model uses annotations as follows:
 
   - For fields, the @name annotation is the OpenFlow name of the field.
 
+  - For fields, the @of_slice(low:high:size) annotation says that the
+    field is a slice of 'size'-bit @name from bit 'low' to bit 'high',
+    inclusive.
+
   - On a field or a header, @of_prereq specifies an extra clause to
     add to the OpenFlow match, for supplying a prerequisite.  On a
     header, @of_prereq provides a prerequisite for all its fields.
@@ -159,8 +163,13 @@ header Ethernet {
 }
 
 header Vlan {
+    @name("vlan_tci") @of_slice(13,15,16)
     bit<3> pcp;
+
+    @name("vlan_tci") @of_slice(12,12,16)
     bit<1> present;
+
+    @name("vlan_tci") @of_slice(0,11,16)
     bit<12> vid;
 }
 
