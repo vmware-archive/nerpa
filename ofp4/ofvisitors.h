@@ -34,7 +34,7 @@ class OpenFlowSimplify : public Transform {
             // intentionally drop the register's friendlyName here because
             // a friendlyName always refers to the whole register.
             return new IR::OF_Register(
-                br->name, br->size, br->low + slice->low, br->low + slice->high);
+                br->name, br->size, br->low + slice->low, br->low + slice->high, br->is_boolean);
         }
         return slice;
     }
