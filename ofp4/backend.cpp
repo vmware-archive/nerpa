@@ -151,7 +151,7 @@ class ActionTranslator : public Inspector {
                     int i = 0;
                     for (auto x : { &low, &high, &size }) {
                         auto elem = slice->expr[i++];
-                        auto value = elem->checkedTo<IR::Constant>();
+                        auto value = elem->to<IR::Constant>();
                         if (elem == nullptr) {
                             ::error(ErrorType::ERR_EXPECTED, "%1%: %2% is not a constant in @of_slice", slice, elem);
                             return false;
