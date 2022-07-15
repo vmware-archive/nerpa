@@ -150,7 +150,13 @@ class ActionTranslator : public Inspector {
                     }
                     int i = 0;
                     for (auto x : { &low, &high, &size }) {
-                        *x = slice->expr[i++]->checkedTo<IR::Constant>()->asInt();
+                        auto elem = slice->expr[i++];
+                        auto value = elem->checkedTo<IR::Constant>();
+                        if (elem == nullptr) {
+                            ::error(ErrorType::ERR_EXPECTED, "%1%: %2% is not a constant in @of_slice", slice, elem);
+                            return false;
+                        }
+                        *x = value->asInt();
                     }
                     if (!(0 <= low && low <= high && high < size)) {
                         ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) requires 0 <= low <= high < size", slice);
