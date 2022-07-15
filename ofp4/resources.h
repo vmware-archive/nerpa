@@ -101,6 +101,7 @@ class OFResources {
                                           size,
                                           (index % bytesPerRegister) * 8,
                                           (index % bytesPerRegister) * 8 + width-1,
+                                          type->is<IR::Type_Boolean>(),
                                           makeId(decl->externalName()));
         map.emplace(decl, result);
         LOG3("Allocated " << result->toString() << " for " << decl);

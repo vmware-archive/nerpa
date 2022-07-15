@@ -36,6 +36,7 @@ class OF_Register : OF_Expression {
     size_t size;    // Field size in bits
     size_t low;     // Low bit number
     size_t high;    // High bit number
+    bool   is_boolean;  // True if this represents a boolean P4 value
     optional cstring friendlyName;
     cstring toString() const;
     /// Generates a DDlog expression that returns the register at runtime.

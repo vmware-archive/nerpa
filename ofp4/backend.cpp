@@ -66,7 +66,7 @@ class ActionTranslator : public Inspector {
             currentTranslation = reg;
         } else if (decl->is<IR::Parameter>()) {
             // action parameters are translated to DDlog variables with the same name
-            currentTranslation = new IR::OF_Fieldname(decl->getName());
+            currentTranslation = new IR::OF_InterpolatedVarExpression(decl->getName());
         } else {
             ::error(ErrorType::ERR_INVALID, "%1%: could not translate expression", path);
         }
@@ -126,7 +126,7 @@ class ActionTranslator : public Inspector {
             } else if (baseDecl == model->ingress_meta_in ||
                        baseDecl == model->egress_meta_in) {
                 if (name == "in_port")
-                    currentTranslation = new IR::OF_Register("in_port", 16, 0, 15);
+                    currentTranslation = new IR::OF_Register("in_port", 16, 0, 15, false);
             }
         } else if (auto parent = member->expr->to<IR::Member>()) {
             // All headers are two-level nested.
@@ -134,7 +134,6 @@ class ActionTranslator : public Inspector {
             auto baseDecl = model->refMap->getDeclaration(path->path, true);
             if (baseDecl == model->ingress_hdr ||
                 baseDecl == model->egress_hdr) {
-                auto name = member->member.name;
                 auto parentType = model->typeMap->getType(member->expr, true);
                 auto st = parentType->checkedTo<IR::Type_StructLike>();
                 auto field = st->getField(member->member);
@@ -153,19 +152,23 @@ class ActionTranslator : public Inspector {
                         auto elem = slice->expr[i++];
                         auto value = elem->to<IR::Constant>();
                         if (elem == nullptr) {
-                            ::error(ErrorType::ERR_EXPECTED, "%1%: %2% is not a constant in @of_slice", slice, elem);
+                            ::error(ErrorType::ERR_EXPECTED,
+                                    "%1%: %2% is not a constant in @of_slice", slice, elem);
                             return false;
                         }
                         *x = value->asInt();
                     }
                     if (!(0 <= low && low <= high && high < size)) {
-                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) requires 0 <= low <= high < size", slice);
+                        ::error(ErrorType::ERR_EXPECTED,
+                                "%1%: @of_slice(low,high,size) requires 0 <= low <= high < size", slice);
                         return false;
                     }
 
                     int width = field->type->width_bits();
                     if (high - low + 1 != width) {
-                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) is a %2%-bit slice but %3% is a %4%-bit field.",
+                        ::error(ErrorType::ERR_EXPECTED,
+                                "%1%: @of_slice(low,high,size) is a %2%-bit slice "
+                                "but %3% is a %4%-bit field.",
                                 slice, high - low + 1, field, width);
                         return false;
                     }
@@ -175,7 +178,8 @@ class ActionTranslator : public Inspector {
                     high = size - 1;
                 }
                 currentTranslation = new IR::OF_Register(field->externalName(),
-                                                         size, low, high);
+                                                         size, low, high,
+                                                         member->type->is<IR::Type_Boolean>());
 
                 if (translateMatch) {
                     prereq = field->getAnnotation("of_prereq");
@@ -697,7 +701,8 @@ class FlowGenerator : public Inspector {
             const IR::DDlogExpression* computeAction;
             if (tableCases->size() == 0) {
                 BUG("%1%: table with empty actions list", p4table);
-            } else if (tableCases->size() == 1) {
+            }
+            else if (!keys && tableCases->size() == 1) {
                 // no DDlog "match" needed
                 computeAction = tableCases->at(0)->result;
             } else {
