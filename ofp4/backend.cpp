@@ -145,7 +145,7 @@ class ActionTranslator : public Inspector {
                 int size, low, high;
                 if (auto slice = field->getAnnotation("of_slice")) {
                     if (slice->expr.size() != 3) {
-                        ::error(ErrorType::ERR_UNKNOWN, "%1%: @of_slice must contain 3 constants", slice);
+                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice must contain 3 constants", slice);
                         return false;
                     }
                     int i = 0;
@@ -153,14 +153,14 @@ class ActionTranslator : public Inspector {
                         *x = slice->expr[i++]->checkedTo<IR::Constant>()->asInt();
                     }
                     if (!(0 <= low && low <= high && high < size)) {
-                        ::error(ErrorType::ERR_UNKNOWN, "%1%: @of_slice(low,high,size) requires 0 <= low <= high < size", slice);
+                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) requires 0 <= low <= high < size", slice);
                         return false;
                     }
 
                     int width = field->type->width_bits();
                     if (high - low + 1 != width) {
-                        ::error(ErrorType::ERR_UNKNOWN, "%1%: @of_slice(low,high,size) is a %1%-bit slice but %2% is a %3%-bit field.",
-                                high - low + 1, field, width);
+                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) is a %2%-bit slice but %3% is a %4%-bit field.",
+                                slice, high - low + 1, field, width);
                         return false;
                     }
                 } else {
