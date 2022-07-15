@@ -31,11 +31,10 @@ bool OpenFlowPrint::preorder(const IR::OF_Constant* e) {
 
 bool OpenFlowPrint::preorder(const IR::OF_Register* e) {
     bool inMatch = findContext<const IR::OF_Match>();
-    cstring ms = Util::toString(inMatch);
     if (!e->friendlyName.isNullOrEmpty()) {
-        buffer += "${r_" + e->friendlyName + "(" + ms + ")}";
+        buffer += "${r_" + e->friendlyName + "(" + Util::toString(inMatch) + ")}";
     } else {
-        buffer += e->asDDlogString(ms);
+        buffer += e->asDDlogString(inMatch);
     }
     return false;
 }
@@ -71,7 +70,7 @@ bool OpenFlowPrint::preorder(const IR::OF_EqualsMatch* e)  {
         buffer += "=";
         if (field->low) {
             buffer += "${";
-            if (auto value = e->right->to<IR::OF_Constant>()) {
+            if (e->right->to<IR::OF_Constant>()) {
                 visit(e->right);
             } else if (auto value = e->right->to<IR::OF_InterpolatedVarExpression>()) {
                 buffer += value->varname;

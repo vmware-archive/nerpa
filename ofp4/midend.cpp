@@ -61,6 +61,7 @@ class ParseAnnotations : public P4::ParseAnnotations {
  public:
     ParseAnnotations() : P4::ParseAnnotations("ofp4", false, {
                 PARSE("of_prereq", StringLiteral),
+                PARSE_CONSTANT_LIST("of_slice"),
             }) { }
 };
 

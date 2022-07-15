@@ -134,16 +134,49 @@ class ActionTranslator : public Inspector {
             auto baseDecl = model->refMap->getDeclaration(path->path, true);
             if (baseDecl == model->ingress_hdr ||
                 baseDecl == model->egress_hdr) {
-                // Use the @name on the field definition as the name.
                 auto name = member->member.name;
                 auto parentType = model->typeMap->getType(member->expr, true);
                 auto st = parentType->checkedTo<IR::Type_StructLike>();
                 auto field = st->getField(member->member);
                 BUG_CHECK(field, "%1% unexpectedly lacks member %2%", st, field);
 
-                name = field->externalName();
-                auto size = field->type->width_bits();
-                currentTranslation = new IR::OF_Register(name, size, 0, size - 1);
+                // This field might be a slice of an OpenFlow field or it might
+                // be the whole field.
+                int size, low, high;
+                if (auto slice = field->getAnnotation("of_slice")) {
+                    if (slice->expr.size() != 3) {
+                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice must contain 3 constants", slice);
+                        return false;
+                    }
+                    int i = 0;
+                    for (auto x : { &low, &high, &size }) {
+                        auto elem = slice->expr[i++];
+                        auto value = elem->checkedTo<IR::Constant>();
+                        if (elem == nullptr) {
+                            ::error(ErrorType::ERR_EXPECTED, "%1%: %2% is not a constant in @of_slice", slice, elem);
+                            return false;
+                        }
+                        *x = value->asInt();
+                    }
+                    if (!(0 <= low && low <= high && high < size)) {
+                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) requires 0 <= low <= high < size", slice);
+                        return false;
+                    }
+
+                    int width = field->type->width_bits();
+                    if (high - low + 1 != width) {
+                        ::error(ErrorType::ERR_EXPECTED, "%1%: @of_slice(low,high,size) is a %2%-bit slice but %3% is a %4%-bit field.",
+                                slice, high - low + 1, field, width);
+                        return false;
+                    }
+                } else {
+                    size = field->type->width_bits();
+                    low = 0;
+                    high = size - 1;
+                }
+                currentTranslation = new IR::OF_Register(field->externalName(),
+                                                         size, low, high);
+
                 if (translateMatch) {
                     prereq = field->getAnnotation("of_prereq");
                     if (prereq == nullptr)

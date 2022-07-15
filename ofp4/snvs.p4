@@ -74,14 +74,14 @@ control SnvsIngress(inout Headers hdr,
     // Drop packets received on mirror destination port.
     table MirrorDstDrop {
         key = { meta_in.in_port: exact @name("port"); }
-        actions = { Drop; }
+        actions = { @tableonly Drop; }
     }
 
     // Drop packets to reserved Ethernet multicast address.
     @nerpa_singleton
     table ReservedMcastDstDrop {
         key = { hdr.eth.dst: exact @name("dst"); }
-        actions = { Drop; }
+        actions = { @tableonly Drop; }
     }
 
     // Input VLAN processing.
@@ -98,8 +98,8 @@ control SnvsIngress(inout Headers hdr,
             hdr.vlan.present: exact @name("has_vlan") @nerpa_bool;
             hdr.vlan.vid: optional @name("vid");
         }
-        actions = { Drop; SetVlan; UseTaggedVlan; }
-        default_action = Drop;
+        actions = { Drop; @tableonly SetVlan; @tableonly UseTaggedVlan; }
+        const default_action = Drop;
     }
 
 #if 0
@@ -110,6 +110,7 @@ control SnvsIngress(inout Headers hdr,
             meta.vlan: optional @name("vlan");
         }
         actions = { NoAction; }
+        const default_action = NoAction;
     }
 #endif
 
@@ -119,7 +120,8 @@ control SnvsIngress(inout Headers hdr,
     }
     table FloodVlan {
         key = { meta.vlan: exact @name("vlan"); }
-        actions = { set_flood; }
+        actions = { @tableonly set_flood; @defaultonly NoAction; }
+        const default_action = NoAction;
     }
 
     // Known VLAN+MAC -> port mappings.
@@ -133,7 +135,8 @@ control SnvsIngress(inout Headers hdr,
 	    hdr.eth.src: exact @name("mac");
 	    meta_in.in_port: exact @name("port");
 	}
-	actions = { NoAction; }
+        actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     PortID output;
@@ -145,7 +148,8 @@ control SnvsIngress(inout Headers hdr,
 	    meta.vlan: exact @name("vlan");
 	    hdr.eth.dst: exact @name("mac");
 	}
-	actions = { KnownDst; }
+        actions = { @tableonly KnownDst; @defaultonly NoAction; }
+        const defaultonly = NoAction;
     }
 
     apply {
@@ -209,7 +213,7 @@ control SnvsIngress(inout Headers hdr,
 control SnvsEgress(inout Headers hdr,
                    inout metadata meta,
                    in input_metadata_t meta_in,
-		   inout output_metadata_t meta_out) {
+                   inout output_metadata_t meta_out) {
     // Output VLAN processing.
     table OutputVlan {
         key = {
@@ -217,6 +221,7 @@ control SnvsEgress(inout Headers hdr,
             meta.vlan: optional @name("vlan");
         }
         actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     // Priority tagging mode.
@@ -226,6 +231,7 @@ control SnvsEgress(inout Headers hdr,
             hdr.vlan.present == 1 && hdr.vlan.pcp != 0: exact @name("nonzero_pcp") @nerpa_bool;
         }
         actions = { NoAction; }
+        const default_action = NoAction;
     }
 
     apply {
