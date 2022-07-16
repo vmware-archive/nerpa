@@ -102,9 +102,12 @@ bool OpenFlowPrint::preorder(const IR::OF_ProtocolMatch* e)  {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_SeqMatch* e)  {
-    visit(e->left);
-    buffer += ", ";
-    visit(e->right);
+    size_t i = 0;
+    for (auto m : e->matches) {
+        if (i++ > 0)
+            buffer += ", ";
+        visit(m);
+    }
     return false;
 }
 
