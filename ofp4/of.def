@@ -41,7 +41,9 @@ class OF_Register : OF_Expression {
     cstring toString() const;
     /// Generates a DDlog expression that returns the register at runtime.
     cstring asDDlogString(bool inMatch) const;
-    cstring mask() const;
+#emit
+    Constant mask() const;
+#end
     bool isSlice() const { return low != 0 || high != size - 1; }
 #nodbprint
 }
