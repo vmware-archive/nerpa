@@ -110,7 +110,6 @@ static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
                     buffer += ") 1 else 0)";
             } else {
                 BUG("%1%: don't know how to shift left for matching", erm->toString());
-                ofp.visit(erm->right);
             }
             if (reg->low > 0)
                 buffer += " << " + Util::toString(reg->low);
