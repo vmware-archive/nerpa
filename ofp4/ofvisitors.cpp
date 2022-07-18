@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <map>
+
 #include "ofvisitors.h"
 #include "ir/ir.h"
 
@@ -62,31 +64,98 @@ bool OpenFlowPrint::preorder(const IR::OF_Slice* e)  {
     return false;
 }
 
-bool OpenFlowPrint::preorder(const IR::OF_EqualsMatch* e)  {
-    auto reg = e->left->to<IR::OF_Register>();
-    if (reg != nullptr && reg->isSlice()) {
-        /* field=value/mask */
-        visit(e->left);
-        buffer += "=";
-        if (reg->low) {
-            buffer += "${";
-            if (e->right->to<IR::OF_Constant>()) {
-                visit(e->right);
-            } else if (auto value = e->right->to<IR::OF_InterpolatedVarExpression>()) {
+// 'erms' must have at least one element.  All its elements must have 'left'
+// that are disjoint slices of the same OF_Register.
+static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
+                               OpenFlowPrint& ofp,
+                               std::string& buffer)  {
+    auto reg0 = erms[0]->left->checkedTo<IR::OF_Register>();
+
+    /* field=value/mask */
+    if (erms.size() > 1 || reg0->friendlyName.isNullOrEmpty()) {
+        buffer += reg0->name;
+    } else {
+        buffer += "${r_" + reg0->friendlyName + "(true)}";
+    }
+    buffer += "=";
+    IR::Constant mask = 0;
+    if (erms.size() == 1 && !reg0->low) {
+        ofp.visit(erms[0]->right);
+        mask = reg0->mask();
+    } else {
+        buffer += "${";
+
+        size_t n = 0;
+        for (auto erm : erms) {
+            auto reg = erm->left->checkedTo<IR::OF_Register>();
+            if ((mask & reg->mask()).value != 0) {
+                /* Masks from different matches overlap.  There are three cases:
+                 *
+                 *     1. The values are constants and bits in corresponding
+                 *        positions are the same. Then the overlap makes no
+                 *        difference.  We could handle this here by tracking
+                 *        constant bits that overlap and verifying that they
+                 *        are the same.
+                 *
+                 *     2. The values are constants and there is at least one
+                 *        difference in the values for corresponding
+                 *        positions. Then the overlap means that the flow
+                 *        cannot possibly match.  By the time we arrive here to
+                 *        print the match, it is too late to handle this
+                 *        correctly.
+                 *
+                 *     3. At least one value is expanded from a variable. The
+                 *        value bits might match or might not.  We would have
+                 *        to do a dynamic comparison in DDlog code; again, it
+                 *        is too late by the time we arrive here to print the
+                 *        match.
+                 *
+                 * The code already here handles case #1 correctly, but not
+                 * case #2 or #3, and can't yet distinguish.
+                 */
+                ::error(ErrorType::ERR_UNSUPPORTED_ON_TARGET,
+                        "%1%: overlapping bitwise matches on register not yet implemented", reg);
+            }
+            mask = mask | reg->mask();
+
+            if (n++ > 0)
+                buffer += " | ";
+
+            bool needsParens = erms.size() > 1 && reg->low > 0;
+            if (needsParens)
+                buffer += "(";
+
+            if (erm->right->to<IR::OF_Constant>()) {
+                ofp.visit(erm->right);
+            } else if (auto value = erm->right->to<IR::OF_InterpolatedVarExpression>()) {
                 if (reg->is_boolean)
                     buffer += "(if (";
                 buffer += value->varname;
                 if (reg->is_boolean)
                     buffer += ") 1 else 0)";
             } else {
-                BUG("%1%: don't know how to shift left for matching", e->toString());
-                visit(e->right);
+                BUG("%1%: don't know how to shift left for matching", erm->toString());
             }
-            buffer += " << " + Util::toString(reg->low) + "}";
-        } else {
-            visit(e->right);
+            if (reg->low > 0)
+                buffer += " << " + Util::toString(reg->low);
+
+            if (needsParens)
+                buffer += ")";
         }
-        buffer += "/" + reg->mask();
+        buffer += "}";
+    }
+
+    if (mask.value != IR::Constant::GetMask(reg0->size).value) {
+        buffer += "/" + Util::toString(mask.value, 0, false, 16);
+    }
+}
+
+bool OpenFlowPrint::preorder(const IR::OF_EqualsMatch* e)  {
+    auto reg = e->left->to<IR::OF_Register>();
+    if (reg != nullptr && reg->isSlice()) {
+        std::vector<const IR::OF_EqualsMatch*> erms;
+        erms.push_back(e);
+        printRegisterMatch(erms, *this, buffer);
     } else {
         /* field=value */
         visit(e->left);
@@ -102,9 +171,32 @@ bool OpenFlowPrint::preorder(const IR::OF_ProtocolMatch* e)  {
 }
 
 bool OpenFlowPrint::preorder(const IR::OF_SeqMatch* e)  {
-    visit(e->left);
-    buffer += ", ";
-    visit(e->right);
+    // 'erms' might have multiple OF_EqualsMatch expression that match on
+    // different slices of the same OF_Register.  We have to emit only a single
+    // match expression for any collection of these.  Accumulate a vector of
+    // all the OF_EqualsMatch expressions for a particular register to emit
+    // later.  Emit other expressions immediately.
+    std::map<cstring, std::vector<const IR::OF_EqualsMatch*>> erms;
+    size_t n = 0;
+    for (auto m : e->matches) {
+        if (auto em = m->to<IR::OF_EqualsMatch>()) {
+            if (auto r = em->left->to<IR::OF_Register>()) {
+                erms.emplace(r->name, 0).first->second.emplace_back(em);
+                continue;
+            }
+        }
+
+        if (n++ > 0)
+            buffer += ", ";
+        visit(m);
+    }
+
+    // Emit all the accumulated register matches.
+    for (auto erm : erms) {
+        if (n++ > 0)
+            buffer += ", ";
+        printRegisterMatch(erm.second, *this, buffer);
+    }
     return false;
 }
 

@@ -30,9 +30,8 @@ cstring OF_Register::toString() const {
     return asDDlogString(true);
 }
 
-cstring OF_Register::mask() const {
-    auto mask = Constant::GetMask(high+1) ^ Constant::GetMask(low);
-    return Util::toString(mask.value, 0, false, 16);
+Constant OF_Register::mask() const {
+    return Constant::GetMask(high+1) ^ Constant::GetMask(low);
 }
 
 cstring OF_Register::asDDlogString(bool inMatch) const {

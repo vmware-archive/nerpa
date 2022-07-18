@@ -41,7 +41,9 @@ class OF_Register : OF_Expression {
     cstring toString() const;
     /// Generates a DDlog expression that returns the register at runtime.
     cstring asDDlogString(bool inMatch) const;
-    cstring mask() const;
+#emit
+    Constant mask() const;
+#end
     bool isSlice() const { return low != 0 || high != size - 1; }
 #nodbprint
 }
@@ -81,11 +83,25 @@ class OF_ProtocolMatch : OF_Match {
 #nodbprint
 }
 
-/// A sequence of two matches
+/// A sequence of matches
 class OF_SeqMatch : OF_Match {
-    OF_Match left;
-    OF_Match right;
-    toString{ return left->toString() + " " + right->toString(); }
+    optional inline Vector<OF_Match> matches;
+    toString{
+        cstring result = "";
+        for (auto s : matches) {
+            if (result != "")
+                result += " ";
+            result += s->toString();
+        }
+        return result;
+    }
+    void push_back(OF_Match m) {
+        if (auto sequence = m->to<IR::OF_SeqMatch>()) {
+            matches.append(sequence->matches);
+        } else {
+            matches.push_back(m);
+        }
+    }
 #nodbprint
 }
 

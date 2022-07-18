@@ -201,10 +201,12 @@ class ActionTranslator : public Inspector {
             }
         }
         if (prereq != nullptr) {
+            auto basic_match = currentTranslation;
             auto prereq_match = new IR::OF_Fieldname(prereq->getSingleString());
-            currentTranslation = new IR::OF_SeqMatch(
-                prereq_match->to<IR::OF_Match>(),
-                currentTranslation->to<IR::OF_Match>());
+            auto sequence = new IR::OF_SeqMatch();
+            sequence->push_back(basic_match->to<IR::OF_Match>());
+            sequence->push_back(prereq_match->to<IR::OF_Match>());
+            currentTranslation = sequence;
         }
         return false;
     }
@@ -225,9 +227,10 @@ class ActionTranslator : public Inspector {
         auto right = _translate(expression->right);
         if (!left || !right)
             return false;
-        currentTranslation = new IR::OF_SeqMatch(
-            left->checkedTo<IR::OF_Match>(),
-            right->checkedTo<IR::OF_Match>());
+        auto sequence = new IR::OF_SeqMatch();
+        sequence->push_back(left->checkedTo<IR::OF_Match>());
+        sequence->push_back(right->checkedTo<IR::OF_Match>());
+        currentTranslation = sequence;
         return false;
     }
 
@@ -663,7 +666,8 @@ class FlowGenerator : public Inspector {
 
         if (!entries) {
             /// Table has no const entries: generate OF rules dynamically
-            auto match = tablematch;
+            auto match = new IR::OF_SeqMatch();
+            match->push_back(tablematch);
             // key evaluation
             if (keys) {
                 for (auto k : keys->keyElements) {
@@ -674,8 +678,7 @@ class FlowGenerator : public Inspector {
                     auto name = k->annotations->getSingle(
                         IR::Annotation::nameAnnotation)->getSingleString();
                     auto varName = new IR::OF_InterpolatedVarExpression(name);
-                    match = new IR::OF_SeqMatch(
-                        match,
+                    match->push_back(
                         new IR::OF_EqualsMatch(
                             key->checkedTo<IR::OF_Expression>(),
                             varName));
@@ -683,10 +686,10 @@ class FlowGenerator : public Inspector {
             }
 
             if (hasPriority) {
-                auto prio = new IR::OF_EqualsMatch(
-                    new IR::OF_Fieldname("priority"),
-                    new IR::OF_InterpolatedVarExpression("priority"));
-                match = new IR::OF_SeqMatch(match, prio);
+                match->push_back(
+                    new IR::OF_EqualsMatch(
+                        new IR::OF_Fieldname("priority"),
+                        new IR::OF_InterpolatedVarExpression("priority")));
             }
             auto flowRule = new IR::OF_MatchAndAction(
                 match,
@@ -716,7 +719,8 @@ class FlowGenerator : public Inspector {
         } else {
             // Table has constant entries: generate a fixed rule
             for (auto entry : entries->entries) {
-                const IR::OF_Match* match = new IR::OF_TableMatch(id);
+                auto match = new IR::OF_SeqMatch();
+                match->push_back(new IR::OF_TableMatch(id));
                 BUG_CHECK(keys->keyElements.size() == entry->getKeys()->size(),
                           "%1%: mismatched keys and entry %2%", keys, entry);
                 auto it = entry->getKeys()->components.begin();
@@ -724,8 +728,7 @@ class FlowGenerator : public Inspector {
                     auto v = *it++;
                     auto key = actionTranslator->translate(k->expression, true, exitBlockId);
                     auto value = actionTranslator->translate(v, true, exitBlockId);
-                    match = new IR::OF_SeqMatch(
-                        match,
+                    match->push_back(
                         new IR::OF_EqualsMatch(
                             key->checkedTo<IR::OF_Expression>(),
                             value->checkedTo<IR::OF_Expression>()));
@@ -743,8 +746,9 @@ class FlowGenerator : public Inspector {
         CHECK_NULL(daprop);
         if (daprop->isConstant) {
             // Constant default action: generate a fixed rule.
-            auto match = new IR::OF_SeqMatch(
-                tablematch,
+            auto match = new IR::OF_SeqMatch();
+            match->push_back(tablematch);
+            match->push_back(
                 new IR::OF_EqualsMatch(
                     new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
             generateActionCall(defaultAction->checkedTo<IR::MethodCallExpression>(), match, table);
@@ -792,7 +796,8 @@ class FlowGenerator : public Inspector {
         auto expr = actionTranslator->translate(node->statement->condition, true, exitBlockId);
 
         for (auto e : node->successors.edges) {
-            const IR::OF_Match* match = new IR::OF_TableMatch(id);
+            auto match = new IR::OF_SeqMatch();
+            match->push_back(new IR::OF_TableMatch(id));
             CFG::Node* next = e->endpoint;
             auto action = new IR::OF_ResubmitAction(next ? next->id : 0);
             const IR::OF_MatchAndAction* ma;
@@ -800,19 +805,18 @@ class FlowGenerator : public Inspector {
                 // if condition is true
                 if (expr != nullptr) {
                     auto cond = expr->to<IR::OF_Match>();
-                    match = new IR::OF_SeqMatch(
-                        new IR::OF_SeqMatch(match, cond),
+                    match->push_back(cond);
+                    match->push_back(
                         new IR::OF_EqualsMatch(
                             new IR::OF_Fieldname("priority"), new IR::OF_Constant(100)));
                 }
                 ma = new IR::OF_MatchAndAction(match, action);
             } else {
                 // if condition is false
-                ma = new IR::OF_MatchAndAction(
-                    new IR::OF_SeqMatch(
-                        match, new IR::OF_EqualsMatch(
-                            new IR::OF_Fieldname("priority"), new IR::OF_Constant(1))),
-                    action);
+                match->push_back(
+                    new IR::OF_EqualsMatch(
+                        new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
+                ma = new IR::OF_MatchAndAction(match, action);
             }
             auto rule = makeFlowRule(ma, node->statement->toString());
             declarations->push_back(rule);
@@ -878,17 +882,15 @@ OFP4Program::OFP4Program(const IR::P4Program* program, const IR::ToplevelBlock* 
 
 void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     // drop if output port is 0
-    auto flowRule = new IR::OF_MatchAndAction(
-        new IR::OF_SeqMatch(
-            new IR::OF_TableMatch(egressExitId),
-            new IR::OF_SeqMatch(
-                new IR::OF_EqualsMatch(
-                    outputPortRegister,
-                    new IR::OF_Constant(0)),
-                new IR::OF_EqualsMatch(
-                    new IR::OF_Fieldname("priority"),
-                    new IR::OF_Constant(100)))),
-        new IR::OF_DropAction());
+    auto match = new IR::OF_SeqMatch();
+    match->push_back(new IR::OF_TableMatch(egressExitId));
+    match->push_back(new IR::OF_EqualsMatch(
+                         outputPortRegister,
+                         new IR::OF_Constant(0)));
+    match->push_back(new IR::OF_EqualsMatch(
+                         new IR::OF_Fieldname("priority"),
+                         new IR::OF_Constant(100)));
+    auto flowRule = new IR::OF_MatchAndAction(match, new IR::OF_DropAction());
     declarations->push_back(makeFlowRule(flowRule, "drop if output port is 0"));
 
     // send to output port from dedicated register
@@ -905,18 +907,20 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
 
     // Fixed implementation of multicast table:
     // - multicast group is 0 - just forward to egress
+    match = new IR::OF_SeqMatch();
+    match->push_back(new IR::OF_TableMatch(multicastId));
+    match->push_back(new IR::OF_EqualsMatch(multicastRegister, new IR::OF_Constant(0)));
     flowRule = new IR::OF_MatchAndAction(
-        new IR::OF_SeqMatch(
-            new IR::OF_TableMatch(multicastId),
-            new IR::OF_EqualsMatch(multicastRegister, new IR::OF_Constant(0))),
+        match,
         new IR::OF_ResubmitAction(egressStartId));
     declarations->push_back(makeFlowRule(flowRule, "if multicast group is 0 just forward"));
     // - multicast group non-zero: clone packet for each row from the MuticastGroup table
+    match = new IR::OF_SeqMatch();
+    match->push_back(new IR::OF_TableMatch(multicastId));
+    match->push_back(new IR::OF_EqualsMatch(multicastRegister,
+                                            new IR::OF_InterpolatedVarExpression("mcast_id")));
     flowRule = new IR::OF_MatchAndAction(
-        new IR::OF_SeqMatch(
-            new IR::OF_TableMatch(multicastId),
-            new IR::OF_EqualsMatch(multicastRegister,
-                                   new IR::OF_InterpolatedVarExpression("mcast_id"))),
+        match,
         new IR::OF_InterpolatedVariableAction("outputs"));
     auto lhs = makeFlowAtom(flowRule);
 
