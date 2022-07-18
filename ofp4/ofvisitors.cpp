@@ -89,7 +89,32 @@ static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
         for (auto erm : erms) {
             auto reg = erm->left->checkedTo<IR::OF_Register>();
             if ((mask & reg->mask()).value != 0) {
-                BUG("%1%: overlapping bitwise matches on register", reg);
+                /* Masks from different matches overlap.  There are three cases:
+                 *
+                 *     1. The values are constants and bits in corresponding
+                 *        positions are the same. Then the overlap makes no
+                 *        difference.  We could handle this here by tracking
+                 *        constant bits that overlap and verifying that they
+                 *        are the same.
+                 *
+                 *     2. The values are constants and there is at least one
+                 *        difference in the values for corresponding
+                 *        positions. Then the overlap means that the flow
+                 *        cannot possibly match.  By the time we arrive here to
+                 *        print the match, it is too late to handle this
+                 *        correctly.
+                 *
+                 *     3. At least one value is expanded from a variable. The
+                 *        value bits might match or might not.  We would have
+                 *        to do a dynamic comparison in DDlog code; again, it
+                 *        is too late by the time we arrive here to print the
+                 *        match.
+                 *
+                 * The code already here handles case #1 correctly, but not
+                 * case #2 or #3, and can't yet distinguish.
+                 */
+                ::error(ErrorType::ERR_UNSUPPORTED_ON_TARGET,
+                        "%1%: overlapping bitwise matches on register not yet implemented", reg);
             }
             mask = mask | reg->mask();
 
