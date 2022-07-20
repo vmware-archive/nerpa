@@ -128,11 +128,13 @@ static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
             if (erm->right->to<IR::OF_Constant>()) {
                 ofp.visit(erm->right);
             } else if (auto value = erm->right->to<IR::OF_InterpolatedVarExpression>()) {
-                if (reg->is_boolean)
-                    buffer += "(if (";
-                buffer += value->varname;
-                if (reg->is_boolean)
-                    buffer += ") 1 else 0)";
+                if (!reg->is_boolean) {
+                    buffer += value->varname;
+                    if (erms.size() > 1 || reg->low > 0)
+                        buffer += " as bit<" + Util::toString(reg->size) + ">";
+                } else {
+                    buffer += "(if (" + value->varname + ") 1 else 0)";
+                }
             } else {
                 BUG("%1%: don't know how to shift left for matching", erm->toString());
             }
