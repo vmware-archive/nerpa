@@ -35,7 +35,7 @@ EOF
     exit 1
 fi
 
-# Check if the Nerpa dependencies were installed correctly.
+# Check if the Nerpa dependencies were built correctly.
 # '$NERPA_DEPS' should point to a directory containing a 'behavioral-model' subdirectory.
 if [[ -z $NERPA_DEPS ]]; then
     NERPA_DEPS=$(pwd)/nerpa-deps
@@ -47,8 +47,8 @@ if [[ -z $NERPA_DEPS ]]; then
         cat >&2 <<EOF
 Nerpa dependencies directory (NERPA_DEPS) was not found in its expected location.
 You have two options to set necessary environment variables to build nerpa programs.
-1) Run '. install-nerpa.sh' to install Nerpa dependencies in the expected directory.
-2) Manually execute the steps in 'scripts/install-nerpa.sh' in the desired locations.
+1) Run '. scripts/build-dependencies.sh' to build dependencies in the expected directory.
+2) Manually execute the steps in 'scripts/build-dependencies.sh' in the desired locations.
 EOF
         exit 1
     fi

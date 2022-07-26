@@ -31,7 +31,7 @@ The above pieces fit together as follows in the [`tutorial` Nerpa program](doc/t
 ![Tutorial example](doc/tutorial/tutorial_impl_diagram.png)
 
 ## Steps
-### Installation
+### Building Dependencies
 
 1. Clone the repository and its submodules.
 ```
@@ -42,13 +42,13 @@ git clone --recursive git@github.com:vmware/nerpa.git
 
 3. The required version of `grpcio` requires CMake >= 3.12. The Ubuntu default is 3.10. [Here](https://askubuntu.com/a/865294) are  installation instructions for Ubuntu.
 
-4. We have included an installation script for Ubuntu. This installs all other dependencies and sets necessary environment variables. On a different operating system, you can individually execute the steps. Following the installation script's organization ensures compatibility with the build and runtime scripts.
+4. We have included an script for Ubuntu that builds all dependencies. This builds all other dependencies and sets necessary environment variables. On a different operating system, you can individually execute the steps. Following the build dependency script's organization ensures compatibility with the build and runtime scripts.
 ```
-. scripts/install-nerpa.sh
+. scripts/build-dependencies.sh
 ```
 
 ### Tutorial
-After installing all dependencies, you can write Nerpa programs. We recommend following the [tutorial](doc/tutorial/tutorial.md) for a step-by-step introduction to Nerpa. Individual steps for setup are also documented below. 
+After building all dependencies, you can write Nerpa programs. We recommend following the [tutorial](doc/tutorial/tutorial.md) for a step-by-step introduction to Nerpa. Individual steps for setup are also documented below. 
 
 ### Build
 The Nerpa program called `example` would consist of the following files. For organization, these files should be placed in the same subdirectory of `nerpa_controlplane` and given the same name, as follows:
@@ -87,7 +87,7 @@ The runtime script's usage is the same as the build script:
 ./scripts/run-nerpa.sh nerpa_controlplane/example example
 ```
 
-If you did not previously use the installation and build scripts, you must ensure that all software dependencies are in the expected locations for the runtime script.
+If you did not previously use the scripts that build dependencies and Nerpa, you must ensure that all software dependencies are in the expected locations for the runtime script.
 
 ### Test
 The snvs example program includes an automatic test program to check that the MAC learning table functions as expected.  To use it, first build it with:
