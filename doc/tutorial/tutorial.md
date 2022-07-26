@@ -22,7 +22,7 @@ The Nerpa controller synchronizes state between the planes. It does the followin
 
 ## Setup
 
-Installation instructions are found in the [README](../../README.md/#installation). To verify installation, confirm that the following environment variables are set:
+Instructions to build dependencies are found in the [README](../../README.md/#building-dependencies). To verify, confirm that the following environment variables are set:
 * `$NERPA_DEPS`, to the directory containing the `behavioral-model` directory.
 * `$DDLOG_HOME`, to the DDlog installation directory. Make sure `$PATH` includes the DDlog binary.
 
@@ -152,7 +152,7 @@ Now that each sub-program exists, we can build the Nerpa tutorial program end-to
 
 The build script executes the following steps. You will notice that Steps 1 to 5 replicate commands you have already run in the tutorial. 
 
-1. Check if the Nerpa dependencies were installed correctly, specifically the DDlog environment variables `$DDLOG_HOME` and in `$PATH`, and the Nerpa dependencies directory `$NERPA_DIR`.
+1. Check if the Nerpa dependencies were built correctly, specifically the DDlog environment variables `$DDLOG_HOME` and in `$PATH`, and the Nerpa dependencies directory `$NERPA_DIR`.
 2. Generate the DDlog relations from the OVSDB schema using `ovsdb2ddlog`. This is more fully described in the [management plane](#program-the-management-plane) section.
 3. Compile the P4 program using `p4c`. This is more fully described in the [data plane](#program-the-data-plane) section. Compilation also creates a P4info file.
 4. Generate DDlog relations from the P4info file using `p4info2ddlog`. This is also described in the [data plane](#program-the-data-plane) section.
@@ -168,7 +168,7 @@ Run the Nerpa program, starting all pieces of software.
 ```
 
 The run script executes the following steps.
-1. Check that the Nerpa dependencies were installed as expected. Specifically, it confirms that the environment variable `$NERPA_DEPS` points to a directory that contains the `behavioral-model` subdirectory.
+1. Check that the Nerpa dependencies were built as expected. Specifically, it confirms that the environment variable `$NERPA_DEPS` points to a directory that contains the `behavioral-model` subdirectory.
 2. Run `simple_switch_grpc`, the virtual switch. If using veth devices, it tears down existing interfaces and sets them up.
 3. Initially configure the switch by passing the provided `commands.txt` to `sswitch_CLI.py`. This is a Python wrapper around the simple switch command-line interface.
 4. Start a new OVSDB server. Before this, we first stop any currently running ovsdb-server. We then use `ovsdb-tool` to create a new database, defined by the schema in `tutorial.ovsschema`. Finally, we start the server.
