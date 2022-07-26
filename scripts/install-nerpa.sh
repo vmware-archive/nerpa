@@ -1,66 +1,54 @@
-#!/bin/bash
-# Install Nerpa and dependencies on Linux
+#! /bin/sh -ex
 
-# Exit when any command fails, since they are all sequential.
-set -e
-
-export NERPA_DIR=$(pwd)
-
-# Recursively initialize git modules.
-echo "Initializing git submodules..."
-git submodule update --init --recursive
-
-# Make a directory for dependency installation.
-mkdir nerpa-deps
-export NERPA_DEPS=$NERPA_DIR/nerpa-deps
-cd $NERPA_DEPS
-
-# Install DDlog.
-echo "Installing DDlog..."
-if [[ -z $DDLOG_HOME ]]; then
-    wget https://github.com/vmware/differential-datalog/releases/download/v0.50.0/ddlog-v0.50.0-20211020154401-Linux.tar.gz
-    tar -xzvf ddlog-v0.50.0-20211020154401-Linux.tar.gz
-    export PATH=$PATH:$NERPA_DEPS/ddlog/bin
-    export DDLOG_HOME=$NERPA_DEPS/ddlog
+usage() {
+    cat <<EOF
+usage: $0 DIRECTORY
+where DIRECTORY is the name of a directory that does not yet exist
+to create the build in.
+EOF
+}
+if test "$#" != 1; then
+    usage
+    exit 1
+elif test "$1" = "--help"; then
+    usage
+    exit 0
+elif test -e "$1"; then
+    echo 2>&1 "$0: $1 already exists, please specify the name of a directory that does not yet exist"
+    exit 1
 fi
 
-# Install P4 with dependencies.
-echo "Installing P4 software..."
-git clone https://github.com/jafingerhut/p4-guide
-./p4-guide/bin/install-p4dev-v2.sh |& tee log.txt
+mkdir "$1"
+cd "$1"
 
-# Configure PI.
-echo "Configuring PI..."
+NERPA_DEPS=$(pwd)
+cat > envvars.sh <<EOF
+export NERPA_DEPS='$NERPA_DEPS'
+export DDLOG_HOME=\$NERPA_DEPS/ddlog-v1.2.3
+export PATH=\$DDLOG_HOME/bin:\$NERPA_DEPS/inst/bin:\$NERPA_DEPS/inst/sbin:\$PATH
+export LD_LIBRARY_PATH=\$NERPA_DEPS/inst/lib
+EOF
+
+. ./envvars.sh
+
+wget https://github.com/vmware/differential-datalog/releases/download/v1.2.3/ddlog-v1.2.3-20211213235218-Linux.tar.gz
+tar xzf ddlog-v1.2.3-20211213235218-Linux.tar.gz
+mv ddlog ddlog-v1.2.3
+
 CONFIGURE="./configure --prefix=$NERPA_DEPS/inst CPPFLAGS=-I$NERPA_DEPS/inst/include LDFLAGS=-L$NERPA_DEPS/inst/lib"
-(cd PI && ./autogen.sh && $CONFIGURE --with-proto)
 
-# Configure the behavioral model switch.
-echo "Configuring behavioral model..."
-(cd behavioral-model && autogen.sh && $CONFIGURE --with-pi)
-(cd behavioral-model && make install)
-(cd behavioral-model/targets/simple_switch_grpc/ && ./autogen.sh && $CONFIGURE && make install)
+git clone --recursive https://github.com/p4lang/PI.git
+(cd PI && ./autogen.sh && $CONFIGURE --with-proto --without-internal-rpc --without-cli --without-bmv2)
+(cd PI && make -j$(nproc) && make install)
 
-# Configure the p4c compiler.
-echo "Configuring p4c..."
+git clone https://github.com/p4lang/behavioral-model.git
+(cd behavioral-model && ./autogen.sh && $CONFIGURE --with-pi)
+(cd behavioral-model && make -j$(nproc) install)
+(cd behavioral-model/targets/simple_switch_grpc/ && $CONFIGURE --with-thrift && make -j$(nproc) install)
+
+git clone --recursive https://github.com/p4lang/p4c.git
 mkdir p4c/build
-(cd p4c/build && cmake -DCMAKE_INSTALL_PREFIX:PATH=$NERPA_DEPS/inst .. && make)
+(cd p4c/build && cmake -DCMAKE_INSTALL_PREFIX:PATH=$NERPA_DEPS/inst .. && make -j$(nproc) && make install)
 
-# Build `proto` crate.
-echo "Building proto crate..."
-cd $NERPA_DIR/proto
-cargo install protobuf-codegen
-cargo install grpcio-compiler
-cargo build
-
-# Install OVS.
-echo "Installing OVS..."
-cd $NERPA_DIR/ovs/ovs
-./boot.sh
-./configure
-make
-sudo make install
-
-# Build the OVSDB bindings crate.
-echo "Building the OVSDB bindings crate..."
-(cd $NERPA_DIR/ovs && cargo build && cargo test)
-cd $NERPA_DIR
+git clone --recursive git@github.com:vmware/nerpa.git
+(cd nerpa/ovs/ovs && ./boot.sh && $CONFIGURE --enable-shared && make -j$(nproc) && make install)
