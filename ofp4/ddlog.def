@@ -9,6 +9,12 @@
 
 interface IDDlogNode{}
 
+class DDlogImport : IDDlogNode {
+    ID module;
+    cstring toString() const override { return "import " + module; }
+#nodbprint
+}
+
 class DDlogTypeString : Type, IDDlogNode {
     toString{ return cstring("string"); }
     const Type* getP4Type() const override { return this; }
@@ -51,10 +57,28 @@ class DDlogFunction : Declaration, IDDlogNode {
 #nodbprint
 }
 
-/// Relation declaration.
-class DDlogRelation : Declaration, IDDlogNode {
+/// Relation declaration using syntactic sugar for a struct type,
+/// e.g. relation MyRelation(field1: type1, field2: type2, ...)
+class DDlogRelationSugared : Declaration, IDDlogNode {
     Direction direction;
     inline IndexedVector<Parameter> parameters;
+    cstring toString() const override;
+#nodbprint
+}
+
+/// Relation declaration with direct type name,
+/// e.g. relation MyRelation[my_type_t]
+class DDlogRelationDirect : Declaration, IDDlogNode {
+    Direction direction;
+    Type recordType;
+    cstring toString() const override;
+#nodbprint
+}
+
+class DDlogIndex : Declaration, IDDlogNode {
+    inline IndexedVector<Parameter> parameters;
+    ID relation;
+    inline std::vector<ID> formals;
     cstring toString() const override;
 #nodbprint
 }

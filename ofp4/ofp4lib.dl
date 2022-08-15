@@ -1,0 +1,7 @@
+typedef flow_t = Flow {
+    flow: string
+}
+typedef multicast_group_t = MulticastGroup {
+    mcast_id: bit<16>,
+    port: bit<16>
+}

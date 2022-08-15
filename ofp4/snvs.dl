@@ -1,3 +1,4 @@
+import ofp4lib
 function r_out_port(ismatch: bool): string {
     if (ismatch) "reg0" else "reg0[0..15]"
 }
@@ -43,8 +44,9 @@ function r_SnvsEgress_tmp_7(ismatch: bool): string {
 function r_key_0(ismatch: bool): string {
     if (ismatch) "reg4" else "reg4[24]"
 }
-output relation Flow(flow: string)
-input relation MulticastGroup(mcast_id: bit<16>, port: bit<16>)
+output relation Flow[flow_t]
+index Flow(s: string) on Flow(s)
+input relation MulticastGroup[multicast_group_t]
 // initialize output port and output group
 Flow("table=0 actions=resubmit(,1)").
 

@@ -410,20 +410,20 @@ class DeclarationGenerator : public Inspector {
 
     Visitor::profile_t init_apply(const IR::Node* node) override {
         // Declare 'Flow' relation
+        declarations->push_back(new IR::DDlogRelationDirect(
+            IR::ID("Flow"), IR::Direction::Out, new IR::Type_Name("flow_t")));
+
+        // Declare 'Flow' index
         auto params = new IR::IndexedVector<IR::Parameter>();
-        params->push_back(new IR::Parameter(
-            IR::ID("flow"), IR::Direction::None, IR::Type_String::get()));
-        declarations->push_back(new IR::DDlogRelation(
-            IR::ID("Flow"), IR::Direction::Out, *params));
+        auto param = new IR::Parameter("s", IR::Direction::None, new IR::DDlogTypeString());
+        params->push_back(param);
+        auto formals = new std::vector<IR::ID>();
+        formals->push_back("s");
+        declarations->push_back(new IR::DDlogIndex(IR::ID("Flow"), *params, "Flow", *formals));
 
         // Declare 'MulticastGroup' relation
-        params = new IR::IndexedVector<IR::Parameter>();
-        params->push_back(new IR::Parameter(
-            IR::ID("mcast_id"), IR::Direction::None, IR::Type_Bits::get(16)));
-        params->push_back(new IR::Parameter(
-            IR::ID("port"), IR::Direction::None, IR::Type_Bits::get(16)));
-        declarations->push_back(new IR::DDlogRelation(
-            IR::ID("MulticastGroup"), IR::Direction::In, *params));
+        declarations->push_back(new IR::DDlogRelationDirect(
+            IR::ID("MulticastGroup"), IR::Direction::In, new IR::Type_Name("multicast_group_t")));
 
         // TODO: maybe this table should be removed
         auto flowRule = new IR::OF_MatchAndAction(
@@ -514,7 +514,7 @@ class DeclarationGenerator : public Inspector {
                     "priority", IR::Direction::None, IR::Type_Bits::get(32)));
             params->push_back(new IR::Parameter(
                 "action", IR::Direction::None, new IR::Type_Name(typeName)));
-            auto rel = new IR::DDlogRelation(
+            auto rel = new IR::DDlogRelationSugared(
                 table->srcInfo, IR::ID(tableName), IR::Direction::In, *params);
             declarations->push_back(rel);
         }
@@ -534,7 +534,7 @@ class DeclarationGenerator : public Inspector {
             auto params = new IR::IndexedVector<IR::Parameter>();
             params->push_back(new IR::Parameter(
                 "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
-            auto rel = new IR::DDlogRelation(
+            auto rel = new IR::DDlogRelationSugared(
                 table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
             declarations->push_back(rel);
         }
@@ -1022,6 +1022,8 @@ void OFP4Program::build() {
 IR::DDlogProgram* OFP4Program::convert() {
     // Collect here the DDlog program
     auto decls = new IR::Vector<IR::Node>();
+
+    decls->push_back(new IR::DDlogImport(IR::ID("ofp4lib")));
 
     for (auto sf : output_metadata_t->fields) {
         auto reg = allocateRegister(sf, resources, decls);
