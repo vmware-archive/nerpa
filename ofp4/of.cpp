@@ -34,6 +34,22 @@ Constant OF_Register::mask() const {
     return Constant::GetMask(high+1) ^ Constant::GetMask(low);
 }
 
+void OF_Register::validate() const {
+    BUG_CHECK(low <= high, "low %1% > high %2", low, high);
+    BUG_CHECK(high - low <= size, "high %1% - low %2% > size %3%", high, low, size);
+    BUG_CHECK(size <= registerSize * maxBundleSize, "size %1% > max %2%",
+              size, registerSize * maxBundleSize);
+    size_t bundle = 32;
+    size_t bytes = ROUNDUP(size, 8);
+    while (bytes > 4) {
+        bytes = bytes >> 1;
+        bundle = bundle << 1;
+    }
+    BUG_CHECK(low / bundle == high / bundle,
+              "start %1% and end %2% bytes in different registers",
+              ROUNDUP(low, 8), ROUNDUP(high, 8));
+}
+
 cstring OF_Register::asDDlogString(bool inMatch) const {
     // A register is written differently depending on the position
     // in the OF statement.

@@ -41,6 +41,7 @@ class OF_Register : OF_Expression {
     cstring toString() const;
     /// Generates a DDlog expression that returns the register at runtime.
     cstring asDDlogString(bool inMatch) const;
+    void validate() const;
 #emit
     Constant mask() const;
 #end

@@ -27,7 +27,7 @@ limitations under the License.
 namespace OFP4 {
 
 /// This class reprents the OF resources used by a P4 program
-class OFResources {
+class OFResources : public IHasDbPrint {
     P4::TypeMap* typeMap;
     std::map<const IR::IDeclaration*, const IR::OF_Register*> map;
     // One bit for each register byte; if 'true' the byte is allocated.
@@ -72,6 +72,11 @@ class OFResources {
         size_t bytesNeeded = ROUNDUP(width, 8);
         // Find a gap of bytesNeeded bytes
         for (size_t i = 0; i < byteMask.size() - bytesNeeded + 1; i++) {
+            // The data must fit in the current register bundle.
+            if ((i * 8) / size != (i * 8 + width - 1) / size)
+                // start and end in different registers.
+                continue;
+
             if (!byteMask.at(i)) {
                 found = true;
                 for (size_t j = i + 1; j < i + bytesNeeded; j++) {
@@ -82,7 +87,7 @@ class OFResources {
                     }
                 }
                 if (found) {
-                    LOG3("Allocating " << bytesNeeded << " at " << i);
+                    LOG3("Allocating " << bytesNeeded << " bytes at offset " << i);
                     index = i;
                     break;
                 }
@@ -104,13 +109,25 @@ class OFResources {
                                           type->is<IR::Type_Boolean>(),
                                           makeId(decl->externalName()));
         map.emplace(decl, result);
-        LOG3("Allocated " << result->toString() << " for " << decl);
+        LOG3("Allocated " << result->toString() << " for " << decl << " width " <<
+             size << std::endl << this);
         return result;
     }
 
     const IR::OF_Register* getRegister(const IR::IDeclaration* decl) const {
         auto result = ::get(map, decl);
         return result;
+    }
+
+    void dbprint(std::ostream& out) const {
+        size_t index = 0;
+        for (bool b: byteMask) {
+            out << (b ? "X" : "_");
+            index++;
+            if (!(index % 4))
+                out << " ";
+        }
+        out << std::endl;
     }
 };
 
