@@ -142,7 +142,7 @@ Flow("table=9 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tmp
 Flow("table=9, priority=1 actions=load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)").
 
 // IfStatement
-Flow("table=10, priority=100, dl_src=${0 << 40}/0x10000000000 actions=resubmit(,11)").
+Flow("table=10, priority=100, dl_src=${to_eth(0 << 40)}/01:00:00:00:00:00 actions=resubmit(,11)").
 
 // IfStatement
 Flow("table=10, priority=1 actions=resubmit(,12)").
@@ -193,7 +193,7 @@ Flow("table=17 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tm
 Flow("table=17, priority=1 actions=load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)").
 
 // IfStatement
-Flow("table=18, priority=100, dl_dst=${0 << 40}/0x10000000000 actions=resubmit(,19)").
+Flow("table=18, priority=100, dl_dst=${to_eth(0 << 40)}/01:00:00:00:00:00 actions=resubmit(,19)").
 
 // IfStatement
 Flow("table=18, priority=1 actions=resubmit(,20)").

@@ -64,12 +64,26 @@ bool OpenFlowPrint::preorder(const IR::OF_Slice* e)  {
     return false;
 }
 
+static cstring ethToString(uint64_t a) {
+    char s[64];
+    snprintf(s, sizeof s, "%02x:%02x:%02x:%02x:%02x:%02x",
+             (unsigned int) ((a >> 40) & 0xff),
+             (unsigned int) ((a >> 32) & 0xff),
+             (unsigned int) ((a >> 24) & 0xff),
+             (unsigned int) ((a >> 16) & 0xff),
+             (unsigned int) ((a >> 8) & 0xff),
+             (unsigned int) (a & 0xff));
+    return cstring(s);
+}
+
 // 'erms' must have at least one element.  All its elements must have 'left'
 // that are disjoint slices of the same OF_Register.
 static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
                                OpenFlowPrint& ofp,
                                std::string& buffer)  {
     auto reg0 = erms[0]->left->checkedTo<IR::OF_Register>();
+    bool asEthernet = (reg0->name == "dl_src" || reg0->name == "dl_dst"
+                       || reg0->name == "eth_src" || reg0->name == "eth_dst");
 
     /* field=value/mask */
     if (erms.size() > 1 || reg0->friendlyName.isNullOrEmpty()) {
@@ -80,10 +94,17 @@ static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
     buffer += "=";
     IR::Constant mask = 0;
     if (erms.size() == 1 && !reg0->low) {
-        ofp.visit(erms[0]->right);
+        auto constant = erms[0]->right->to<IR::OF_Constant>();
+        if (constant && asEthernet)
+            buffer += ethToString(constant->value->asUint64());
+        else
+            ofp.visit(erms[0]->right);
         mask = reg0->mask();
     } else {
         buffer += "${";
+
+        if (asEthernet)
+            buffer += "to_eth(";
 
         size_t n = 0;
         for (auto erm : erms) {
@@ -144,11 +165,17 @@ static void printRegisterMatch(std::vector<const IR::OF_EqualsMatch*>& erms,
             if (needsParens)
                 buffer += ")";
         }
+        if (asEthernet)
+            buffer += ")";
         buffer += "}";
     }
 
     if (mask.value != IR::Constant::GetMask(reg0->size).value) {
-        buffer += "/" + Util::toString(mask.value, 0, false, 16);
+        buffer += "/";
+        if (asEthernet)
+            buffer += ethToString(mask.asUint64());
+        else
+            buffer += Util::toString(mask.value, 0, false, 16);
     }
 }
 

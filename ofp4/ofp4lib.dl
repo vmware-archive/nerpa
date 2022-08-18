@@ -5,3 +5,20 @@ typedef multicast_group_t = MulticastGroup {
     mcast_id: bit<16>,
     port: bit<16>
 }
+
+function to_xx(a: bit<48>): string {
+    var low_byte = a & 'hff;
+    if (low_byte >= 'h10) {
+        hex(low_byte)
+    } else {
+        "0" ++ hex(low_byte)
+    }
+}
+function to_eth(a: bit<48>): string {
+    to_xx(a >> 40) ++ ":" ++
+    to_xx(a >> 32) ++ ":" ++
+    to_xx(a >> 24) ++ ":" ++
+    to_xx(a >> 16) ++ ":" ++
+    to_xx(a >> 8) ++ ":" ++
+    to_xx(a)
+}
