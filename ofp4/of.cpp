@@ -90,6 +90,10 @@ cstring OF_EqualsMatch::toString() const {
     return left->toString() + "=" + right->toString();
 }
 
+cstring OF_PriorityMatch::toString() const {
+    return "priority=" + priority->toString();
+}
+
 cstring OF_Slice::toString() const {
     return base->toString() + "[" + Util::toString(low) + ".." + Util::toString(high) + "]";
 }

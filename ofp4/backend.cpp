@@ -202,7 +202,7 @@ class ActionTranslator : public Inspector {
         }
         if (prereq != nullptr) {
             auto basic_match = currentTranslation;
-            auto prereq_match = new IR::OF_Fieldname(prereq->getSingleString());
+            auto prereq_match = new IR::OF_PrereqMatch(prereq->getSingleString());
             auto sequence = new IR::OF_SeqMatch();
             sequence->push_back(basic_match->to<IR::OF_Match>());
             sequence->push_back(prereq_match->to<IR::OF_Match>());
@@ -687,8 +687,7 @@ class FlowGenerator : public Inspector {
 
             if (hasPriority) {
                 match->push_back(
-                    new IR::OF_EqualsMatch(
-                        new IR::OF_Fieldname("priority"),
+                    new IR::OF_PriorityMatch(
                         new IR::OF_InterpolatedVarExpression("priority")));
             }
             auto flowRule = new IR::OF_MatchAndAction(
@@ -748,9 +747,7 @@ class FlowGenerator : public Inspector {
             // Constant default action: generate a fixed rule.
             auto match = new IR::OF_SeqMatch();
             match->push_back(tablematch);
-            match->push_back(
-                new IR::OF_EqualsMatch(
-                    new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
+            match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
             generateActionCall(defaultAction->checkedTo<IR::MethodCallExpression>(), match, table);
         } else {
             auto flowRule = new IR::OF_MatchAndAction(
@@ -807,15 +804,13 @@ class FlowGenerator : public Inspector {
                     auto cond = expr->to<IR::OF_Match>();
                     match->push_back(cond);
                     match->push_back(
-                        new IR::OF_EqualsMatch(
-                            new IR::OF_Fieldname("priority"), new IR::OF_Constant(100)));
+                        new IR::OF_PriorityMatch(new IR::OF_Constant(100)));
                 }
                 ma = new IR::OF_MatchAndAction(match, action);
             } else {
                 // if condition is false
                 match->push_back(
-                    new IR::OF_EqualsMatch(
-                        new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
+                    new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
                 ma = new IR::OF_MatchAndAction(match, action);
             }
             auto rule = makeFlowRule(ma, node->statement->toString());
@@ -887,9 +882,7 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     match->push_back(new IR::OF_EqualsMatch(
                          outputPortRegister,
                          new IR::OF_Constant(0)));
-    match->push_back(new IR::OF_EqualsMatch(
-                         new IR::OF_Fieldname("priority"),
-                         new IR::OF_Constant(100)));
+    match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(100)));
     auto flowRule = new IR::OF_MatchAndAction(match, new IR::OF_DropAction());
     declarations->push_back(makeFlowRule(flowRule, "drop if output port is 0"));
 

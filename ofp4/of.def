@@ -56,12 +56,6 @@ class OF_InterpolatedVarExpression : OF_Expression {
 #nodbprint
 }
 
-class OF_Fieldname : OF_Expression {
-    cstring field;
-    toString{ return field; }
-#nodbprint
-}
-
 class OF_Slice : OF_Expression {
     OF_Expression base;
     size_t high;
@@ -74,6 +68,18 @@ class OF_EqualsMatch : OF_Match {
     OF_Expression left;
     OF_Expression right;
     cstring toString() const override;
+#nodbprint
+}
+
+class OF_PriorityMatch : OF_Match {
+    OF_Expression priority;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_PrereqMatch : OF_Match {
+    cstring prereq;
+    toString { return prereq; }
 #nodbprint
 }
 

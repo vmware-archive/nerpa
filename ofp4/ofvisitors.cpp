@@ -46,7 +46,12 @@ bool OpenFlowPrint::preorder(const IR::OF_InterpolatedVarExpression* e) {
     return false;
 }
 
-bool OpenFlowPrint::preorder(const IR::OF_Fieldname* e)  {
+bool OpenFlowPrint::preorder(const IR::OF_PriorityMatch* e)  {
+    buffer += e->toString();
+    return false;
+}
+
+bool OpenFlowPrint::preorder(const IR::OF_PrereqMatch* e)  {
     buffer += e->toString();
     return false;
 }

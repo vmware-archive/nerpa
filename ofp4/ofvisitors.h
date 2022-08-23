@@ -73,7 +73,8 @@ class OpenFlowPrint : public Inspector {
     bool preorder(const IR::OF_Constant* e) override;
     bool preorder(const IR::OF_Register* e) override;
     bool preorder(const IR::OF_InterpolatedVarExpression* e) override;
-    bool preorder(const IR::OF_Fieldname* e) override;
+    bool preorder(const IR::OF_PriorityMatch* e) override;
+    bool preorder(const IR::OF_PrereqMatch* e) override;
     bool preorder(const IR::OF_Slice* e) override;
     bool preorder(const IR::OF_EqualsMatch* e) override;
     bool preorder(const IR::OF_ProtocolMatch* e) override;
