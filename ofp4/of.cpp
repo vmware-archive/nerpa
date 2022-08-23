@@ -35,7 +35,7 @@ Constant OF_Register::mask() const {
 }
 
 void OF_Register::validate() const {
-    BUG_CHECK(low <= high, "low %1% > high %2", low, high);
+    BUG_CHECK(low <= high, "low %1% > high %2%", low, high);
     BUG_CHECK(high - low <= size, "high %1% - low %2% > size %3%", high, low, size);
     BUG_CHECK(size <= registerSize * maxBundleSize, "size %1% > max %2%",
               size, registerSize * maxBundleSize);
