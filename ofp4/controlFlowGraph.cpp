@@ -136,7 +136,7 @@ class CFGBuilder : public Inspector {
         return false;
     }
     bool preorder(const IR::IfStatement* statement) override {
-        // We only allow expressions of the form t.apply().hit lively.
+        // We only allow expressions of the form t.apply().hit.
         // If the expression is more complex it should have been
         // simplified by prior passes.
         auto tc = P4::TableApplySolver::isHit(statement->condition, refMap, typeMap);
@@ -149,6 +149,7 @@ class CFGBuilder : public Inspector {
             // hit-miss case.
             node = cfg->makeNode(tc, statement->condition);
         } else {
+            // regular control-flow, not table-dependent
             node = cfg->makeNode(statement);
         }
 
@@ -190,6 +191,7 @@ class CFGBuilder : public Inspector {
         node->addPredecessors(live);
         auto result = new CFG::EdgeSet(new CFG::Edge(node));  // In case no label matches
         auto labels = new CFG::EdgeSet();
+        live = new CFG::EdgeSet();
         for (auto sw : statement->cases) {
             cstring label;
             if (sw->label->is<IR::DefaultExpression>()) {
