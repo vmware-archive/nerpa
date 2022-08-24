@@ -278,16 +278,31 @@ class ActionTranslator : public Inspector {
     }
 
     bool preorder(const IR::AssignmentStatement* statement) override {
-        auto left = _translate(statement->left);
-        auto right = _translate(statement->right);
-        if (left && right) {
-            auto lefte = left->to<IR::OF_Expression>();
-            auto righte = right->to<IR::OF_Expression>();
-            if (lefte && righte) {
-                if (statement->right->is<IR::Literal>())
-                    currentTranslation = new IR::OF_LoadAction(righte, lefte);
-                else
-                    currentTranslation = new IR::OF_MoveAction(righte, lefte);
+        auto dst = _translate(statement->left);
+        auto src = _translate(statement->right);
+        if (src && dst) {
+            auto srce = src->to<IR::OF_Expression>();
+            auto dste = dst->to<IR::OF_Expression>();
+            if (srce && dste) {
+                if (srce->is<IR::OF_Constant>())
+                    currentTranslation = new IR::OF_LoadAction(srce, dste);
+                else {
+                    int srcw = srce->width();
+                    int dstw = dste->width();
+                    if (srcw && dstw && srcw < dstw) {
+                        auto dstr = dste->to<IR::OF_Register>();
+                        if (dstr) {
+                            /* To assign a short source to a wider destination,
+                             * copy the low-order bits then zero the rest. */
+                            currentTranslation = new IR::OF_SeqAction(
+                                new IR::OF_MoveAction(srce, dstr->lowBits(srcw)),
+                                new IR::OF_LoadAction(new IR::OF_Constant(0),
+                                                      dstr->highBits(dstw - srcw)));
+                            return false;
+                        }
+                    }
+                    currentTranslation = new IR::OF_MoveAction(srce, dste);
+                }
             }
         }
         return false;

@@ -233,10 +233,10 @@ Flow("table=23, priority=100, ${r_SnvsIngress_output(true)}=510/0xffff actions=r
 Flow("table=23, priority=1 actions=resubmit(,25)").
 
 // tbl_snvs206
-Flow("table=24 actions=${actions}") :- var actions = "move(${r_vlan(false)}->${r_out_group(false)}), resubmit(,26)".
+Flow("table=24 actions=${actions}") :- var actions = "move(${r_vlan(false)}->reg0[16..27]), load(0->reg0[28..31]), resubmit(,26)".
 
 // tbl_snvs206
-Flow("table=24, priority=1 actions=move(${r_vlan(false)}->${r_out_group(false)}), resubmit(,26)").
+Flow("table=24, priority=1 actions=move(${r_vlan(false)}->reg0[16..27]), load(0->reg0[28..31]), resubmit(,26)").
 
 // tbl_snvs208
 Flow("table=25 actions=${actions}") :- var actions = "move(${r_SnvsIngress_output(false)}->${r_out_port(false)}), resubmit(,26)".
