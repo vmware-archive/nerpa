@@ -46,6 +46,8 @@ class OF_Register : OF_Expression {
     Constant mask() const;
 #end
     bool isSlice() const { return low != 0 || high != size - 1; }
+    OF_Register lowBits(size_t n) const;
+    OF_Register highBits(size_t n) const;
 #nodbprint
 }
 

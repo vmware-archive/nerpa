@@ -67,6 +67,19 @@ cstring OF_Register::asDDlogString(bool inMatch) const {
     return result;
 }
 
+// The 'n' least-significant bits of the register.
+const OF_Register* OF_Register::lowBits(size_t n) const {
+    BUG_CHECK(n <= width(), "n %1% < width %2", n, width());
+    BUG_CHECK(n > 0, "n == 0");
+    return new IR::OF_Register(name, size, low, low + n - 1, is_boolean);
+}
+
+// The 'n' most-significant bits of the register.
+const OF_Register* OF_Register::highBits(size_t n) const {
+    BUG_CHECK(n <= width(), "n %1% < width %2", n, width());
+    return new IR::OF_Register(name, size, low + (width() - n), high, is_boolean);
+}
+
 cstring OF_ResubmitAction::toString() const {
     return cstring("resubmit(,") + Util::toString(nextTable) + ")";
 }
