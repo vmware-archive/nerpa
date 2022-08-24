@@ -24,7 +24,7 @@ thiserror = "1.0"
 # ddlog program to another, but it isn't on crates.io so it needs to
 # be obtained from some particular instantiation of a ddlog program.
 # Only ofp4 needs to use ddlog.
-differential_datalog = {path = "../ofp4/snvs_ddlog/differential_datalog", optional = true}
+differential_datalog = {path = "../ofp4/ofp4dl_ddlog/differential_datalog", optional = true}
 
 [features]
 ofp4 = ["differential_datalog"]

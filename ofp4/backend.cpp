@@ -62,17 +62,18 @@ class ActionTranslator : public Inspector {
     bool preorder(const IR::PathExpression* path) override {
         auto decl = model->refMap->getDeclaration(path->path, true);
         auto reg = model->resources.getRegister(decl);
+        auto type = model->typeMap->getType(path, true);
         if (reg) {
             currentTranslation = reg;
-        } else if (decl->is<IR::Parameter>()) {
+        } else if (auto p = decl->to<IR::Parameter>()) {
             // action parameters are translated to DDlog variables with the same name
-            currentTranslation = new IR::OF_InterpolatedVarExpression(decl->getName());
+            currentTranslation = new IR::OF_InterpolatedVarExpression(
+                decl->getName(), type->width_bits());
         } else {
             ::error(ErrorType::ERR_INVALID, "%1%: could not translate expression", path);
         }
         if (translateMatch) {
             // TODO: booleans should be lowered into bit<1> values by the midend
-            auto type = model->typeMap->getType(path, true);
             if (type->is<IR::Type_Boolean>()) {
                 currentTranslation = new IR::OF_EqualsMatch(
                     currentTranslation->to<IR::OF_Expression>(),
@@ -202,7 +203,7 @@ class ActionTranslator : public Inspector {
         }
         if (prereq != nullptr) {
             auto basic_match = currentTranslation;
-            auto prereq_match = new IR::OF_Fieldname(prereq->getSingleString());
+            auto prereq_match = new IR::OF_PrereqMatch(prereq->getSingleString());
             auto sequence = new IR::OF_SeqMatch();
             sequence->push_back(basic_match->to<IR::OF_Match>());
             sequence->push_back(prereq_match->to<IR::OF_Match>());
@@ -262,22 +263,46 @@ class ActionTranslator : public Inspector {
     }
 
     bool preorder(const IR::Cast* expression) override {
-        // TODO: casts should be lowered into slices if possible
+        // Lower a narrowing cast into a slice.
+        if (auto width = expression->destType->width_bits()) {
+            if (auto reg = expression->expr->to<IR::OF_Register>()) {
+                if (width < reg->width()) {
+                    currentTranslation = reg->lowBits(reg->width());
+                    return false;
+                }
+            }
+        }
+
         currentTranslation = _translate(expression->expr);
         return false;
     }
 
     bool preorder(const IR::AssignmentStatement* statement) override {
-        auto left = _translate(statement->left);
-        auto right = _translate(statement->right);
-        if (left && right) {
-            auto lefte = left->to<IR::OF_Expression>();
-            auto righte = right->to<IR::OF_Expression>();
-            if (lefte && righte) {
-                if (statement->right->is<IR::Literal>())
-                    currentTranslation = new IR::OF_LoadAction(righte, lefte);
-                else
-                    currentTranslation = new IR::OF_MoveAction(righte, lefte);
+        auto dst = _translate(statement->left);
+        auto src = _translate(statement->right);
+        if (src && dst) {
+            auto srce = src->to<IR::OF_Expression>();
+            auto dste = dst->to<IR::OF_Expression>();
+            if (srce && dste) {
+                if (srce->is<IR::OF_Constant>())
+                    currentTranslation = new IR::OF_LoadAction(srce, dste);
+                else {
+                    int srcw = srce->width();
+                    int dstw = dste->width();
+                    if (srcw && dstw && srcw < dstw) {
+                        auto dstr = dste->to<IR::OF_Register>();
+                        if (dstr) {
+                            /* To assign a short source to a wider destination,
+                             * copy the low-order bits then zero the rest. */
+                            currentTranslation = new IR::OF_SeqAction(
+                                new IR::OF_MoveAction(srce, dstr->lowBits(srcw)),
+                                new IR::OF_LoadAction(new IR::OF_Constant(0),
+                                                      dstr->highBits(dstw - srcw)));
+                            return false;
+                        }
+                    }
+                    currentTranslation = new IR::OF_MoveAction(srce, dste);
+                }
             }
         }
         return false;
@@ -410,20 +435,20 @@ class DeclarationGenerator : public Inspector {
 
     Visitor::profile_t init_apply(const IR::Node* node) override {
         // Declare 'Flow' relation
+        declarations->push_back(new IR::DDlogRelationDirect(
+            IR::ID("Flow"), IR::Direction::Out, new IR::Type_Name("flow_t")));
+
+        // Declare 'Flow' index
         auto params = new IR::IndexedVector<IR::Parameter>();
-        params->push_back(new IR::Parameter(
-            IR::ID("flow"), IR::Direction::None, IR::Type_String::get()));
-        declarations->push_back(new IR::DDlogRelation(
-            IR::ID("Flow"), IR::Direction::Out, *params));
+        auto param = new IR::Parameter("s", IR::Direction::None, new IR::DDlogTypeString());
+        params->push_back(param);
+        auto formals = new std::vector<IR::ID>();
+        formals->push_back("s");
+        declarations->push_back(new IR::DDlogIndex(IR::ID("Flow"), *params, "Flow", *formals));
 
         // Declare 'MulticastGroup' relation
-        params = new IR::IndexedVector<IR::Parameter>();
-        params->push_back(new IR::Parameter(
-            IR::ID("mcast_id"), IR::Direction::None, IR::Type_Bits::get(16)));
-        params->push_back(new IR::Parameter(
-            IR::ID("port"), IR::Direction::None, IR::Type_Bits::get(16)));
-        declarations->push_back(new IR::DDlogRelation(
-            IR::ID("MulticastGroup"), IR::Direction::In, *params));
+        declarations->push_back(new IR::DDlogRelationDirect(
+            IR::ID("MulticastGroup"), IR::Direction::In, new IR::Type_Name("multicast_group_t")));
 
         // TODO: maybe this table should be removed
         auto flowRule = new IR::OF_MatchAndAction(
@@ -514,7 +539,7 @@ class DeclarationGenerator : public Inspector {
                     "priority", IR::Direction::None, IR::Type_Bits::get(32)));
             params->push_back(new IR::Parameter(
                 "action", IR::Direction::None, new IR::Type_Name(typeName)));
-            auto rel = new IR::DDlogRelation(
+            auto rel = new IR::DDlogRelationSugared(
                 table->srcInfo, IR::ID(tableName), IR::Direction::In, *params);
             declarations->push_back(rel);
         }
@@ -534,7 +559,7 @@ class DeclarationGenerator : public Inspector {
             auto params = new IR::IndexedVector<IR::Parameter>();
             params->push_back(new IR::Parameter(
                 "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
-            auto rel = new IR::DDlogRelation(
+            auto rel = new IR::DDlogRelationSugared(
                 table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
             declarations->push_back(rel);
         }
@@ -674,22 +699,19 @@ class FlowGenerator : public Inspector {
                     auto key = actionTranslator->translate(k->expression, false, exitBlockId);
                     if (key == nullptr)
                         return;
+                    auto keye = key->checkedTo<IR::OF_Expression>();
                     // The parameter name generated above for the corresponding key field
                     auto name = k->annotations->getSingle(
                         IR::Annotation::nameAnnotation)->getSingleString();
-                    auto varName = new IR::OF_InterpolatedVarExpression(name);
-                    match->push_back(
-                        new IR::OF_EqualsMatch(
-                            key->checkedTo<IR::OF_Expression>(),
-                            varName));
+                    auto varName = new IR::OF_InterpolatedVarExpression(name, keye->width());
+                    match->push_back(new IR::OF_EqualsMatch(keye, varName));
                 }
             }
 
             if (hasPriority) {
                 match->push_back(
-                    new IR::OF_EqualsMatch(
-                        new IR::OF_Fieldname("priority"),
-                        new IR::OF_InterpolatedVarExpression("priority")));
+                    new IR::OF_PriorityMatch(
+                        new IR::OF_InterpolatedVarExpression("priority", 16)));
             }
             auto flowRule = new IR::OF_MatchAndAction(
                 match,
@@ -748,9 +770,7 @@ class FlowGenerator : public Inspector {
             // Constant default action: generate a fixed rule.
             auto match = new IR::OF_SeqMatch();
             match->push_back(tablematch);
-            match->push_back(
-                new IR::OF_EqualsMatch(
-                    new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
+            match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
             generateActionCall(defaultAction->checkedTo<IR::MethodCallExpression>(), match, table);
         } else {
             auto flowRule = new IR::OF_MatchAndAction(
@@ -807,15 +827,13 @@ class FlowGenerator : public Inspector {
                     auto cond = expr->to<IR::OF_Match>();
                     match->push_back(cond);
                     match->push_back(
-                        new IR::OF_EqualsMatch(
-                            new IR::OF_Fieldname("priority"), new IR::OF_Constant(100)));
+                        new IR::OF_PriorityMatch(new IR::OF_Constant(100)));
                 }
                 ma = new IR::OF_MatchAndAction(match, action);
             } else {
                 // if condition is false
                 match->push_back(
-                    new IR::OF_EqualsMatch(
-                        new IR::OF_Fieldname("priority"), new IR::OF_Constant(1)));
+                    new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
                 ma = new IR::OF_MatchAndAction(match, action);
             }
             auto rule = makeFlowRule(ma, node->statement->toString());
@@ -887,9 +905,7 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     match->push_back(new IR::OF_EqualsMatch(
                          outputPortRegister,
                          new IR::OF_Constant(0)));
-    match->push_back(new IR::OF_EqualsMatch(
-                         new IR::OF_Fieldname("priority"),
-                         new IR::OF_Constant(100)));
+    match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(100)));
     auto flowRule = new IR::OF_MatchAndAction(match, new IR::OF_DropAction());
     declarations->push_back(makeFlowRule(flowRule, "drop if output port is 0"));
 
@@ -918,7 +934,7 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     match = new IR::OF_SeqMatch();
     match->push_back(new IR::OF_TableMatch(multicastId));
     match->push_back(new IR::OF_EqualsMatch(multicastRegister,
-                                            new IR::OF_InterpolatedVarExpression("mcast_id")));
+                                            new IR::OF_InterpolatedVarExpression("mcast_id", multicastRegister->size)));
     flowRule = new IR::OF_MatchAndAction(
         match,
         new IR::OF_InterpolatedVariableAction("outputs"));
@@ -931,7 +947,7 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     auto clone = new IR::OF_CloneAction(
         new IR::OF_SeqAction(
             new IR::OF_MoveAction(
-                new IR::OF_InterpolatedVarExpression("port"),
+                new IR::OF_InterpolatedVarExpression("port", 16),
                 outputPortRegister),
             new IR::OF_ResubmitAction(multicastId)));
     // TODO: This is not an accurate representation of the DDlog IR tree,
@@ -1022,6 +1038,8 @@ void OFP4Program::build() {
 IR::DDlogProgram* OFP4Program::convert() {
     // Collect here the DDlog program
     auto decls = new IR::Vector<IR::Node>();
+
+    decls->push_back(new IR::DDlogImport(IR::ID("ofp4lib")));
 
     for (auto sf : output_metadata_t->fields) {
         auto reg = allocateRegister(sf, resources, decls);

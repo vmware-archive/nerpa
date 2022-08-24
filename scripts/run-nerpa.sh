@@ -179,7 +179,7 @@ case $TARGET in
         # Start ofp4.
         echo "Starting ofp4..."
         (cd ofp4 && cargo build)
-        ofp4/target/debug/ofp4 unix:"$sandbox"/br0.mgmt &
+        ofp4/target/debug/ofp4 $FILE_NAME unix:"$sandbox"/br0.mgmt &
         echo $! > "$sandbox"/ofp4.pid
         ;;
 esac

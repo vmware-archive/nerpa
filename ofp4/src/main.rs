@@ -25,12 +25,11 @@ use anyhow::{anyhow, Context, Result};
 
 use clap::{App, Arg};
 
-use differential_datalog::DeltaMap;
 use differential_datalog::api::HDDlog;
 use differential_datalog::ddval::{DDValConvert, DDValue};
-use differential_datalog::program::{IdxId, RelId, Update};
-use differential_datalog::record::{RelIdentifier, UpdCmd};
-use differential_datalog::{DDlog, DDlogDynamic, DDlogInventory};
+use differential_datalog::program::{RelId, Update};
+use differential_datalog::record::{Record, RelIdentifier, UpdCmd};
+use differential_datalog::{DeltaMap, DDlog, DDlogDynamic, DDlogInventory};
 
 use futures_util::{FutureExt, SinkExt, TryFutureExt, TryStreamExt};
 
@@ -83,9 +82,7 @@ use proto::p4runtime_grpc::{P4Runtime, create_p4_runtime};
 
 use protobuf::{Message, SingularPtrField, well_known_types::Any};
 
-use snvs_ddlog::typedefs::{Flow, MulticastGroup};
-use snvs_ddlog::{Indexes, Relations};
-
+use ofp4dl_ddlog::typedefs::ofp4lib::{flow_t, multicast_group_t};
 use std::collections::{BTreeSet, HashMap};
 use std::default::Default;
 use std::convert::TryInto;
@@ -105,19 +102,24 @@ struct State {
     cookie: u64,
     table_schemas: HashMap<u32, Table>,
 
+    flow_relid: RelId,
+    multicast_group_relid: RelId,
+
     // Table state.
     multicast_groups: HashMap<MulticastGroupId, BTreeSet<Replica>>,
     table_entries: HashMap<TableKey, TableValue>
 }
 
 impl State {
-    fn new(hddlog: HDDlog) -> State {
+    fn new(hddlog: HDDlog, flow_relid: RelId, multicast_group_relid: RelId) -> State {
         let (device_id, pending_flow_mods, p4info, cookie, table_schemas, multicast_groups,
              table_entries)
             = Default::default();
         let latch = Latch::new(); 
         State {
             hddlog, latch, pending_flow_mods, device_id, p4info, cookie, table_schemas,
+            flow_relid,
+            multicast_group_relid,
             multicast_groups, table_entries,
         }
     }
@@ -280,8 +282,8 @@ impl P4RuntimeService {
                 let mut commands = Vec::with_capacity(2);
                 for insertion in new_value.difference(old_value) {
                     commands.push(Update::Insert {
-                        relid: Relations::MulticastGroup as RelId,
-                        v: MulticastGroup {
+                        relid: state.multicast_group_relid,
+                        v: multicast_group_t {
                             mcast_id: mge.multicast_group_id as u16,
                             port: insertion.egress_port as u16
                         }.into_ddvalue()
@@ -289,8 +291,8 @@ impl P4RuntimeService {
                 }
                 for deletion in old_value.difference(new_value) {
                     commands.push(Update::DeleteValue {
-                        relid: Relations::MulticastGroup as RelId,
-                        v: MulticastGroup {
+                        relid: state.multicast_group_relid,
+                        v: multicast_group_t {
                             mcast_id: mge.multicast_group_id as u16,
                             port: deletion.egress_port as u16
                         }.into_ddvalue()
@@ -303,7 +305,7 @@ impl P4RuntimeService {
                     hddlog.apply_updates(&mut commands.into_iter()).ddlog_map_error()?;
                     hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
-                delta_to_flow_mods(&delta, &mut state.pending_flow_mods);
+                delta_to_flow_mods(&delta, state.flow_relid, &mut state.pending_flow_mods);
                 state.latch.set();
 
                 // Commit the operation to our internal representation.
@@ -347,7 +349,7 @@ impl P4RuntimeService {
                     hddlog.apply_updates_dynamic(&mut commands.into_iter()).ddlog_map_error()?;
                     hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
-                delta_to_flow_mods(&delta, &mut state.pending_flow_mods);
+                delta_to_flow_mods(&delta, state.flow_relid, &mut state.pending_flow_mods);
                 state.latch.set();
 
                 // Commit the operation to our internal representation.
@@ -521,17 +523,43 @@ impl<T> DdlogMapError<T> for std::result::Result<T, String> {
     }
 }
 
+// This should be Record::as_string() but it's not there due to an oversight.
+// (This will get fixed in a later DDlog version.)
+fn record_as_string(r: &Record) -> Option<&String> {
+    match r {
+        Record::String(ref s) => Some(s),
+        _ => None
+    }
+}
+
+fn flow_record_to_string(record: &Record) -> Option<&String> {
+    record_as_string(record.get_struct_field("flow")?)
+}
+
+fn flow_record_to_flow_mod(record: &Record) -> Result<FlowMod> {
+    let flow = flow_record_to_string(&record).ok_or(anyhow!("Flow record {record} lacks 'flow' field"))?;
+    match FlowMod::parse(flow, Some(FlowModCommand::Add)) {
+        Ok((flow, _)) => Ok(flow),
+        Err(s) => Err(anyhow!("{flow}: {s}"))
+    }
+}
+
 fn main() -> Result<()> {
     const OVS_REMOTE: &str = "ovs-remote";
     const P4_PORT: &str = "p4-port";
     const P4_ADDR: &str = "p4-addr";
+    const MODULE: &str = "module";
 
     let matches = App::new("ofp4")
         .version(env!("CARGO_PKG_VERSION"))
+        .arg(Arg::with_name(MODULE)
+             .help("DDlog module name")
+             .required(true)
+             .index(1))
         .arg(Arg::with_name(OVS_REMOTE)
              .help("OVS remote to connect, e.g. \"unix:/path/to/ovs/tutorial/sandbox/br0.mgmt\"")
              .required(true)
-             .index(1))
+             .index(2))
         .arg(Arg::with_name(P4_PORT)
              .long(P4_PORT)
              .help("P4Runtime connection listening port")
@@ -547,12 +575,20 @@ fn main() -> Result<()> {
     let ovs_remote = matches.value_of(OVS_REMOTE).unwrap();
     let p4_port = matches.value_of(P4_PORT).unwrap().parse::<u16>().unwrap();
     let p4_addr = matches.value_of(P4_ADDR).unwrap();
+    let module = matches.value_of(MODULE).unwrap();
 
     let env = Arc::new(Environment::new(1));
-    let (mut hddlog, _init_state) = snvs_ddlog::run(1, false).ddlog_map_error()?;
+    let (mut hddlog, _init_state) = ofp4dl_ddlog::run(1, false).ddlog_map_error()?;
     let mut record = Some(std::fs::File::create("replay.txt")?);
     hddlog.record_commands(&mut record);
-    let state = Arc::new(Mutex::new(State::new(hddlog)));
+
+    let flow_relname = format!("{}::Flow", module);
+    let flow_relid = hddlog.inventory.get_table_id(&flow_relname).unwrap();
+    let flow_idxid = hddlog.inventory.get_index_id(&flow_relname).unwrap();
+    let multicast_group_relname = format!("{}::MulticastGroup", module);
+    let multicast_group_relid = hddlog.inventory.get_table_id(&multicast_group_relname).unwrap();
+
+    let state = Arc::new(Mutex::new(State::new(hddlog, flow_relid, multicast_group_relid)));
     let service = create_p4_runtime(P4RuntimeService::new(state.clone()));
     let ch_builder = ChannelBuilder::new(env.clone());
     let mut server = ServerBuilder::new(env)
@@ -603,16 +639,10 @@ fn main() -> Result<()> {
                 // together into an atomic bundle, so we shouldn't change the treatment of all the
                 // packets in the middle.
                 let del_flows = FlowMod::parse("", Some(FlowModCommand::Delete { strict: false })).unwrap().0;
-                let add_flows = state.hddlog.dump_index(Indexes::Flow as IdxId).unwrap().into_iter()
-                    .filter_map(|record| {
-                        let flow: &Flow = Flow::from_ddvalue_ref(&record);
-                        match FlowMod::parse(&flow.s, Some(FlowModCommand::Add)) {
-                            Ok((flow, _)) => Some(flow),
-                            Err(s) => {
-                                eprintln!("{}: {}", flow.s, s);
-                                None
-                            }
-                        }
+                let add_flows = state.hddlog.dump_index_dynamic(flow_idxid).unwrap().into_iter()
+                    .filter_map(|record| match flow_record_to_flow_mod(&record) {
+                        Ok(fm) => Some(fm),
+                        Err(err) => { eprintln!("{err}"); None }
                     });
                 let flow_mods = std::iter::once(del_flows).chain(add_flows).map(|fm| fm.encode(OFP_PROTOCOL));
 
@@ -640,20 +670,22 @@ fn main() -> Result<()> {
 
 /// Converts the `delta` of changes to DDlog output relations (particularly `Flow`) into OpenFlow
 /// [`FlowMod`] messages and appends those messages to `flow_mods`.
-fn delta_to_flow_mods(delta: &DeltaMap<DDValue>, flow_mods: &mut Vec<Ofpbuf>) {
+fn delta_to_flow_mods(delta: &DeltaMap<DDValue>,
+                      flow_relid: RelId,
+                      flow_mods: &mut Vec<Ofpbuf>) {
     for (&rel, changes) in delta.iter() {
-        if rel == Relations::Flow as RelId {
-            for (val, &weight) in changes.iter() {
+        if rel == flow_relid {
+            for (val, weight) in changes.iter() {
                 let command = match weight {
                     1 => FlowModCommand::Add,
                     -1 => FlowModCommand::Delete { strict: true },
                     _ => unreachable!()
                 };
 
-                let flow0: &Flow = Flow::from_ddvalue_ref(val);
-                match FlowMod::parse(&flow0.s, Some(command)) {
+                let flow = flow_t::from_ddvalue_ref(val);
+                match FlowMod::parse(&flow.flow, Some(command)) {
                     Ok((flow_mod, _)) => flow_mods.push(flow_mod.encode(OFP_PROTOCOL)),
-                    Err(s) => eprintln!("{}: {}", flow0.s, s)
+                    Err(s) => eprintln!("{}: {}", flow, s)
                 };
             }
         }

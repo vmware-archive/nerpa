@@ -18,11 +18,14 @@ class OF_TableMatch : OF_Match {
 #nodbprint
 }
 
-abstract OF_Expression : IOF_Node {}
+abstract OF_Expression : IOF_Node {
+    virtual size_t width() const = 0;
+}
 
 class OF_Constant : OF_Expression {
     Constant value;
     OF_Constant(int v) { value = new Constant(v); }
+    size_t width() const { return value->type->width_bits(); }
     cstring toString() const override;
 #nodbprint
 }
@@ -46,19 +49,18 @@ class OF_Register : OF_Expression {
     Constant mask() const;
 #end
     bool isSlice() const { return low != 0 || high != size - 1; }
+    size_t width() const override { return high - low + 1; }
+    OF_Register lowBits(size_t n) const;
+    OF_Register highBits(size_t n) const;
 #nodbprint
 }
 
 /// Build an expression from a DDlog interpolated variable
 class OF_InterpolatedVarExpression : OF_Expression {
     cstring varname;
+    size_t m_width;
     toString { return "${" + varname + "}"; }
-#nodbprint
-}
-
-class OF_Fieldname : OF_Expression {
-    cstring field;
-    toString{ return field; }
+    size_t width() const override { return m_width; }
 #nodbprint
 }
 
@@ -67,6 +69,7 @@ class OF_Slice : OF_Expression {
     size_t high;
     size_t low;
     cstring toString() const override;
+    size_t width() const override { return high - low + 1; }
 #nodbprint
 }
 
@@ -74,6 +77,18 @@ class OF_EqualsMatch : OF_Match {
     OF_Expression left;
     OF_Expression right;
     cstring toString() const override;
+#nodbprint
+}
+
+class OF_PriorityMatch : OF_Match {
+    OF_Expression priority;
+    cstring toString() const override;
+#nodbprint
+}
+
+class OF_PrereqMatch : OF_Match {
+    cstring prereq;
+    toString { return prereq; }
 #nodbprint
 }
 

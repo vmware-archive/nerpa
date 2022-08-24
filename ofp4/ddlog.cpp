@@ -39,27 +39,28 @@ cstring DDlogTypeAlt::toString() const {
     return result;
 }
 
-
-cstring DDlogRelation::toString() const {
-    cstring result;
+static cstring direction_to_string(const IR::Declaration* type, Direction direction) {
     switch (direction) {
         case IR::Direction::None:
-            break;
+            return "";
         case IR::Direction::In:
-            result = "input ";
-            break;
+            return "input ";
         case IR::Direction::Out:
-            result = "output ";
-            break;
+            return "output ";
         default:
-            BUG("%1% direction 'inout' unexpected", this);
+            BUG("%1% direction 'inout' unexpected", type);
     }
-    result += "relation " + externalName() + "(";
-    bool first = true;
+}
+
+cstring DDlogRelationDirect::toString() const {
+    return direction_to_string(this, direction) + "relation " + externalName() + "[" + recordType->toString() + "]";
+}
+
+cstring parametersToString(IR::IndexedVector<Parameter> const& parameters) {
+    cstring result = "(";
     for (auto p : parameters) {
-        if (!first)
+        if (result != "(")
             result += ", ";
-        first = false;
         result += p->name.toString();
         result += ": ";
         result += p->type->toString();
@@ -68,6 +69,23 @@ cstring DDlogRelation::toString() const {
     return result;
 }
 
+cstring DDlogIndex::toString() const {
+    cstring result = "index " + externalName() + parametersToString(parameters) + " on " + relation + "(";
+    bool first = true;
+    for (auto f : formals) {
+        if (!first)
+            result += ", ";
+        first = false;
+        result += f;
+    }
+    result += ")";
+    return result;
+}
+
+cstring DDlogRelationSugared::toString() const {
+    return (direction_to_string(this, direction)
+            + "relation " + externalName() + parametersToString(parameters));
+}
 
 cstring DDlogTypeStruct::toString() const {
     cstring result = externalName();
