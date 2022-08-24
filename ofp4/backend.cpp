@@ -263,7 +263,16 @@ class ActionTranslator : public Inspector {
     }
 
     bool preorder(const IR::Cast* expression) override {
-        // TODO: casts should be lowered into slices if possible
+        // Lower a narrowing cast into a slice.
+        if (auto width = expression->destType->width_bits()) {
+            if (auto reg = expression->expr->to<IR::OF_Register>()) {
+                if (width < reg->width()) {
+                    currentTranslation = reg->lowBits(reg->width());
+                    return false;
+                }
+            }
+        }
+
         currentTranslation = _translate(expression->expr);
         return false;
     }
