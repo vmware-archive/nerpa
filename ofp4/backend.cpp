@@ -62,17 +62,18 @@ class ActionTranslator : public Inspector {
     bool preorder(const IR::PathExpression* path) override {
         auto decl = model->refMap->getDeclaration(path->path, true);
         auto reg = model->resources.getRegister(decl);
+        auto type = model->typeMap->getType(path, true);
         if (reg) {
             currentTranslation = reg;
-        } else if (decl->is<IR::Parameter>()) {
+        } else if (auto p = decl->to<IR::Parameter>()) {
             // action parameters are translated to DDlog variables with the same name
-            currentTranslation = new IR::OF_InterpolatedVarExpression(decl->getName());
+            currentTranslation = new IR::OF_InterpolatedVarExpression(
+                decl->getName(), type->width_bits());
         } else {
             ::error(ErrorType::ERR_INVALID, "%1%: could not translate expression", path);
         }
         if (translateMatch) {
             // TODO: booleans should be lowered into bit<1> values by the midend
-            auto type = model->typeMap->getType(path, true);
             if (type->is<IR::Type_Boolean>()) {
                 currentTranslation = new IR::OF_EqualsMatch(
                     currentTranslation->to<IR::OF_Expression>(),
@@ -674,21 +675,19 @@ class FlowGenerator : public Inspector {
                     auto key = actionTranslator->translate(k->expression, false, exitBlockId);
                     if (key == nullptr)
                         return;
+                    auto keye = key->checkedTo<IR::OF_Expression>();
                     // The parameter name generated above for the corresponding key field
                     auto name = k->annotations->getSingle(
                         IR::Annotation::nameAnnotation)->getSingleString();
-                    auto varName = new IR::OF_InterpolatedVarExpression(name);
-                    match->push_back(
-                        new IR::OF_EqualsMatch(
-                            key->checkedTo<IR::OF_Expression>(),
-                            varName));
+                    auto varName = new IR::OF_InterpolatedVarExpression(name, keye->width());
+                    match->push_back(new IR::OF_EqualsMatch(keye, varName));
                 }
             }
 
             if (hasPriority) {
                 match->push_back(
                     new IR::OF_PriorityMatch(
-                        new IR::OF_InterpolatedVarExpression("priority")));
+                        new IR::OF_InterpolatedVarExpression("priority", 16)));
             }
             auto flowRule = new IR::OF_MatchAndAction(
                 match,
@@ -911,7 +910,7 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     match = new IR::OF_SeqMatch();
     match->push_back(new IR::OF_TableMatch(multicastId));
     match->push_back(new IR::OF_EqualsMatch(multicastRegister,
-                                            new IR::OF_InterpolatedVarExpression("mcast_id")));
+                                            new IR::OF_InterpolatedVarExpression("mcast_id", multicastRegister->size)));
     flowRule = new IR::OF_MatchAndAction(
         match,
         new IR::OF_InterpolatedVariableAction("outputs"));
@@ -924,7 +923,7 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
     auto clone = new IR::OF_CloneAction(
         new IR::OF_SeqAction(
             new IR::OF_MoveAction(
-                new IR::OF_InterpolatedVarExpression("port"),
+                new IR::OF_InterpolatedVarExpression("port", 16),
                 outputPortRegister),
             new IR::OF_ResubmitAction(multicastId)));
     // TODO: This is not an accurate representation of the DDlog IR tree,
