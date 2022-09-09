@@ -42,7 +42,6 @@ fn main_loop(cleanup: &mut Cleanup, greeting_file: &Option<PathBuf>) -> Result<(
             .with_context(|| format!("could not write {}", filename.display()))?;
     }
     eprintln!("{}", greeting);
-    loop {
-        sleep(Duration::from_secs(1));
-    }
+    sleep(Duration::MAX);
+    unreachable!();
 }
