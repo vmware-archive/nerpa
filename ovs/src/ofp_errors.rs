@@ -27,7 +27,7 @@ use std::os::raw;
 
 use anyhow::Result;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Error(pub sys::ofperr::Type);
 
 impl fmt::Display for Error {
