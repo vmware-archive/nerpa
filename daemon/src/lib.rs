@@ -463,13 +463,19 @@ impl Daemonizing {
     }
 }
 
-
+#[cfg(target_os = "linux")]
 fn count_threads(pid: u32) -> Result<usize, Error> {
     Ok(read_dir(format!("/proc/{pid}/task"))?.count())
 }
 
+#[cfg(target_os = "linux")]
 fn assert_single_threaded() {
     assert_eq!(count_threads(std::process::id()).unwrap(), 1);
+}
+
+#[cfg(not(target_os = "linux"))]
+fn assert_single_threaded() {
+    // Don't know how to count our threads.
 }
 
 enum ForkAndWaitResult {
