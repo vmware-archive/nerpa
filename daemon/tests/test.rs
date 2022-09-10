@@ -43,6 +43,8 @@ use std::io::ErrorKind;
 use std::sync::Mutex;
 
 fn parent_pid(pid: libc::pid_t) -> Result<libc::pid_t> {
+    // The following is a POSIX-compliant invocation of "ps" (see
+    // https://pubs.opengroup.org/onlinepubs/9699919799/utilities/ps.html).
     let output = String::from_utf8(Command::new("ps")
                                    .arg("-o")
                                    .arg("ppid=")
