@@ -262,7 +262,9 @@ fn test_monitor() -> Result<()> {
     // Kill the daemon process, making it look like an abort(),
     // and wait for a new daemon process to get spawned.
     //
-    // (Rust has weird behavior for SIGSEGV, so don't use that.)
+    // Rust has weird behavior for SIGSEGV (see
+    // https://users.rust-lang.org/t/is-sigsegv-handled-by-rust-runtime/45680), so we don't use
+    // that.
     send_signal(daemon_pid, libc::SIGABRT)?;
     wait_for_process_to_die(daemon_pid)?;
     let daemon_pid = wait_for_pidfile_to_change(&pidfile_name, daemon_pid)?;
