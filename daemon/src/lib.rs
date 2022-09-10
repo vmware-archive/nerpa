@@ -64,9 +64,9 @@ SOFTWARE.
 //!     which exit successfully.  If it exits or dies before completing initialization, then that
 //!     gets passed along too and both the monitor and parent processes exit unsuccessfully.
 //!
-//! This crate also includes [`Cleanup`], for deleting files and temporary directories on
-//! successful termination or unexpectedly due to a signal, and [`proctitle`] for changing the name
-//! of the current process as shown by `ps`.
+//! This crate also includes [`Cleanup`], for deleting files and temporary directories either when
+//! dropped or when the process exits unexpectedly due to a signal, and [`proctitle`] for changing
+//! the name of the current process as shown by `ps`.
 
 use anyhow::{anyhow, Context};
 use clap::Parser;
@@ -110,9 +110,9 @@ pub use cleanup::Cleanup;
 ///   notification, or if it dies due to a signal, then the parent process exits with the same
 ///   error or signal status.
 ///
-///   * `cleanup`, a [`Cleanup`] object that tracks resources that should be released when the
-///   process exits or dies.  Dropping it will release all resources.  This object should not be
-///   dropped before the process is about to exit.
+///   * `cleanup`, a [`Cleanup`] object that will delete the daemon's pidfile when it is dropped or
+///     when the process exits due to a signal.  Keep it around until the process exits to ensure
+///     that the pidfile is only deleted at the right time.
 ///
 /// You can use this with `clap` to parse command-line arguments and daemonize based on them, e.g.:
 ///

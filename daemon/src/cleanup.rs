@@ -36,16 +36,17 @@ SOFTWARE.
  */
 
 use anyhow::{anyhow, Result};
+use lazy_static::lazy_static;
 use rand::random;
 use signal_hook::{self, consts::signal::*, iterator::Signals};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use tracing::{event, Level};
 
@@ -120,23 +121,76 @@ impl Actions {
     }
 }
 
-/// Release resources on orderly exit or due to a signal.
+/// A singleton object that frees resources in reaction to a fatal signal.
+struct SignalHandler {
+    actions: Arc<Mutex<HashMap<u64, Arc<Mutex<Actions>>>>>,
+    next_id: u64
+}
+
+impl SignalHandler {
+    fn new() -> Result<SignalHandler> {
+        let mut signals = Signals::new(&[SIGTERM, SIGINT, SIGHUP, SIGALRM])?;
+        let actions: Arc<Mutex<HashMap<u64, Arc<Mutex<Actions>>>>>
+            = Arc::new(Mutex::new(HashMap::new()));
+        let actions2 = actions.clone();
+        thread::spawn(move || {
+            for signal in signals.forever() {
+                for (_k, v) in actions2.lock().unwrap().drain() {
+                    v.lock().unwrap().run();
+                }
+                signal_hook::low_level::emulate_default_handler(signal).unwrap();
+                unreachable!();
+            }
+            for (_k, v) in actions2.lock().unwrap().drain() {
+                v.lock().unwrap().run();
+            }
+        });
+        Ok(SignalHandler { actions, next_id: 0 })
+    }
+
+    fn instance() -> MutexGuard<'static, Result<Self>> {
+        lazy_static! {
+            static ref INSTANCE: Mutex<Result<SignalHandler>> = Mutex::new(SignalHandler::new());
+        }
+        INSTANCE.lock().unwrap()
+    }
+
+    /// Creates a new `Actions`, adds it to the collection of those that will be invoked when the
+    /// process terminates, and returns it along with an ID that may be used to remove it later.
+    pub fn add_actions() -> Result<(u64, Arc<Mutex<Actions>>)> {
+        match *Self::instance() {
+            Err(ref e) => Err(anyhow!("{e}")),
+            Ok(ref mut instance) => {
+                let id = instance.next_id;
+                instance.next_id += 1;
+                let actions = Arc::new(Mutex::new(Actions::new()));
+                instance.actions.lock().unwrap().insert(id, actions.clone());
+                Ok((id, actions))
+            }
+        }
+    }
+
+    /// Removes the `Actions` with the given `id` from the collection (if any).  If `run` is true,
+    /// runs the associated actions, otherwise skips them.
+    pub fn remove_actions(id: u64, run: bool) {
+        if let Ok(ref mut instance) = *Self::instance() {
+            if let Some(actions) = instance.actions.lock().unwrap().remove(&id) {
+                if run {
+                    actions.lock().unwrap().run();
+                }
+            }
+        }
+    }
+}
+
+/// Release resources when dropped or due to a signal.
 ///
 /// This struct supports releasing resources (such as killing child processes and deleting
-/// temporary files) when the running process terminates due to a signal or when it exits in the
-/// usual way.
-///
-/// Create a `Cleanup` before launching the first subprocess, then use `Cleanup::spawn()` to create
-/// each subprocess.  If a fatal signal arrives, `Cleanup` will send each registered subprocess a
-/// `SIGTERM` signal.  `Cleanup` will do the same thing when it is `drop`ped (thus, it's a good
-/// idea to drop it only just before exiting).
-///
-/// [`Daemonize::start()`] and [`Daemonize::run()`] create and return a `Cleanup`.  Code that uses
-/// `Daemonize` should use the `Cleanup` that it provides.
+/// temporary files) when the `Cleanup` is dropped or when the running process terminates due to a
+/// signal.
 pub struct Cleanup {
-    signals_handle: signal_hook::iterator::backend::Handle,
-    thread_handle: Option<thread::JoinHandle<()>>,
-    actions: Arc<Mutex<Actions>>
+    actions: Arc<Mutex<Actions>>,
+    actions_id: u64
 }
 
 impl Cleanup {
@@ -144,27 +198,18 @@ impl Cleanup {
     /// dropped, or when the program is killed by a signal, it takes actions registered with it to
     /// clean up after resources registered with the object.
     ///
-    /// Cleanup on signal handling happens in a thread that this object creates.  This means that
+    /// Cleanup on signal handling happens in a thread that `Cleanup` creates.  This means that
     /// calling `fork` will prevent cleanup due to a signal from happening in the child process
     /// (but not cleanup due to drop).  Therefore, a process that forks should create a `Cleanup`
-    /// only in the child, not in the parent.  `Daemonize` creates and returns a `Cleanup`.  Code
-    /// that uses `Daemonize` should use the `Cleanup` that it provides.
-    ///
-    /// `Cleanup` should be a singleton.  (This is forced because signals have only one handler.)
+    /// only in the child, not in the parent.
     pub fn new() -> Result<Cleanup> {
-        let mut signals = Signals::new(&[SIGTERM, SIGINT, SIGHUP, SIGALRM])?;
-        let signals_handle = signals.handle();
-        let actions = Arc::new(Mutex::new(Actions::new()));
-        let actions2 = actions.clone();
-        let thread_handle = Some(thread::spawn(move || {
-            for signal in signals.forever() {
-                actions2.lock().unwrap().run();
-                signal_hook::low_level::emulate_default_handler(signal).unwrap();
-                unreachable!();
-            }
-            actions2.lock().unwrap().run();
-        }));
-        Ok(Cleanup { signals_handle, thread_handle, actions })
+        let (actions_id, actions) = SignalHandler::add_actions()?;
+        Ok(Cleanup { actions, actions_id })
+    }
+
+    /// Drops `self` **without** executing any of its cleanup actions.
+    pub fn cancel(self) {
+        SignalHandler::remove_actions(self.actions_id, false);
     }
 
     /// Spawns a process according to `command` and registers it to be killed on exit.
@@ -181,15 +226,20 @@ impl Cleanup {
 
     /// Runs `command` and returns its output.  If this process is killed by a signal while
     /// `command` runs, the child will be killed too.
-    pub fn output(&mut self, command: &mut Command) -> Result<Output> {
+    pub fn output(command: &mut Command) -> Result<Output> {
         command.stdin(Stdio::null());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-        let child = self.spawn(command)?;
-        let child_id = child.id();
-        let output = child.wait_with_output();
-        self.actions.lock().unwrap().kill_pids.remove(&child_id);
-        Ok(output?)
+
+        let mut cleanup = Self::new()?;
+        let output = cleanup.spawn(command)?.wait_with_output()?;
+
+        // This isn't really necessary because the child is already dead, but it rules out an
+        // (unlikely) race in which a new process with the same PID as the child has already
+        // started.
+        cleanup.cancel();
+
+        Ok(output)
     }
 
     /// Creates and returns the name of a new temporary directory under `parent_dir`, registering
@@ -212,7 +262,7 @@ impl Cleanup {
         Err(anyhow!("{} attempts to create directory failed", max_attempts))
     }
 
-    /// Makes this Cleanup refrain from deleting temporary directories created by
+    /// Makes this `Cleanup` refrain from deleting temporary directories created by
     /// `create_temp_dir`, to allow them to be inspected after exit.
     pub fn keep_temp_dirs(&mut self) {
         self.actions.lock().unwrap().keep_dirs();
@@ -233,11 +283,9 @@ impl Cleanup {
 
 impl Drop for Cleanup {
     /// Executes all the registered cleanup actions: deleting files and directories, killing
-    /// processes, and so on.  Thus, it's generally unwise to drop `Cleanup` much before the
-    /// process exits.
+    /// processes, and so on.
     fn drop(&mut self) {
-        self.signals_handle.close();
-        self.thread_handle.take().map(thread::JoinHandle::join);
+        SignalHandler::remove_actions(self.actions_id, true);
     }
 }
 
