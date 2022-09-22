@@ -773,16 +773,16 @@ class FlowGenerator : public Inspector {
         auto daprop = p4table->properties->getProperty(
             IR::TableProperties::defaultActionPropertyName);
         CHECK_NULL(daprop);
+        auto default_match = new IR::OF_SeqMatch();
+        default_match->push_back(tablematch);
+        default_match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
         if (daprop->isConstant) {
             // Constant default action: generate a fixed rule.
-            auto match = new IR::OF_SeqMatch();
-            match->push_back(tablematch);
-            match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
             generateActionCall(
-                defaultAction->checkedTo<IR::MethodCallExpression>(), match, table, true);
+                defaultAction->checkedTo<IR::MethodCallExpression>(), default_match, table, true);
         } else {
             auto flowRule = new IR::OF_MatchAndAction(
-                tablematch,
+                default_match,
                 new IR::OF_InterpolatedVariableAction("actions"));
             auto flowTerm = makeFlowAtom(flowRule);
             auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
