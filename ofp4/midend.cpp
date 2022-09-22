@@ -50,6 +50,7 @@ limitations under the License.
 #include "midend/simplifyKey.h"
 #include "midend/tableHit.h"
 #include "midend/removeAssertAssume.h"
+#include "midend/validateProperties.h"
 #include "lower.h"
 
 namespace OFP4 {
@@ -87,6 +88,7 @@ MidEnd::MidEnd(OFP4Options& options) {
         new P4::FlattenInterfaceStructs(&refMap, &typeMap),
         new P4::Predication(&refMap),
         new P4::MoveDeclarations(),
+        new P4::ValidateTableProperties({}),
         new P4::ConstantFolding(&refMap, &typeMap),
         new P4::GlobalCopyPropagation(&refMap, &typeMap),
         new PassRepeated({
