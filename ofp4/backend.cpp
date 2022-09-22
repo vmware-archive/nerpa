@@ -954,10 +954,10 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
 
     auto clone = new IR::OF_CloneAction(
         new IR::OF_SeqAction(
-            new IR::OF_MoveAction(
+            new IR::OF_LoadAction(
                 new IR::OF_InterpolatedVarExpression("port", 16),
                 outputPortRegister),
-            new IR::OF_ResubmitAction(multicastId)));
+            new IR::OF_ResubmitAction(egressStartId)));
     // TODO: This is not an accurate representation of the DDlog IR tree,
     // but it generates the same textual representation.
     auto outputs = new IR::DDlogSetExpression(
