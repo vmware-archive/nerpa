@@ -65,7 +65,7 @@ class ActionTranslator : public Inspector {
         auto type = model->typeMap->getType(path, true);
         if (reg) {
             currentTranslation = reg;
-        } else if (auto p = decl->to<IR::Parameter>()) {
+        } else if (decl->is<IR::Parameter>()) {
             // action parameters are translated to DDlog variables with the same name
             currentTranslation = new IR::OF_InterpolatedVarExpression(
                 decl->getName(), type->width_bits());
@@ -264,7 +264,7 @@ class ActionTranslator : public Inspector {
 
     bool preorder(const IR::Cast* expression) override {
         // Lower a narrowing cast into a slice.
-        if (auto width = expression->destType->width_bits()) {
+        if (size_t width = expression->destType->width_bits()) {
             if (auto reg = expression->expr->to<IR::OF_Register>()) {
                 if (width < reg->width()) {
                     currentTranslation = reg->lowBits(reg->width());
@@ -567,12 +567,20 @@ class DeclarationGenerator : public Inspector {
     }
 };
 
-static CFG::Node* findActionSuccessor(const CFG::Node* node, const IR::P4Action* action) {
+static CFG::Node* findActionSuccessor(
+    const CFG::Node* node, const IR::P4Action* action, bool defaultAction) {
     for (auto e : node->successors.edges) {
         if (e->isUnconditional()) {
             return e->endpoint;
         } else if (e->isBool()) {
-            return nullptr;
+            bool condition = e->getBool();
+            if (condition && !defaultAction) {
+                // missed
+                return e->endpoint;
+            } else if (!condition && defaultAction) {
+                // hit
+                return e->endpoint;
+            }
         } else {
             // switch statement
             if (e->label == action->name) {
@@ -600,7 +608,8 @@ class FlowGenerator : public Inspector {
 
     void generateActionCall(const IR::MethodCallExpression* actionCall,
                             const IR::OF_Match* match,
-                            const CFG::TableNode* cfgtable) {
+                            const CFG::TableNode* cfgtable,
+                            bool defaultAction) {
         auto mi = P4::MethodInstance::resolve(actionCall, model->refMap, model->typeMap);
         auto ac = mi->to<P4::ActionCall>();
         CHECK_NULL(ac);
@@ -608,9 +617,8 @@ class FlowGenerator : public Inspector {
         auto callTranslation = at->translate(ac->action->body, false, exitBlockId);
         auto ofaction = callTranslation->checkedTo<IR::OF_Action>();
 
-        CFG::Node* next = findActionSuccessor(cfgtable, ac->action);
-        // BUG_CHECK(next, "%1%: no successor", p4table);
-        // TODO
+        CFG::Node* next = findActionSuccessor(cfgtable, ac->action, defaultAction);
+        BUG_CHECK(next, "%1%:%2%: no successor", cfgtable->table->name, ac->action->name);
         auto successor = new IR::OF_ResubmitAction(next ? next->id : 0);
         ofaction = new IR::OF_SeqAction(ofaction, successor);
         auto flowRule = new IR::OF_MatchAndAction(match, ofaction);
@@ -658,9 +666,8 @@ class FlowGenerator : public Inspector {
             bool tableOnly = annos->getSingle(
                 IR::Annotation::tableOnlyAnnotation) != nullptr;
 
-            CFG::Node* next = findActionSuccessor(table, ac->action);
-            // BUG_CHECK(next, "%1%: no successor", p4table);
-            // TODO
+            CFG::Node* next = findActionSuccessor(table, ac->action, false);
+            BUG_CHECK(next, "%1%:%2%: no successor", p4table->name, ac->action->name);
             auto successor = new IR::OF_ResubmitAction(next ? next->id : 0);
 
             /// Generate matching code for the rule
@@ -756,7 +763,7 @@ class FlowGenerator : public Inspector {
                             value->checkedTo<IR::OF_Expression>()));
                 }
                 auto actionCall = entry->getAction()->checkedTo<IR::MethodCallExpression>();
-                generateActionCall(actionCall, match, table);
+                generateActionCall(actionCall, match, table, false);
             }
         }
 
@@ -771,7 +778,8 @@ class FlowGenerator : public Inspector {
             auto match = new IR::OF_SeqMatch();
             match->push_back(tablematch);
             match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
-            generateActionCall(defaultAction->checkedTo<IR::MethodCallExpression>(), match, table);
+            generateActionCall(
+                defaultAction->checkedTo<IR::MethodCallExpression>(), match, table, true);
         } else {
             auto flowRule = new IR::OF_MatchAndAction(
                 tablematch,
