@@ -69,8 +69,6 @@ typedef SnvsIngress_LearnedSrcAction = SnvsIngress_LearnedSrcAction_NoAction{}
 input relation SnvsIngress_LearnedSrc(vlan: bit<12>, mac: bit<48>, port: bit<16>, action: SnvsIngress_LearnedSrcAction)
 typedef SnvsIngress_LearnedDstAction = SnvsIngress_LearnedDstActionSnvsIngress_KnownDst{port: PortID}
 input relation SnvsIngress_LearnedDst(vlan: bit<12>, mac: bit<48>, action: SnvsIngress_LearnedDstAction)
-typedef SnvsIngress_LearnedDstActionDefaultAction = SnvsIngress_LearnedDstDefaultAction_NoAction{}
-input relation SnvsIngress_LearnedDstDefaultAction(action: SnvsIngress_LearnedDstActionDefaultAction)
 typedef SnvsEgress_OutputVlanAction = SnvsEgress_OutputVlanAction_NoAction{}
 input relation SnvsEgress_OutputVlan(port: bit<16>, vlan: bit<12>, priority: bit<32>, action: SnvsEgress_OutputVlanAction)
 typedef SnvsEgress_PriorityTaggingAction = SnvsEgress_PriorityTaggingAction_NoAction{}
@@ -90,7 +88,7 @@ Flow("table=3, in_port=${port} actions=${actions}") :- SnvsIngress_MirrorDstDrop
 }.
 
 // SnvsIngress.MirrorDstDrop
-Flow("table=3 actions=${actions}") :- SnvsIngress_MirrorDstDropDefaultAction(action),
+Flow("table=3, priority=1 actions=${actions}") :- SnvsIngress_MirrorDstDropDefaultAction(action),
    var actions = "resubmit(,4)".
 
 // SnvsIngress.ReservedMcastDstDrop
@@ -100,7 +98,7 @@ Flow("table=4, dl_dst=${dst} actions=${actions}") :- SnvsIngress_ReservedMcastDs
 }.
 
 // SnvsIngress.ReservedMcastDstDrop
-Flow("table=4 actions=${actions}") :- SnvsIngress_ReservedMcastDstDropDefaultAction(action),
+Flow("table=4, priority=1 actions=${actions}") :- SnvsIngress_ReservedMcastDstDropDefaultAction(action),
    var actions = "resubmit(,5)".
 
 // SnvsIngress.InputVlan
@@ -223,8 +221,7 @@ Flow("table=22, dl_dst=${mac}, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 a
 }.
 
 // SnvsIngress.LearnedDst
-Flow("table=22 actions=${actions}") :- SnvsIngress_LearnedDstDefaultAction(action),
-   var actions = "resubmit(,23)".
+Flow("table=22, priority=1 actions=resubmit(,23)").
 
 // IfStatement
 Flow("table=23, priority=100, ${r_SnvsIngress_output(true)}=510/0xffff actions=resubmit(,24)").
@@ -249,11 +246,11 @@ Flow("table=28 actions=resubmit(,29)").
 // SnvsEgress.OutputVlan
 Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsEgress_OutputVlan(port, vlan, priority, action),
    var actions = match(action) {
-    SnvsEgress_OutputVlanAction_NoAction{} -> "resubmit(,0)"
+    SnvsEgress_OutputVlanAction_NoAction{} -> "resubmit(,30)"
 }.
 
 // SnvsEgress.OutputVlan
-Flow("table=29, priority=1 actions=resubmit(,0)").
+Flow("table=29, priority=1 actions=resubmit(,31)").
 
 // tbl_act
 Flow("table=30 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
@@ -336,11 +333,11 @@ Flow("table=42, priority=1 actions=load(0->${r_key_0(false)}), resubmit(,43)").
 // SnvsEgress.PriorityTagging
 Flow("table=43, ${r_out_port(true)}=${port}/0xffff, ${r_key_0(true)}=${(if (nonzero_pcp) 1 else 0) << 24}/0x1000000 actions=${actions}") :- SnvsEgress_PriorityTagging(port, nonzero_pcp, action),
    var actions = match(action) {
-    SnvsEgress_PriorityTaggingAction_NoAction{} -> "resubmit(,0)"
+    SnvsEgress_PriorityTaggingAction_NoAction{} -> "resubmit(,44)"
 }.
 
 // SnvsEgress.PriorityTagging
-Flow("table=43, priority=1 actions=resubmit(,0)").
+Flow("table=43, priority=1 actions=resubmit(,45)").
 
 // tbl_act_1
 Flow("table=44 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
@@ -416,5 +413,5 @@ Flow("table=27, ${r_out_group(true)}=${0 << 16}/0xffff0000 actions=resubmit(,28)
 
 // multicast
 Flow("table=27, ${r_out_group(true)}=${mcast_id as bit<32> << 16}/0xffff0000 actions=${outputs}") :- MulticastGroup(mcast_id, port),
-   var outputs = "clone(move(${port}->${r_out_port(false)}), resubmit(,27))".group_by(mcast_id).to_vec().join(", ").
+   var outputs = "clone(load(${port}->${r_out_port(false)}), resubmit(,28))".group_by(mcast_id).to_vec().join(", ").
 
