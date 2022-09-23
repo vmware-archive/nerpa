@@ -62,7 +62,7 @@ input relation SnvsIngress_ReservedMcastDstDrop(dst: bit<48>, action: SnvsIngres
 typedef SnvsIngress_ReservedMcastDstDropActionDefaultAction = SnvsIngress_ReservedMcastDstDropDefaultAction_NoAction{}
 input relation SnvsIngress_ReservedMcastDstDropDefaultAction(action: SnvsIngress_ReservedMcastDstDropActionDefaultAction)
 typedef SnvsIngress_InputVlanAction = SnvsIngress_InputVlanActionSnvsIngress_Drop{} | SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid: VlanID} | SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{}
-input relation SnvsIngress_InputVlan(port: bit<16>, has_vlan: bit<1>, vid: bit<12>, priority: bit<32>, action: SnvsIngress_InputVlanAction)
+input relation SnvsIngress_InputVlan(port: bit<16>, has_vlan: bit<1>, vid: Option<bit<12>>, priority: bit<32>, action: SnvsIngress_InputVlanAction)
 typedef SnvsIngress_FloodVlanAction = SnvsIngress_FloodVlanActionSnvsIngress_set_flood{}
 input relation SnvsIngress_FloodVlan(vlan: bit<12>, action: SnvsIngress_FloodVlanAction)
 typedef SnvsIngress_LearnedSrcAction = SnvsIngress_LearnedSrcAction_NoAction{}
@@ -70,7 +70,7 @@ input relation SnvsIngress_LearnedSrc(vlan: bit<12>, mac: bit<48>, port: bit<16>
 typedef SnvsIngress_LearnedDstAction = SnvsIngress_LearnedDstActionSnvsIngress_KnownDst{port: PortID}
 input relation SnvsIngress_LearnedDst(vlan: bit<12>, mac: bit<48>, action: SnvsIngress_LearnedDstAction)
 typedef SnvsEgress_OutputVlanAction = SnvsEgress_OutputVlanAction_NoAction{}
-input relation SnvsEgress_OutputVlan(port: bit<16>, vlan: bit<12>, priority: bit<32>, action: SnvsEgress_OutputVlanAction)
+input relation SnvsEgress_OutputVlan(port: bit<16>, vlan: Option<bit<12>>, priority: bit<32>, action: SnvsEgress_OutputVlanAction)
 typedef SnvsEgress_PriorityTaggingAction = SnvsEgress_PriorityTaggingAction_NoAction{}
 input relation SnvsEgress_PriorityTagging(port: bit<16>, nonzero_pcp: bool, action: SnvsEgress_PriorityTaggingAction)
 Flow("table=1 actions=resubmit(,2)").
@@ -102,7 +102,15 @@ Flow("table=4, priority=1 actions=${actions}") :- SnvsIngress_ReservedMcastDstDr
    var actions = "resubmit(,5)".
 
 // SnvsIngress.InputVlan
-Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${(has_vlan as bit<16> << 12) | vid as bit<16>}/0x1fff actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, vid, priority, action),
+Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${has_vlan as bit<16> << 12}/0x1000 actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, None{}, priority, action),
+   var actions = match(action) {
+    SnvsIngress_InputVlanActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
+    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "move(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
+    SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
+}.
+
+// SnvsIngress.InputVlan
+Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${(has_vlan as bit<16> << 12) | vid as bit<16>}/0x1fff actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, Some{vid}, priority, action),
    var actions = match(action) {
     SnvsIngress_InputVlanActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
     SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "move(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
@@ -244,7 +252,13 @@ Flow("table=25, priority=1 actions=move(${r_SnvsIngress_output(false)}->${r_out_
 Flow("table=28 actions=resubmit(,29)").
 
 // SnvsEgress.OutputVlan
-Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsEgress_OutputVlan(port, vlan, priority, action),
+Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff actions=${actions}") :- SnvsEgress_OutputVlan(port, None{}, priority, action),
+   var actions = match(action) {
+    SnvsEgress_OutputVlanAction_NoAction{} -> "resubmit(,30)"
+}.
+
+// SnvsEgress.OutputVlan
+Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsEgress_OutputVlan(port, Some{vlan}, priority, action),
    var actions = match(action) {
     SnvsEgress_OutputVlanAction_NoAction{} -> "resubmit(,30)"
 }.

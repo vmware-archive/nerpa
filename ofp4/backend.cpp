@@ -522,13 +522,10 @@ class DeclarationGenerator : public Inspector {
             // Arguments of a tuple expression
             for (auto ke : key->keyElements) {
                 auto type = model->typeMap->getType(ke->expression, true);
-                /*
                 auto match = ke->matchType;
-                  TODO: handle the various match_kinds
                 if (match->path->name.name == "optional") {
                     type = new IR::DDlogTypeOption(type);
                 }
-                */
                 auto name = ke->annotations->getSingle(
                     IR::Annotation::nameAnnotation)->getSingleString();
                 auto param = new IR::Parameter(ke->srcInfo, name, IR::Direction::None, type);
@@ -625,6 +622,86 @@ class FlowGenerator : public Inspector {
         declarations->push_back(makeFlowRule(flowRule, cfgtable->table->externalName()));
     }
 
+    void convertKey(CFG::TableNode* table,
+                    IR::Vector<IR::DDlogMatchCase>* tableCases,
+                    safe_vector<const IR::DDlogExpression*> tableArgs,
+                    safe_vector<const IR::OF_Match*> match,
+                    IR::Vector<IR::KeyElement>::const_iterator curKey,
+                    IR::Vector<IR::KeyElement>::const_iterator end,
+                    size_t nKeys) {
+        if (curKey != end) {
+            auto k = *curKey;
+            auto name = k->annotations->getSingle(
+                IR::Annotation::nameAnnotation)->getSingleString();
+            auto key = actionTranslator->translate(k->expression, false, exitBlockId);
+            if (key == nullptr)
+                return;
+
+            auto matchType = k->matchType;
+            if (matchType->path->name.name == "optional") {
+                // For an optional field, we need a flow for None and a flow
+                // for Some.  The flow for None doesn't have a match component;
+                // add it first.
+                std::vector<cstring> args;
+                tableArgs.push_back(new IR::DDlogConstructorExpression(IR::ID("None"), args));
+                convertKey(table, tableCases, tableArgs, match, curKey + 1, end, nKeys);
+                tableArgs.pop_back();
+
+                // Then discard the None and add the Some.  The match component
+                // gets added just below in code shared with exact-match.
+                args.push_back(name);
+                tableArgs.push_back(new IR::DDlogConstructorExpression(IR::ID("Some"), args));
+            } else {
+                tableArgs.push_back(new IR::DDlogVarName(name));
+            }
+
+            auto keye = key->checkedTo<IR::OF_Expression>();
+            auto varName = new IR::OF_InterpolatedVarExpression(name, keye->width());
+            match.push_back(new IR::OF_EqualsMatch(keye, varName));
+
+            convertKey(table, tableCases, tableArgs, match, curKey + 1, end, nKeys);
+
+            return;
+        }
+
+        auto p4table = table->table;
+        if (tableHasPriority(p4table)) {
+            tableArgs.push_back(new IR::DDlogVarName("priority"));
+            match.push_back(
+                new IR::OF_PriorityMatch(
+                    new IR::OF_InterpolatedVarExpression("priority", 16)));
+        }
+        tableArgs.push_back(new IR::DDlogVarName("action"));
+
+        auto seqMatch = new IR::OF_SeqMatch(IR::Vector<IR::OF_Match>(match));
+        auto flowRule = new IR::OF_MatchAndAction(
+            seqMatch,
+            new IR::OF_InterpolatedVariableAction("actions"));
+        auto flowTerm = makeFlowAtom(flowRule);
+        auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
+        auto relationTerm = new IR::DDlogAtom(p4table->srcInfo,
+                                              IR::ID(genTableName(p4table)),
+                                              new IR::DDlogTupleExpression(*new IR::Vector<IR::DDlogExpression>(tableArgs)));
+        if (nKeys)
+            ruleRhs->push_back(relationTerm);
+
+        const IR::DDlogExpression* computeAction;
+        if (tableCases->size() == 0) {
+            BUG("%1%: table with empty actions list", p4table);
+        }
+        else if (!nKeys && tableCases->size() == 1) {
+            // no DDlog "match" needed
+            computeAction = tableCases->at(0)->result;
+        } else {
+            computeAction = new IR::DDlogMatchExpression(
+                new IR::DDlogVarName("action"), *tableCases);
+        }
+        auto set = new IR::DDlogSetExpression("actions", computeAction);
+        ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
+        auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
+        declarations->push_back(rule);
+    }
+
     void convertTable(CFG::TableNode* table) {
         LOG2("Converting " << table);
         size_t id = table->id;
@@ -637,22 +714,10 @@ class FlowGenerator : public Inspector {
         const IR::OF_Match* tablematch = new IR::OF_TableMatch(id);
 
         auto tableCases = new IR::Vector<IR::DDlogMatchCase>();
-        auto tableArgs = new IR::Vector<IR::DDlogExpression>();
         auto defaultCases = new IR::Vector<IR::DDlogMatchCase>();
         auto defaultArgs = new IR::Vector<IR::DDlogExpression>();
 
-        if (keys) {
-            for (auto ke : keys->keyElements) {
-                auto name = ke->annotations->getSingle(
-                    IR::Annotation::nameAnnotation)->getSingleString();
-                auto varName = new IR::DDlogVarName(name);
-                tableArgs->push_back(varName);
-            }
-        }
-        if (hasPriority)
-            tableArgs->push_back(new IR::DDlogVarName("priority"));
         auto acvar = new IR::DDlogVarName("action");
-        tableArgs->push_back(acvar);
         defaultArgs->push_back(acvar);
 
         for (auto ale : actions->actionList) {
@@ -697,54 +762,16 @@ class FlowGenerator : public Inspector {
         }
 
         if (!entries) {
-            /// Table has no const entries: generate OF rules dynamically
-            auto match = new IR::OF_SeqMatch();
-            match->push_back(tablematch);
-            // key evaluation
-            if (keys) {
-                for (auto k : keys->keyElements) {
-                    auto key = actionTranslator->translate(k->expression, false, exitBlockId);
-                    if (key == nullptr)
-                        return;
-                    auto keye = key->checkedTo<IR::OF_Expression>();
-                    // The parameter name generated above for the corresponding key field
-                    auto name = k->annotations->getSingle(
-                        IR::Annotation::nameAnnotation)->getSingleString();
-                    auto varName = new IR::OF_InterpolatedVarExpression(name, keye->width());
-                    match->push_back(new IR::OF_EqualsMatch(keye, varName));
-                }
+            auto key = table->table->getKey();
+            if (!key) {
+                key = new IR::Key(IR::Vector<IR::KeyElement>());
             }
-
-            if (hasPriority) {
-                match->push_back(
-                    new IR::OF_PriorityMatch(
-                        new IR::OF_InterpolatedVarExpression("priority", 16)));
-            }
-            auto flowRule = new IR::OF_MatchAndAction(
-                match,
-                new IR::OF_InterpolatedVariableAction("actions"));
-            auto flowTerm = makeFlowAtom(flowRule);
-            auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
-            auto relationTerm = new IR::DDlogAtom(p4table->srcInfo, IR::ID(tableName),
-                                                  new IR::DDlogTupleExpression(*tableArgs));
-            if (keys)
-                ruleRhs->push_back(relationTerm);
-
-            const IR::DDlogExpression* computeAction;
-            if (tableCases->size() == 0) {
-                BUG("%1%: table with empty actions list", p4table);
-            }
-            else if (!keys && tableCases->size() == 1) {
-                // no DDlog "match" needed
-                computeAction = tableCases->at(0)->result;
-            } else {
-                computeAction = new IR::DDlogMatchExpression(
-                    new IR::DDlogVarName("action"), *tableCases);
-            }
-            auto set = new IR::DDlogSetExpression("actions", computeAction);
-            ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
-            auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
-            declarations->push_back(rule);
+            safe_vector<const IR::DDlogExpression*> tableArgs;
+            safe_vector<const IR::OF_Match*> match;
+            match.push_back(new IR::OF_TableMatch(table->id));
+            convertKey(table, tableCases, tableArgs, match,
+                       key->keyElements.begin(), key->keyElements.end(),
+                       key->keyElements.size());
         } else {
             // Table has constant entries: generate a fixed rule
             for (auto entry : entries->entries) {
