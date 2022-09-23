@@ -773,16 +773,16 @@ class FlowGenerator : public Inspector {
         auto daprop = p4table->properties->getProperty(
             IR::TableProperties::defaultActionPropertyName);
         CHECK_NULL(daprop);
+        auto default_match = new IR::OF_SeqMatch();
+        default_match->push_back(tablematch);
+        default_match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
         if (daprop->isConstant) {
             // Constant default action: generate a fixed rule.
-            auto match = new IR::OF_SeqMatch();
-            match->push_back(tablematch);
-            match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
             generateActionCall(
-                defaultAction->checkedTo<IR::MethodCallExpression>(), match, table, true);
+                defaultAction->checkedTo<IR::MethodCallExpression>(), default_match, table, true);
         } else {
             auto flowRule = new IR::OF_MatchAndAction(
-                tablematch,
+                default_match,
                 new IR::OF_InterpolatedVariableAction("actions"));
             auto flowTerm = makeFlowAtom(flowRule);
             auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
@@ -954,10 +954,10 @@ void OFP4Program::addFixedRules(IR::Vector<IR::Node> *declarations) {
 
     auto clone = new IR::OF_CloneAction(
         new IR::OF_SeqAction(
-            new IR::OF_MoveAction(
+            new IR::OF_LoadAction(
                 new IR::OF_InterpolatedVarExpression("port", 16),
                 outputPortRegister),
-            new IR::OF_ResubmitAction(multicastId)));
+            new IR::OF_ResubmitAction(egressStartId)));
     // TODO: This is not an accurate representation of the DDlog IR tree,
     // but it generates the same textual representation.
     auto outputs = new IR::DDlogSetExpression(

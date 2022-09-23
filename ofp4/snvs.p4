@@ -149,7 +149,7 @@ control SnvsIngress(inout Headers hdr,
 	    hdr.eth.dst: exact @name("mac");
 	}
         actions = { @tableonly KnownDst; @defaultonly NoAction; }
-        const defaultonly = NoAction;
+        const default_action = NoAction;
     }
 
     apply {
