@@ -622,14 +622,22 @@ class FlowGenerator : public Inspector {
         declarations->push_back(makeFlowRule(flowRule, cfgtable->table->externalName()));
     }
 
+    // This recursive function adds to 'this->declarations' a set of
+    // "DDlogRule"s for the P4 'table'.  When called, 'tableArgs' contains set
+    // of arguments that the caller has already figured out for the P4 'table'
+    // on the right-hand side of the DDlog :-, and 'match' contains the set of
+    // OpenFlow match expressions that the caller has already added
+    // corresponding to the arguments.  'curKey'...'end' contains the key
+    // elements still to be processed and recursively passed into this function.
     void convertKey(CFG::TableNode* table,
-                    IR::Vector<IR::DDlogMatchCase>* tableCases,
+                    const IR::Vector<IR::DDlogMatchCase>* tableCases,
                     safe_vector<const IR::DDlogExpression*> tableArgs,
                     safe_vector<const IR::OF_Match*> match,
                     IR::Vector<IR::KeyElement>::const_iterator curKey,
                     IR::Vector<IR::KeyElement>::const_iterator end,
                     size_t nKeys) {
         if (curKey != end) {
+            // Recursive case.
             auto k = *curKey;
             auto name = k->annotations->getSingle(
                 IR::Annotation::nameAnnotation)->getSingleString();
@@ -641,13 +649,13 @@ class FlowGenerator : public Inspector {
             if (matchType->path->name.name == "optional") {
                 // For an optional field, we need a flow for None and a flow
                 // for Some.  The flow for None doesn't have a match component;
-                // add it first.
+                // add it first, recurse, and discard it.
                 std::vector<cstring> args;
                 tableArgs.push_back(new IR::DDlogConstructorExpression(IR::ID("None"), args));
                 convertKey(table, tableCases, tableArgs, match, curKey + 1, end, nKeys);
                 tableArgs.pop_back();
 
-                // Then discard the None and add the Some.  The match component
+                // Then add the Some and fall through.  The match component
                 // gets added just below in code shared with exact-match.
                 args.push_back(name);
                 tableArgs.push_back(new IR::DDlogConstructorExpression(IR::ID("Some"), args));
@@ -664,6 +672,7 @@ class FlowGenerator : public Inspector {
             return;
         }
 
+        // Base case.
         auto p4table = table->table;
         if (tableHasPriority(p4table)) {
             tableArgs.push_back(new IR::DDlogVarName("priority"));
