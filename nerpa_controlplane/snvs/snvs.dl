@@ -131,7 +131,7 @@ MirrorDst[ref_port] :-
     port in Port(.id = mp_port.id as port_id_t),
     var ref_port = ref_new(port).
 
-snvs_dp::MirrorDstDrop(port.id) :-
+snvs_dp::MirrorDstDrop(port.id, snvs_dp::MirrorDstDropActionNoAction) :-
     MirrorDst[port].
 
 snvs_dp::MirrorSelectProduct(None, None, 1) :-

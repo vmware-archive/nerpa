@@ -272,6 +272,15 @@ pub fn p4info_to_ddlog(
                 }
                 writeln!(output, ")")?;
             }
+
+            // If the table does not have a constant `default_action`, then we
+            // create a relation to configure the default action.
+            // TODO: Check the form of this relation.
+            if needs_actions && table.const_default_action.is_none() {
+                writeln!(output, "output relation {}DefaultAction(", table_name)?;
+                writeln!(output, "    action: {}Action", table_name)?;
+                writeln!(output, ")")?;
+            }
         }
     }
 
@@ -358,9 +367,9 @@ pub fn p4info_to_ddlog(
     for cm in p4info.get_controller_packet_metadata().iter() {
         // The name 'packet_in' corresponds to messages from the dataplane to the controller.
         let cm_name = cm.get_preamble().get_name();
-        let (relation_type, relation_name) = match cm_name {
-            "packet_in" => ("input", "PacketIn"),
-            "packet_out" => ("output", "PacketOut"),
+        let (relation_type, relation_name, is_packet_in) = match cm_name {
+            "packet_in" => ("input", "PacketIn", true),
+            "packet_out" => ("output", "PacketOut", false),
             _ => continue,
         };
 
@@ -369,7 +378,14 @@ pub fn p4info_to_ddlog(
         for cmm in cm_meta.iter() {
             writeln!(output, "    {}: bit<{}>,", cmm.get_name(), cmm.get_bitwidth())?;
         }
-        writeln!(output, "    packet: Vec<bit<8>>")?;
+
+        if is_packet_in {
+            writeln!(output, "    packet: Vec<bit<8>>,")?;
+            writeln!(output, "    client_id: int")?;
+        } else {
+            writeln!(output, "    packet: Vec<bit<8>>")?;
+        }
+
         writeln!(output, ")")?;
     }
 

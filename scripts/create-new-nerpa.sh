@@ -38,7 +38,17 @@ EOF
 cat <<EOF > $PROGRAM_NAME.ovsschema
 {
     "name": "${PROGRAM_NAME}",
-    "tables": {},
+    "tables": {
+        "Client": {
+            "columns": {
+                "target": {"type": "string"},
+                "device_id": {"type": "integer"},
+                "role_id": {"type": "integer"},
+                "is_primary": {"type": "boolean"}
+            },
+            "isRoot": false
+        },
+    },
     "version": "1.0.0"
 }
 EOF

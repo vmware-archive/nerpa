@@ -24,16 +24,17 @@ extern crate proto;
 extern crate protobuf;
 
 use clap::{App, Arg};
-use grpcio::{ChannelBuilder, EnvBuilder};
-use nerpa_controller::{Controller, SwitchClient};
-use proto::p4runtime_grpc::P4RuntimeClient;
+use nerpa_controller::{
+    Controller,
+    SwitchClientCommonState,
+};
 use std::sync::Arc;
 use std::fs::File;
 
 // Import the function to run a DDlog program.
 // Note that the crate name changes with the Nerpa program's name.
 // The Nerpa programmer must rename this import.
-use arp_ddlog::run;
+use snvs_ddlog::run;
 
 #[tokio::main]
 pub async fn main() {
@@ -83,9 +84,11 @@ pub async fn main() {
         }
     );
 
-    // Run controller.
+    // Extract arguments.
     let file_dir = String::from(file_dir_opt.unwrap());
     let file_name = String::from(file_name_opt.unwrap());
+
+    // Run controller.
     run_controller(file_dir, file_name, &mut record_file).await
 }
 
@@ -94,53 +97,33 @@ async fn run_controller(
     file_name: String,
     record_file: &mut Option<File>,
 ) {
-    // Create P4Runtime client.
-    let target = String::from("localhost:50051");
-    let env = Arc::new(EnvBuilder::new().build());
-    let ch = ChannelBuilder::new(env).connect(target.as_str());
-    let client = P4RuntimeClient::new(ch);
+    // Run the DDlog program. This computes initial contents to push across switches.
+    let (mut hddlog, initial_contents) = run(1, false).unwrap();
+    hddlog.record_commands(record_file);
 
-    let device_id : u64 = 0;
-    let role_id: u64 = 0;
+    // Define values that are common across all the switch clients.
     let p4info = format!("{}/{}.p4info.bin", file_dir, file_name);
-    let opaque = format!("{}/{}.json", file_dir, file_name);
+    let json = format!("{}/{}.json", file_dir, file_name);
     let cookie = String::from("");
     let action = String::from("verify-and-commit");
 
-    // Set the primary controller on P4Runtime.
-    // This enables use of the StreamChannel RPC.
-    let mau_res = p4ext::master_arbitration_update(device_id, &client).await;
-    if mau_res.is_err() {
-        panic!("could not set master arbitration on switch: {:#?}", mau_res.err());
-    }
-
-    // Create a SwitchClient.
-    // Handles communication with the switch.
-    let mut switch_client = SwitchClient::new(
-        client,
+    let common_state = SwitchClientCommonState {
+        initial_contents,
         p4info,
-        opaque,
+        json,
         cookie,
         action,
-        device_id,
-        role_id,
-        target,
-    ).await;
-
-    // Run the DDlog program.
-    let (mut hddlog, initial_contents) = run(1, false).unwrap();
-    hddlog.record_commands(record_file);
-    switch_client.push_outputs(&initial_contents).await.unwrap();
+    };
 
     // Instantiate controller.
-    // We store the DDlog program on the heap. We can safely pass references to heap
-    // memory to both the controller and the OVSDB client.
+    // We store the DDlog program on the heap. This lets us safely pass
+    // references to heap memory to both the controller and OVSDB client.
     let controller_hddlog = Arc::new(hddlog);
     let ovsdb_hddlog = controller_hddlog.clone();
-    let nerpa_controller = Controller::new(switch_client, controller_hddlog).unwrap();
+    let nerpa_controller = Controller::new(common_state, controller_hddlog).unwrap();
 
     // Start streaming inputs from OVSDB and from the dataplane.
-    let database = file_name.clone();
     let server = String::from("unix:nerpa.sock");
+    let database = file_name.clone();
     nerpa_controller.stream_inputs(ovsdb_hddlog, server, database).await;
 }

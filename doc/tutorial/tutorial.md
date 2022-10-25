@@ -22,7 +22,7 @@ The Nerpa controller synchronizes state between the planes. It does the followin
 
 ## Setup
 
-Installation instructions are found in the [README](../../README.md/#installation). To verify installation, confirm that the following environment variables are set:
+Instructions to build dependencies are found in the [README](../../README.md/#building-dependencies). To verify, confirm that the following environment variables are set:
 * `$NERPA_DEPS`, to the directory containing the `behavioral-model` directory.
 * `$DDLOG_HOME`, to the DDlog installation directory. Make sure `$PATH` includes the DDlog binary.
 
@@ -46,7 +46,7 @@ Alternately, you can execute the script instructions manually one-by-one.
 This should create a Nerpa program in `nerpa_controlplane/tutorial`, composed of the following files:
 * `tutorial.dl`: Datalog program implementing the control plane, that will run on a centralized controller
 * `tutorial.p4`: P4 program implementing the data plane, that will run on a software switch
-* `tutorial.ovsschema`: OVSDB schema specifying the management plane 
+* `tutorial.ovsschema`: OVSDB schema specifying the management plane and the structure of clients used to talk to the switch
 * `commands.txt`: commands sent to the P4 switch's command-line interface and used to initialize the control plane
 * `init-ovsdb.sh`: transactions for OVSDB's initial contents. These can be commands using `ovsdb-tool` or `ovsdb-client`, with transactions formatted as JSONs as per [RFC 7047](https://www.ietf.org/rfc/rfc7047.txt).
 
@@ -72,14 +72,27 @@ These files should have the following contents.
 // import tutorial_dp as tutorial_dp
 // import Tutorial_mp as tutorial_mp
 ```
-* `tutorial.ovsschema` should contain this empty schema.
+* `tutorial.ovsschema` should contain this schema.
 ```
 {
     "name": "tutorial",
-    "tables": {},
+    "tables": {
+        "Client": {
+            "columns": {
+                "target": {"type": "string"},
+                "device_id": {"type": "integer"},
+                "role_id": {"type": "integer"},
+                "is_primary": {"type": "boolean"}
+            },
+            "isRoot": false
+        },
+    },
     "version": "1.0.0"
 }
 ```
+
+The Client table represents a client for communication with a P4-enabled switch, over P4Runtime. Changes to this table are used to add and remove switches from the network. This allows more fine-grained control of individual devices while controlling multiple devices (e.g., sending packets to/from a specific switch, or altering table entries on a specific switch).
+
 * `tutorial.p4` should be an empty P4 program.
 
 ### Program the Management Plane
@@ -139,7 +152,7 @@ Now that each sub-program exists, we can build the Nerpa tutorial program end-to
 
 The build script executes the following steps. You will notice that Steps 1 to 5 replicate commands you have already run in the tutorial. 
 
-1. Check if the Nerpa dependencies were installed correctly, specifically the DDlog environment variables `$DDLOG_HOME` and in `$PATH`, and the Nerpa dependencies directory `$NERPA_DIR`.
+1. Check if the Nerpa dependencies were built correctly, specifically the DDlog environment variables `$DDLOG_HOME` and in `$PATH`, and the Nerpa dependencies directory `$NERPA_DIR`.
 2. Generate the DDlog relations from the OVSDB schema using `ovsdb2ddlog`. This is more fully described in the [management plane](#program-the-management-plane) section.
 3. Compile the P4 program using `p4c`. This is more fully described in the [data plane](#program-the-data-plane) section. Compilation also creates a P4info file.
 4. Generate DDlog relations from the P4info file using `p4info2ddlog`. This is also described in the [data plane](#program-the-data-plane) section.
@@ -155,7 +168,7 @@ Run the Nerpa program, starting all pieces of software.
 ```
 
 The run script executes the following steps.
-1. Check that the Nerpa dependencies were installed as expected. Specifically, it confirms that the environment variable `$NERPA_DEPS` points to a directory that contains the `behavioral-model` subdirectory.
+1. Check that the Nerpa dependencies were built as expected. Specifically, it confirms that the environment variable `$NERPA_DEPS` points to a directory that contains the `behavioral-model` subdirectory.
 2. Run `simple_switch_grpc`, the virtual switch. If using veth devices, it tears down existing interfaces and sets them up.
 3. Initially configure the switch by passing the provided `commands.txt` to `sswitch_CLI.py`. This is a Python wrapper around the simple switch command-line interface.
 4. Start a new OVSDB server. Before this, we first stop any currently running ovsdb-server. We then use `ovsdb-tool` to create a new database, defined by the schema in `tutorial.ovsschema`. Finally, we start the server.
