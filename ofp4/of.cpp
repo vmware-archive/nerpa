@@ -17,6 +17,7 @@ limitations under the License.
 #include "ir/ir.h"
 #include "lib/cstring.h"
 #include "lib/stringify.h"
+#include "lib/algorithm.h"
 
 // Implementation of methods for the OF_* IR classes
 

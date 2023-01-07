@@ -719,7 +719,6 @@ class FlowGenerator : public Inspector {
         auto entries = p4table->getEntries();
         auto actions = p4table->getActionList();
         cstring tableName = genTableName(p4table);
-        bool hasPriority = tableHasPriority(p4table);
         const IR::OF_Match* tablematch = new IR::OF_TableMatch(id);
 
         auto tableCases = new IR::Vector<IR::DDlogMatchCase>();
