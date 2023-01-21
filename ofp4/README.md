@@ -77,10 +77,12 @@ After installing `p4c-of` as described above:
    <name>`.  This file can import any number of `p4c-of`-generated
    DDlog files, so you don't have to remove the ones that are already
    imported.
+   
+3. Compile the DDlog to Rust: `ddlog -i ofp4dl.dl`.
 
-3. Build `ofp4`, e.g. with `cargo build`.
+4. Build `ofp4`, e.g. with `cargo build`.
 
-4. Run `ofp4`, telling it to use the P4 program you compiled,
+5. Run `ofp4`, telling it to use the P4 program you compiled,
    e.g. with `cargo run <name> <ovs>`, where `<ovs>` tells `ofp4` how
    to connect to a running OVS bridge and would most commonly start
    with `unix:` to connect to a local OVS process.
