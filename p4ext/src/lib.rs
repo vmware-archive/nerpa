@@ -1283,6 +1283,7 @@ pub struct Table {
     pub match_fields: Vec<MatchField>,
     /// Set of possible actions for the table.
     pub actions: Vec<ActionRef>,
+    /// If the table has a constant default action, this holds it, and otherwise `None`.
     pub const_default_action: Option<Action>,
     //action_profile: Option<ActionProfile>,
     //direct_counter: Option<DirectCounter>,
