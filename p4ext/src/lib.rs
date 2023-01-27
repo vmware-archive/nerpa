@@ -1043,7 +1043,10 @@ impl MatchField {
 impl TableEntry {
     /// Converts this `TableEntry` into a DDlog Record.  The caller must specify the [`Table`] that
     /// the entry is inside.
-    pub fn to_record(&self, table: &Table) -> Result<Record> {
+    ///
+    /// `table_ddlog_name` must be the name of the relation in DDlog.  It can be
+    /// `table.base_name()` or something else.
+    pub fn to_record(&self, table: &Table, table_ddlog_name: &str) -> Result<Record> {
         let mut values: Vec<(Name, Record)> = Vec::new();
         for mf in &table.match_fields {
             let fm = self.key.matches.iter().find(|fm| fm.field_id == mf.preamble.id);
@@ -1064,7 +1067,7 @@ impl TableEntry {
                     // This action doesn't have any parameters, and it's the only action.  Don't
                     // include it in the output.
                 } else {
-                    let action_name = format!("{}Action{}", table.base_name(), ar.action.preamble.alias);
+                    let action_name = format!("{}Action{}", table_ddlog_name, ar.action.preamble.alias);
                     let mut param_values: Vec<(Name, Record)> = Vec::new();
                     for p in &ar.action.params {
                         let arg = match params.iter().find(|arg| arg.param_id == p.preamble.id) {
@@ -1088,7 +1091,7 @@ impl TableEntry {
         if values.len() == 1 && table.is_nerpa_singleton() {
             Ok(values.pop().unwrap().1)
         } else {
-            Ok(Record::NamedStruct(Name::Owned(table.base_name().into()), values))
+            Ok(Record::NamedStruct(Name::Owned(table_ddlog_name.into()), values))
         }
     }
 }

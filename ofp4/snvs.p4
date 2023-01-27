@@ -264,6 +264,7 @@ control SnvsEgress(inout Headers hdr,
     }
 }
 
+@pkginfo(name="snvs")
 OfSwitch (
     SnvsIngress(),
     SnvsEgress()

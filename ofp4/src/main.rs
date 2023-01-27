@@ -29,7 +29,7 @@ use daemon::Daemonize;
 
 use differential_datalog::api::HDDlog;
 use differential_datalog::ddval::{DDValConvert, DDValue};
-use differential_datalog::program::{RelId, Update};
+use differential_datalog::program::{IdxId, RelId, Update};
 use differential_datalog::record::{Record, RelIdentifier, UpdCmd};
 use differential_datalog::{DeltaMap, DDlog, DDlogDynamic, DDlogInventory};
 
@@ -82,7 +82,7 @@ use proto::p4runtime::{
 };
 use proto::p4runtime_grpc::{P4Runtime, create_p4_runtime};
 
-use protobuf::{Message, SingularPtrField, well_known_types::Any};
+use protobuf::{Message, well_known_types::Any};
 
 use ofp4dl_ddlog::typedefs::ofp4lib::{flow_t, multicast_group_t};
 use std::collections::{BTreeSet, HashMap};
@@ -93,10 +93,55 @@ use std::io::stderr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use tracing::{event, error, Level, span, warn};
+use tracing::{event, error, info, Level, span, warn};
 
 const OFP_PROTOCOL: ovs::ofp_protocol::Protocol = ovs::ofp_protocol::Protocol::OF15_OXM;
 const OFP_VERSION: ovs::ofp_protocol::Version = ovs::ofp_protocol::Version::OFP15;
+
+struct Config {
+    p4info: P4Info,
+    module: String,
+    cookie: u64,
+    table_schemas: HashMap<u32, Table>,
+    flow_idxid: IdxId,
+    flow_relid: RelId,
+    multicast_group_relid: RelId,
+}
+
+impl Config {
+    fn new(fpc: &ForwardingPipelineConfig, hddlog: &HDDlog) -> Result<Self> {
+        let p4info = fpc.get_p4info();
+        let module = p4info.get_pkg_info().name.clone();
+        info!("Configuring for P4 module '{module}'");
+
+        // Actions are referenced by id, so make a map.
+        let action_by_id: HashMap<u32, p4ext::Action> = p4info
+            .get_actions()
+            .iter()
+            .map(|a| (a.get_preamble().id, a.into()))
+            .collect();
+        let table_schemas = p4info.get_tables().iter()
+            .map(|table| p4ext::Table::new_from_proto(table, &action_by_id))
+            .map(|table| (table.preamble.id, table))
+            .collect();
+
+        let flow_relname = format!("{module}::Flow");
+        let flow_relid = hddlog.inventory.get_table_id(&flow_relname).ddlog_map_error()?;
+        let flow_idxid = hddlog.inventory.get_index_id(&flow_relname).ddlog_map_error()?;
+        let multicast_group_relname = format!("{module}::MulticastGroup");
+        let multicast_group_relid = hddlog.inventory.get_table_id(&multicast_group_relname).ddlog_map_error()?;
+
+        Ok(Config {
+            p4info: p4info.clone(),
+            module,
+            cookie: fpc.get_cookie().get_cookie(),
+            table_schemas,
+            flow_idxid,
+            flow_relid,
+            multicast_group_relid,
+        })
+    }
+}
 
 struct State {
     hddlog: HDDlog,
@@ -105,12 +150,8 @@ struct State {
 
     // Configuration state.
     device_id: u64,
-    p4info: P4Info,
-    cookie: u64,
-    table_schemas: HashMap<u32, Table>,
-
-    flow_relid: RelId,
-    multicast_group_relid: RelId,
+    config: Option<Config>,
+    config_seqno: u64,
 
     // Table state.
     multicast_groups: HashMap<MulticastGroupId, BTreeSet<Replica>>,
@@ -118,16 +159,14 @@ struct State {
 }
 
 impl State {
-    fn new(hddlog: HDDlog, flow_relid: RelId, multicast_group_relid: RelId,
-           device_id: u64) -> State {
-        let (pending_flow_mods, p4info, cookie, table_schemas, multicast_groups, table_entries)
-            = Default::default();
-        let latch = Latch::new(); 
+    fn new(hddlog: HDDlog, device_id: u64)
+           -> State {
+        let (pending_flow_mods, config, config_seqno,
+             multicast_groups, table_entries) = Default::default();
         State {
-            hddlog, latch, pending_flow_mods, device_id, p4info, cookie, table_schemas,
-            flow_relid,
-            multicast_group_relid,
-            multicast_groups, table_entries,
+            latch: Latch::new(),
+            hddlog, device_id,
+            pending_flow_mods, config, config_seqno, multicast_groups, table_entries,
         }
     }
 
@@ -261,6 +300,7 @@ impl P4RuntimeService {
     }
 
     fn write_entity(op: Update_Type, entity: Option<&Entity>, state: &mut State) -> Result<()> {
+        let config = &state.config.as_ref().unwrap();
         match entity {
             None => Err(Error(RpcStatusCode::INVALID_ARGUMENT))?,
             Some(Entity {
@@ -289,7 +329,7 @@ impl P4RuntimeService {
                 let mut commands = Vec::with_capacity(2);
                 for insertion in new_value.difference(old_value) {
                     commands.push(Update::Insert {
-                        relid: state.multicast_group_relid,
+                        relid: config.multicast_group_relid,
                         v: multicast_group_t {
                             mcast_id: mge.multicast_group_id as u16,
                             port: insertion.egress_port as u16
@@ -298,7 +338,7 @@ impl P4RuntimeService {
                 }
                 for deletion in old_value.difference(new_value) {
                     commands.push(Update::DeleteValue {
-                        relid: state.multicast_group_relid,
+                        relid: config.multicast_group_relid,
                         v: multicast_group_t {
                             mcast_id: mge.multicast_group_id as u16,
                             port: deletion.egress_port as u16
@@ -312,7 +352,7 @@ impl P4RuntimeService {
                     hddlog.apply_updates(&mut commands.into_iter()).ddlog_map_error()?;
                     hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
-                delta_to_flow_mods(&delta, state.flow_relid, &mut state.pending_flow_mods);
+                delta_to_flow_mods(&delta, config.flow_relid, &mut state.pending_flow_mods);
                 state.latch.set();
 
                 // Commit the operation to our internal representation.
@@ -327,11 +367,12 @@ impl P4RuntimeService {
                 let te: TableEntry = te.try_into()?;
 
                 // Look up the table schema and get its DDlog relation ID.
-                let table = match state.table_schemas.get(&te.key.table_id) {
+                let table = match config.table_schemas.get(&te.key.table_id) {
                     Some(table) => table,
                     None => Err(Error(RpcStatusCode::NOT_FOUND)).context(format!("unknown table {}", te.key.table_id))?
                 };
-                let relid = state.hddlog.inventory.get_table_id(table.base_name()).ddlog_map_error()? as RelId;
+                let table_name = format!("{}::{}", config.module, table.preamble.name.replace('.', "_"));
+                let relid = state.hddlog.inventory.get_table_id(&table_name).ddlog_map_error()? as RelId;
 
                 // Validate the operation.
                 let old_value = state.table_entries.get(&te.key);
@@ -341,11 +382,11 @@ impl P4RuntimeService {
                 let mut commands = Vec::with_capacity(2);
                 if let Some(old_value) = old_value {
                     let old_te = TableEntry { key: te.key.clone(), value: old_value.clone() };
-                    let old_record = old_te.to_record(table).unwrap();
+                    let old_record = old_te.to_record(table, &table_name).unwrap();
                     commands.push(UpdCmd::Delete(RelIdentifier::RelId(relid), old_record));
                 }
                 if op != Update_Type::DELETE {
-                    let new_record = te.to_record(table).unwrap();
+                    let new_record = te.to_record(table, &table_name).unwrap();
                     commands.push(UpdCmd::Insert(RelIdentifier::RelId(relid), new_record));
                 }
                 let delta = {
@@ -355,7 +396,7 @@ impl P4RuntimeService {
                     hddlog.apply_updates_dynamic(&mut commands.into_iter()).ddlog_map_error()?;
                     hddlog.transaction_commit_dump_changes().ddlog_map_error()?
                 };
-                delta_to_flow_mods(&delta, state.flow_relid, &mut state.pending_flow_mods);
+                delta_to_flow_mods(&delta, config.flow_relid, &mut state.pending_flow_mods);
                 state.latch.set();
 
                 // Commit the operation to our internal representation.
@@ -381,6 +422,10 @@ impl<'a> P4Runtime for P4RuntimeService {
         let mut state = self.state.lock().unwrap();
         if req.device_id != state.device_id {
             unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
+            return;
+        }
+        if state.config.is_none() {
+            unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::FAILED_PRECONDITION));
             return;
         }
 
@@ -456,23 +501,22 @@ impl<'a> P4Runtime for P4RuntimeService {
         req: SetForwardingPipelineConfigRequest,
         sink: UnarySink<SetForwardingPipelineConfigResponse>) {
         let _span = span!(Level::INFO, "set_forwarding_pipeline_config").entered();
-        let config = req.get_config();
+
+        // XXX check action, device_id, role, election_id
 
         let mut state = self.state.lock().unwrap();
-        state.p4info = config.get_p4info().clone();
-        state.cookie = config.get_cookie().get_cookie();
-
-        // Actions are referenced by id, so make a map.
-        let action_by_id: HashMap<u32, p4ext::Action> = state.p4info
-            .get_actions()
-            .iter()
-            .map(|a| (a.get_preamble().id, a.into()))
-            .collect();
-        state.table_schemas = state.p4info.get_tables().iter()
-            .map(|table| p4ext::Table::new_from_proto(table, &action_by_id))
-            .map(|table| (table.preamble.id, table))
-            .collect();
-        unary_success(&ctx, sink, SetForwardingPipelineConfigResponse::new());
+        match Config::new(req.get_config(), &state.hddlog) {
+            Ok(config) => {
+                state.config = Some(config);
+                state.config_seqno += 1;
+                state.latch.set();
+                unary_success(&ctx, sink, SetForwardingPipelineConfigResponse::new());
+            },
+            Err(error) => {
+                event!(Level::ERROR, "failed to set forwarding pipeline: {error}");
+                unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::INVALID_ARGUMENT));
+            }
+        }
     }
 
     fn get_forwarding_pipeline_config(&mut self, ctx: RpcContext, req: GetForwardingPipelineConfigRequest, sink: UnarySink<GetForwardingPipelineConfigResponse>) {
@@ -483,12 +527,20 @@ impl<'a> P4Runtime for P4RuntimeService {
             unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
             return;
         }
+        let config = match state.config {
+            Some(ref config) => config,
+            None => {
+                unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::FAILED_PRECONDITION));
+                return;
+            }
+        };
+
         let reply = GetForwardingPipelineConfigResponse {
-            config: SingularPtrField::some(ForwardingPipelineConfig {
-                p4info: SingularPtrField::some(state.p4info.clone()),
-                cookie: SingularPtrField::some(ForwardingPipelineConfig_Cookie {
-                    cookie: state.cookie, ..Default::default()}),
-                ..Default::default()}),
+            config: Some(ForwardingPipelineConfig {
+                p4info: Some(config.p4info.clone()).into(),
+                cookie: Some(ForwardingPipelineConfig_Cookie {
+                    cookie: config.cookie, ..Default::default()}).into(),
+                ..Default::default()}).into(),
             ..Default::default()};
         unary_success(&ctx, sink, reply);
     }
@@ -552,9 +604,6 @@ fn flow_record_to_flow_mod(record: &Record) -> Result<FlowMod> {
 #[derive(Parser, Debug)]
 #[clap(version, about)]
 struct Args {
-    /// DDlog module name
-    module: String,
-
     /// OVS remote to connect, e.g. "unix:/path/to/ovs/tutorial/sandbox/br0.mgmt"
     ovs_remote: String,
 
@@ -584,7 +633,7 @@ struct Args {
 
 fn main() -> Result<()> {
     log_panics::init();
-    let Args { module, ovs_remote, p4_port, p4_addr, device_id,
+    let Args { ovs_remote, p4_port, p4_addr, device_id,
                daemonize, log_file, ddlog_record } = Args::parse();
     if let Some(log_file) = log_file {
         let writer = OpenOptions::new().create(true).append(true).open(log_file)?;
@@ -609,14 +658,7 @@ fn main() -> Result<()> {
         hddlog.record_commands(&mut record);
     }
 
-    let flow_relname = format!("{}::Flow", module);
-    let flow_relid = hddlog.inventory.get_table_id(&flow_relname).unwrap();
-    let flow_idxid = hddlog.inventory.get_index_id(&flow_relname).unwrap();
-    let multicast_group_relname = format!("{}::MulticastGroup", module);
-    let multicast_group_relid = hddlog.inventory.get_table_id(&multicast_group_relname).unwrap();
-
-    let state = Arc::new(Mutex::new(State::new(hddlog, flow_relid, multicast_group_relid,
-                                               device_id)));
+    let state = Arc::new(Mutex::new(State::new(hddlog, device_id)));
     let service = create_p4_runtime(P4RuntimeService::new(state.clone()));
     let ch_builder = ChannelBuilder::new(env.clone());
     let mut server = ServerBuilder::new(env)
@@ -636,7 +678,8 @@ fn main() -> Result<()> {
     let mut rconn = ovs::rconn::Rconn::new(0, 0, ovs::rconn::DSCP_DEFAULT, OFP_VERSION.into());
 
     rconn.connect(&ovs_remote, None);
-    let mut last_seqno = 0;
+    let mut last_connection_seqno = 0;
+    let mut last_config_seqno = 0;
     let mut bundle_id = 0;
     loop {
         rconn.run();
@@ -663,7 +706,9 @@ fn main() -> Result<()> {
             let mut state = state.lock().unwrap();
 
             let flags = ovs::ofp_bundle::OFPBF_ATOMIC | ovs::ofp_bundle::OFPBF_ORDERED;
-            if rconn.connection_seqno() == last_seqno {
+            if rconn.connection_seqno() == last_connection_seqno &&
+                state.config_seqno == last_config_seqno
+            {
                 // Send pending flow mods, if any.
                 if !state.pending_flow_mods.is_empty() {
                     bundle_id += 1;
@@ -682,21 +727,26 @@ fn main() -> Result<()> {
                 // flows, then add in all the flows we do want.  We're going to put all of these
                 // together into an atomic bundle, so we shouldn't change the treatment of all the
                 // packets in the middle.
-                let del_flows = FlowMod::parse("", Some(FlowModCommand::Delete { strict: false })).unwrap().0;
-                let add_flows = state.hddlog.dump_index_dynamic(flow_idxid).unwrap().into_iter()
-                    .filter_map(|record| match flow_record_to_flow_mod(&record) {
-                        Ok(fm) => Some(fm),
-                        Err(err) => { eprintln!("{err}"); None }
-                    });
-                let flow_mods = std::iter::once(del_flows).chain(add_flows).map(|fm| fm.encode(OFP_PROTOCOL));
+                let mut flow_mods = Vec::new();
+                flow_mods.push(FlowMod::parse("", Some(FlowModCommand::Delete { strict: false })).unwrap().0);
+                if let Some(ref config) = state.config {
+                    flow_mods.extend(state.hddlog.dump_index_dynamic(config.flow_idxid).unwrap().into_iter()
+                                     .filter_map(|record| match flow_record_to_flow_mod(&record) {
+                                         Ok(fm) => Some(fm),
+                                         Err(err) => { event!(Level::ERROR, "flow failed to parse: {err}"); None }
+                                     }));
+                };
 
+                // Encode the flow_mods into OpenFlow and send them.
+                let flow_mods = flow_mods.into_iter().map(|fm| fm.encode(OFP_PROTOCOL));
                 bundle_id += 1;
                 let bundle = ovs::ofp_bundle::BundleSequence::new(bundle_id, flags, OFP_VERSION, flow_mods);
                 for msg in bundle {
                     rconn.send(msg).unwrap();
                 }
 
-                last_seqno = rconn.connection_seqno();
+                last_connection_seqno = rconn.connection_seqno();
+                last_config_seqno = state.config_seqno;
             }
         } else {
             // We're disconnected.  We can't send pending flow mods.  When we reconnect, we'll send
