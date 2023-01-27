@@ -104,6 +104,15 @@ may instead pass `--ofp4` to `scripts/run-nerpa.sh` to make it start
 up OVS and `ofp4` instead of bmv2.  This won't pass the tests, since
 MAC learning won't work yet.
 
+## Makefile
+
+This directory has a Makefile that can be used to automate rebuilding
+`p4c-of` when you change the `.cpp` and `.h` files in this directory,
+plus the `p4c-of` and `ddlog` steps above.  Read the comments in the
+Makefile for details.  Once you've got it set up properly, rebuilding
+and running `ofp4` after edits to the C++ or P4 files in this
+directory can be as simple as `make && cargo build`.
+
 ## Related Work
 
 The P4 OpenFlow Agent (https://github.com/p4lang/p4ofagent) provides
