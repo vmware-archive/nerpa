@@ -118,9 +118,9 @@ struct State {
 }
 
 impl State {
-    fn new(hddlog: HDDlog, flow_relid: RelId, multicast_group_relid: RelId) -> State {
-        let (device_id, pending_flow_mods, p4info, cookie, table_schemas, multicast_groups,
-             table_entries)
+    fn new(hddlog: HDDlog, flow_relid: RelId, multicast_group_relid: RelId,
+           device_id: u64) -> State {
+        let (pending_flow_mods, p4info, cookie, table_schemas, multicast_groups, table_entries)
             = Default::default();
         let latch = Latch::new(); 
         State {
@@ -566,6 +566,10 @@ struct Args {
     #[clap(long, default_value = "127.0.0.1")]
     p4_addr: String,
 
+    /// P4Runtime device ID
+    #[clap(long, default_value = "1")]
+    device_id: u64,
+
     #[clap(flatten)]
     daemonize: Daemonize,
 
@@ -580,7 +584,7 @@ struct Args {
 
 fn main() -> Result<()> {
     log_panics::init();
-    let Args { module, ovs_remote, p4_port, p4_addr,
+    let Args { module, ovs_remote, p4_port, p4_addr, device_id,
                daemonize, log_file, ddlog_record } = Args::parse();
     if let Some(log_file) = log_file {
         let writer = OpenOptions::new().create(true).append(true).open(log_file)?;
@@ -611,7 +615,8 @@ fn main() -> Result<()> {
     let multicast_group_relname = format!("{}::MulticastGroup", module);
     let multicast_group_relid = hddlog.inventory.get_table_id(&multicast_group_relname).unwrap();
 
-    let state = Arc::new(Mutex::new(State::new(hddlog, flow_relid, multicast_group_relid)));
+    let state = Arc::new(Mutex::new(State::new(hddlog, flow_relid, multicast_group_relid,
+                                               device_id)));
     let service = create_p4_runtime(P4RuntimeService::new(state.clone()));
     let ch_builder = ChannelBuilder::new(env.clone());
     let mut server = ServerBuilder::new(env)
