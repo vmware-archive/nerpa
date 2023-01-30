@@ -93,7 +93,7 @@ use std::io::stderr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use tracing::{event, error, info, Level, span, warn};
+use tracing::{event, error, info, instrument, Level, span, warn};
 
 const OFP_PROTOCOL: ovs::ofp_protocol::Protocol = ovs::ofp_protocol::Protocol::OF15_OXM;
 const OFP_VERSION: ovs::ofp_protocol::Version = ovs::ofp_protocol::Version::OFP15;
@@ -267,8 +267,15 @@ fn unary_success<T>(ctx: &RpcContext, sink: UnarySink<T>, reply: T) {
     ctx.spawn(f);
 }
 
-fn server_streaming_fail<T>(ctx: &RpcContext, sink: ServerStreamingSink<T>, code: RpcStatusCode) {
-    let f = sink.fail(grpcio::RpcStatus::new(code))
+fn unary_result<T>(ctx: &RpcContext, sink: UnarySink<T>, result: Result<T, grpcio::RpcStatus>) {
+    match result {
+        Ok(reply) => unary_success(ctx, sink, reply),
+        Err(status) => unary_fail(ctx, sink, status)
+    }
+}
+
+fn server_streaming_fail<T>(ctx: &RpcContext, sink: ServerStreamingSink<T>, status: grpcio::RpcStatus) {
+    let f = sink.fail(status)
         .map_err(|e| error!("failed to send error: {:?}", e))
         .map(|_| ());
     ctx.spawn(f);
@@ -286,6 +293,16 @@ fn server_streaming_success<T: Send + 'static>(ctx: &RpcContext, mut sink: Serve
     .map_err(|e: grpcio::Error| error!("failed to stream response: {:?}", e))
         .map(|_| ());
     ctx.spawn(f);
+}
+
+fn server_streaming_result<T: Send + 'static>(
+    ctx: &RpcContext,
+    sink: ServerStreamingSink<T>,
+    result: Result<Vec<T>, grpcio::RpcStatus>) {
+    match result {
+        Ok(reply) => server_streaming_success(ctx, sink, reply),
+        Err(status) => server_streaming_fail(ctx, sink, status)
+    }
 }
 
 impl P4RuntimeService {
@@ -411,22 +428,42 @@ impl P4RuntimeService {
             _ => Err(Error(RpcStatusCode::UNIMPLEMENTED))?
         }
     }
-}
 
-impl<'a> P4Runtime for P4RuntimeService {
-    fn write(&mut self,
-             ctx: RpcContext,
-             req: WriteRequest,
-             sink: UnarySink<WriteResponse>) {
+    #[instrument(name = "Read", err, skip(self))]
+    fn do_read(&mut self, req: ReadRequest) -> Result<Vec<ReadResponse>, grpcio::RpcStatus> {
+        let _span = span!(Level::INFO, "read").entered();
+        let state = self.state.lock().unwrap();
+        if req.device_id != state.device_id {
+            return Err(grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
+        }
+
+        let mut responses = Vec::new();
+        for rq_entity in req.entities {
+            let rpy_entities = match rq_entity {
+                Entity {
+                    entity: Some(Entity_oneof_entity::packet_replication_engine_entry(PacketReplicationEngineEntry {
+                        field_type: Some(PacketReplicationEngineEntry_oneof_type::multicast_group_entry(mge)), ..})), ..}
+                => state.read_multicast_groups(mge.multicast_group_id),
+
+                Entity { entity: Some(Entity_oneof_entity::table_entry(te)), .. }
+                => state.read_table_entries(&te),
+
+                _ => Vec::new(),
+            };
+            responses.push(ReadResponse { entities: rpy_entities.into(), ..Default::default() });
+        }
+        Ok(responses)
+    }
+
+    #[instrument(name = "Write", err, skip(self))]
+    fn do_write(&mut self, req: WriteRequest) -> Result<WriteResponse, grpcio::RpcStatus> {
         let _span = span!(Level::INFO, "write").entered();
         let mut state = self.state.lock().unwrap();
         if req.device_id != state.device_id {
-            unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
-            return;
+            return Err(grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
         }
         if state.config.is_none() {
-            unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::FAILED_PRECONDITION));
-            return;
+            return Err(grpcio::RpcStatus::new(RpcStatusCode::FAILED_PRECONDITION));
         }
 
         // XXX role
@@ -447,9 +484,7 @@ impl<'a> P4Runtime for P4RuntimeService {
             };
             errors.push(code);
         }
-        if errors.iter().all(|&code| code == RpcStatusCode::OK) {
-            unary_success(&ctx, sink, WriteResponse::new());
-        } else {
+        if errors.iter().all(|&code| code != RpcStatusCode::OK) {
             let (message, unknown_fields, cached_size) = Default::default();
             let details = proto::status::Status {
                 code: RpcStatusCode::UNKNOWN.into(),
@@ -461,47 +496,39 @@ impl<'a> P4Runtime for P4RuntimeService {
                     }).unwrap()}).collect(),
                 message, unknown_fields, cached_size
             };
-            unary_fail(&ctx, sink, grpcio::RpcStatus::with_details(RpcStatusCode::UNKNOWN, Default::default(), details.write_to_bytes().unwrap()));
+            return Err(grpcio::RpcStatus::with_details(RpcStatusCode::UNKNOWN, Default::default(),
+                                                       details.write_to_bytes().unwrap()));
         }
+
+        return Ok(WriteResponse::new());
     }
 
-    fn read(&mut self,
-            ctx: RpcContext,
-            req: ReadRequest,
-            sink: ServerStreamingSink<ReadResponse>) {
-        let _span = span!(Level::INFO, "read").entered();
+    #[instrument(name = "GetForwardingPipelineConfig", err, skip(self))]
+    fn do_get_forwarding_pipeline_config(&mut self, req: GetForwardingPipelineConfigRequest)
+        -> Result<GetForwardingPipelineConfigResponse, grpcio::RpcStatus>
+    {
         let state = self.state.lock().unwrap();
         if req.device_id != state.device_id {
-            server_streaming_fail(&ctx, sink, RpcStatusCode::NOT_FOUND);
-            return;
+            return Err(grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
         }
+        let config = match state.config {
+            Some(ref config) => config,
+            None => return Err(grpcio::RpcStatus::new(RpcStatusCode::FAILED_PRECONDITION))
+        };
 
-        let mut responses = Vec::new();
-        for rq_entity in req.entities {
-            let rpy_entities = match rq_entity {
-                Entity {
-                    entity: Some(Entity_oneof_entity::packet_replication_engine_entry(PacketReplicationEngineEntry {
-                        field_type: Some(PacketReplicationEngineEntry_oneof_type::multicast_group_entry(mge)), ..})), ..}
-                => state.read_multicast_groups(mge.multicast_group_id),
-
-                Entity { entity: Some(Entity_oneof_entity::table_entry(te)), .. }
-                => state.read_table_entries(&te),
-
-                _ => Vec::new(),
-            };
-            responses.push(ReadResponse { entities: rpy_entities.into(), ..Default::default() });
-        }
-
-        server_streaming_success(&ctx, sink, responses);
+        Ok(GetForwardingPipelineConfigResponse {
+            config: Some(ForwardingPipelineConfig {
+                p4info: Some(config.p4info.clone()).into(),
+                cookie: Some(ForwardingPipelineConfig_Cookie {
+                    cookie: config.cookie, ..Default::default()}).into(),
+                ..Default::default()}).into(),
+            ..Default::default()})
     }
 
-    fn set_forwarding_pipeline_config(
-        &mut self,
-        ctx: RpcContext,
-        req: SetForwardingPipelineConfigRequest,
-        sink: UnarySink<SetForwardingPipelineConfigResponse>) {
-        let _span = span!(Level::INFO, "set_forwarding_pipeline_config").entered();
-
+    #[instrument(name = "SetForwardingPipelineConfig", err, skip(self))]
+    fn do_set_forwarding_pipeline_config(&mut self, req: SetForwardingPipelineConfigRequest)
+        -> Result<SetForwardingPipelineConfigResponse, grpcio::RpcStatus>
+    {
         // XXX check action, device_id, role, election_id
 
         let mut state = self.state.lock().unwrap();
@@ -510,39 +537,40 @@ impl<'a> P4Runtime for P4RuntimeService {
                 state.config = Some(config);
                 state.config_seqno += 1;
                 state.latch.set();
-                unary_success(&ctx, sink, SetForwardingPipelineConfigResponse::new());
+                Ok(SetForwardingPipelineConfigResponse::new())
             },
-            Err(error) => {
-                event!(Level::ERROR, "failed to set forwarding pipeline: {error}");
-                unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::INVALID_ARGUMENT));
-            }
+            Err(_) => Err(grpcio::RpcStatus::new(RpcStatusCode::INVALID_ARGUMENT))
         }
     }
 
-    fn get_forwarding_pipeline_config(&mut self, ctx: RpcContext, req: GetForwardingPipelineConfigRequest, sink: UnarySink<GetForwardingPipelineConfigResponse>) {
-        let _span = span!(Level::INFO, "get_forwarding_pipeline_config").entered();
-        event!(Level::INFO, "get_forwarding_pipeline_config");
-        let state = self.state.lock().unwrap();
-        if req.device_id != state.device_id {
-            unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
-            return;
         }
-        let config = match state.config {
-            Some(ref config) => config,
-            None => {
-                unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::FAILED_PRECONDITION));
-                return;
-            }
-        };
 
-        let reply = GetForwardingPipelineConfigResponse {
-            config: Some(ForwardingPipelineConfig {
-                p4info: Some(config.p4info.clone()).into(),
-                cookie: Some(ForwardingPipelineConfig_Cookie {
-                    cookie: config.cookie, ..Default::default()}).into(),
-                ..Default::default()}).into(),
-            ..Default::default()};
-        unary_success(&ctx, sink, reply);
+impl<'a> P4Runtime for P4RuntimeService {
+    fn write(&mut self, ctx: RpcContext, req: WriteRequest, sink: UnarySink<WriteResponse>) {
+        unary_result(&ctx, sink, self.do_write(req));
+    }
+
+    fn read(&mut self,
+            ctx: RpcContext,
+            req: ReadRequest,
+            sink: ServerStreamingSink<ReadResponse>) {
+        server_streaming_result(&ctx, sink, self.do_read(req));
+    }
+
+    fn set_forwarding_pipeline_config(
+        &mut self,
+        ctx: RpcContext,
+        req: SetForwardingPipelineConfigRequest,
+        sink: UnarySink<SetForwardingPipelineConfigResponse>) {
+        unary_result(&ctx, sink, self.do_set_forwarding_pipeline_config(req))
+    }
+
+    fn get_forwarding_pipeline_config(
+        &mut self,
+        ctx: RpcContext,
+        req: GetForwardingPipelineConfigRequest,
+        sink: UnarySink<GetForwardingPipelineConfigResponse>) {
+        unary_result(&ctx, sink, self.do_get_forwarding_pipeline_config(req));
     }
 
     fn stream_channel(
@@ -565,9 +593,14 @@ impl<'a> P4Runtime for P4RuntimeService {
     }
 
     fn capabilities(&mut self,
-                    _ctx: RpcContext,
+                    ctx: RpcContext,
                     _req: CapabilitiesRequest,
-                    _sink: UnarySink<CapabilitiesResponse>) {
+                    sink: UnarySink<CapabilitiesResponse>) {
+        let response = CapabilitiesResponse {
+            p4runtime_api_version: String::from("1.3.0"),
+            ..Default::default()
+        };
+        unary_success(&ctx, sink, response);
     }
 }
 
