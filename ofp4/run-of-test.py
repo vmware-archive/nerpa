@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Runs an open-flow test on a P4 program.  This script is invoked
+"""Runs an OpenFlow test on a P4 program.  This script is invoked
    with suitable arguments by 'make check' or 'make check-of' from
    the p4c repository.  The script is invoked with 2 arguments:
    - the directory hosting p4c

@@ -22,7 +22,7 @@ limitations under the License.
 #include "ir/ir.h"
 #include "frontends/p4/typeMap.h"
 
-/// Model resources of open-flow.
+/// Model resources of OpenFlow.
 
 namespace OFP4 {
 

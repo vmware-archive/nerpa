@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace OFP4 {
 
-/// Optimize an open-flow program
+/// Optimize an OpenFlow program
 class OpenFlowSimplify : public Transform {
     bool foundResubmit = false;
 
@@ -62,7 +62,7 @@ class OpenFlowSimplify : public Transform {
     }
 };
 
-/// Convert an open-flow program to a string.
+/// Convert an OpenFlow program to a string.
 class OpenFlowPrint : public Inspector {
     std::string buffer;
 

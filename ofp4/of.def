@@ -3,7 +3,7 @@
   * @{
   */
 /*
-   Internal representation of an Open Flow program (fragment).
+   Internal representation of an OpenFlow program (fragment).
 */
 
 interface IOF_Node {}

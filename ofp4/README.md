@@ -1,13 +1,13 @@
-# Compiling P4 to Open-Flow
+# Compiling P4 to OpenFlow
 
-This directory contains a compiler that converts P4 code to Open-Flow.
+This directory contains a compiler that converts P4 code to OpenFlow.
 The target for this compiler is of_model.p4, which can be found in the
 `p4include` directory.
 
 The compiler in fact consumes a P4 program and generates a
 Differential Datalog (DDlog) program
 (https://github.com/vmware/differential-datalog).  The DDlog program
-implements a controller called ofp4, which controls an Open-Flow
+implements a controller called ofp4, which controls an OpenFlow
 programmable device.
 
 Currently, the translation from P4 to DDlog has been handwritten for
