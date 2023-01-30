@@ -622,6 +622,12 @@ fn main() -> Result<()> {
         .unwrap();
     server.start();
 
+    if p4_port == 0 {
+        for (addr, port) in server.bind_addrs() {
+            event!(Level::INFO, "Listening on {addr}:{port}");
+        }
+    }
+
     let mut rconn = ovs::rconn::Rconn::new(0, 0, ovs::rconn::DSCP_DEFAULT, OFP_VERSION.into());
 
     rconn.connect(&ovs_remote, None);
