@@ -23,7 +23,7 @@ SOFTWARE.
 
 use anyhow::{anyhow, Context, Result};
 
-use clap::{App, Arg};
+use clap::Parser;
 
 use differential_datalog::api::HDDlog;
 use differential_datalog::ddval::{DDValConvert, DDValue};
@@ -544,38 +544,26 @@ fn flow_record_to_flow_mod(record: &Record) -> Result<FlowMod> {
     }
 }
 
+#[derive(Parser, Debug)]
+#[clap(version, about)]
+struct Args {
+    /// DDlog module name
+    module: String,
+
+    /// OVS remote to connect, e.g. "unix:/path/to/ovs/tutorial/sandbox/br0.mgmt"
+    ovs_remote: String,
+
+    /// P4Runtime connection listening port
+    #[clap(long, default_value = "50051")]
+    p4_port: u16,
+
+    /// P4Runtime connection bind address
+    #[clap(long, default_value = "127.0.0.1")]
+    p4_addr: String,
+}
+
 fn main() -> Result<()> {
-    const OVS_REMOTE: &str = "ovs-remote";
-    const P4_PORT: &str = "p4-port";
-    const P4_ADDR: &str = "p4-addr";
-    const MODULE: &str = "module";
-
-    let matches = App::new("ofp4")
-        .version(env!("CARGO_PKG_VERSION"))
-        .arg(Arg::with_name(MODULE)
-             .help("DDlog module name")
-             .required(true)
-             .index(1))
-        .arg(Arg::with_name(OVS_REMOTE)
-             .help("OVS remote to connect, e.g. \"unix:/path/to/ovs/tutorial/sandbox/br0.mgmt\"")
-             .required(true)
-             .index(2))
-        .arg(Arg::with_name(P4_PORT)
-             .long(P4_PORT)
-             .help("P4Runtime connection listening port")
-             .takes_value(true)
-             .default_value("50051"))
-        .arg(Arg::with_name(P4_ADDR)
-             .long(P4_ADDR)
-             .help("P4Runtime connection bind address")
-             .takes_value(true)
-             .default_value("127.0.0.1"))
-        .get_matches();
-
-    let ovs_remote = matches.value_of(OVS_REMOTE).unwrap();
-    let p4_port = matches.value_of(P4_PORT).unwrap().parse::<u16>().unwrap();
-    let p4_addr = matches.value_of(P4_ADDR).unwrap();
-    let module = matches.value_of(MODULE).unwrap();
+    let Args { module, ovs_remote, p4_port, p4_addr } = Args::parse();
 
     let env = Arc::new(Environment::new(1));
     let (mut hddlog, _init_state) = ofp4dl_ddlog::run(1, false).ddlog_map_error()?;
@@ -601,7 +589,7 @@ fn main() -> Result<()> {
 
     let mut rconn = ovs::rconn::Rconn::new(0, 0, ovs::rconn::DSCP_DEFAULT, OFP_VERSION.into());
 
-    rconn.connect(ovs_remote, None);
+    rconn.connect(&ovs_remote, None);
     let mut last_seqno = 0;
     let mut bundle_id = 0;
     loop {
