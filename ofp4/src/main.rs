@@ -47,8 +47,6 @@ use grpcio::{
     UnarySink,
 };
 
-use log::error;
-
 use ovs::{
     self,
     latch::Latch,
@@ -90,7 +88,12 @@ use ofp4dl_ddlog::typedefs::ofp4lib::{flow_t, multicast_group_t};
 use std::collections::{BTreeSet, HashMap};
 use std::default::Default;
 use std::convert::TryInto;
+use std::fs::OpenOptions;
+use std::io::stderr;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+use tracing::{event, error, Level, span, warn};
 
 const OFP_PROTOCOL: ovs::ofp_protocol::Protocol = ovs::ofp_protocol::Protocol::OF15_OXM;
 const OFP_VERSION: ovs::ofp_protocol::Version = ovs::ofp_protocol::Version::OFP15;
@@ -160,7 +163,7 @@ impl State {
         let target: TableEntry = match target.try_into() {
             Ok(target) => target,
             Err(error) => {
-                eprintln!("bad TableEntry {:?} for read operation ({:?})", target, error);
+                warn!("bad TableEntry {target:?} for read operation ({error:?})");
                 return Vec::new();
             }
         };
@@ -345,7 +348,6 @@ impl P4RuntimeService {
                     let new_record = te.to_record(table).unwrap();
                     commands.push(UpdCmd::Insert(RelIdentifier::RelId(relid), new_record));
                 }
-                eprintln!("len={} {:?}", commands.len(), commands);
                 let delta = {
                     let hddlog = &state.hddlog;
 
@@ -375,7 +377,7 @@ impl<'a> P4Runtime for P4RuntimeService {
              ctx: RpcContext,
              req: WriteRequest,
              sink: UnarySink<WriteResponse>) {
-        println!("write {:?}", req);
+        let _span = span!(Level::INFO, "write").entered();
         let mut state = self.state.lock().unwrap();
         if req.device_id != state.device_id {
             unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
@@ -390,7 +392,7 @@ impl<'a> P4Runtime for P4RuntimeService {
         for proto::p4runtime::Update { field_type: op, entity, .. } in req.updates {
             let code = match Self::write_entity(op, entity.as_ref(), &mut state) {
                 Err(error) => {
-                    eprintln!("{:?}", error);
+                    warn!("{error:?}");
                     match error.downcast_ref::<Error>() {
                         Some(Error(code)) => *code,
                         _ => RpcStatusCode::UNKNOWN
@@ -422,7 +424,7 @@ impl<'a> P4Runtime for P4RuntimeService {
             ctx: RpcContext,
             req: ReadRequest,
             sink: ServerStreamingSink<ReadResponse>) {
-        println!("read {:?}", req);
+        let _span = span!(Level::INFO, "read").entered();
         let state = self.state.lock().unwrap();
         if req.device_id != state.device_id {
             server_streaming_fail(&ctx, sink, RpcStatusCode::NOT_FOUND);
@@ -453,7 +455,7 @@ impl<'a> P4Runtime for P4RuntimeService {
         ctx: RpcContext,
         req: SetForwardingPipelineConfigRequest,
         sink: UnarySink<SetForwardingPipelineConfigResponse>) {
-        println!("set_forwarding_pipeline_config");
+        let _span = span!(Level::INFO, "set_forwarding_pipeline_config").entered();
         let config = req.get_config();
 
         let mut state = self.state.lock().unwrap();
@@ -474,7 +476,8 @@ impl<'a> P4Runtime for P4RuntimeService {
     }
 
     fn get_forwarding_pipeline_config(&mut self, ctx: RpcContext, req: GetForwardingPipelineConfigRequest, sink: UnarySink<GetForwardingPipelineConfigResponse>) {
-        println!("get_forwarding_pipeline_config");
+        let _span = span!(Level::INFO, "get_forwarding_pipeline_config").entered();
+        event!(Level::INFO, "get_forwarding_pipeline_config");
         let state = self.state.lock().unwrap();
         if req.device_id != state.device_id {
             unary_fail(&ctx, sink, grpcio::RpcStatus::new(RpcStatusCode::NOT_FOUND));
@@ -497,7 +500,6 @@ impl<'a> P4Runtime for P4RuntimeService {
         mut sink: DuplexSink<StreamMessageResponse>) {
         let f = async move {
             while let Some(n) = stream.try_next().await? {
-                println!("stream_channel");
                 let mut reply = StreamMessageResponse::new();
                 reply.set_arbitration(n.get_arbitration().clone());
                 sink.send((reply, grpcio::WriteFlags::default())).await?;
@@ -514,7 +516,6 @@ impl<'a> P4Runtime for P4RuntimeService {
                     _ctx: RpcContext,
                     _req: CapabilitiesRequest,
                     _sink: UnarySink<CapabilitiesResponse>) {
-        println!("capabilities");
     }
 }
 
@@ -567,10 +568,28 @@ struct Args {
 
     #[clap(flatten)]
     daemonize: Daemonize,
+
+    /// File to write logs to
+    #[clap(long)]
+    log_file: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
-    let Args { module, ovs_remote, p4_port, p4_addr, daemonize } = Args::parse();
+    log_panics::init();
+    let Args { module, ovs_remote, p4_port, p4_addr, daemonize, log_file } = Args::parse();
+    if let Some(log_file) = log_file {
+        let writer = OpenOptions::new().create(true).append(true).open(log_file)?;
+        tracing_subscriber::fmt()
+            .with_writer(writer)
+            .with_ansi(false)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_writer(stderr)
+            .with_ansi(unsafe { libc::isatty(libc::STDERR_FILENO) } == 1)
+            .init();
+    };
+    grpcio::redirect_log();
     let (daemonizing, _cleanup) = unsafe { daemonize.start() };
     let mut daemonizing = Some(daemonizing);
 
@@ -692,7 +711,7 @@ fn delta_to_flow_mods(delta: &DeltaMap<DDValue>,
                 let flow = flow_t::from_ddvalue_ref(val);
                 match FlowMod::parse(&flow.flow, Some(command)) {
                     Ok((flow_mod, _)) => flow_mods.push(flow_mod.encode(OFP_PROTOCOL)),
-                    Err(s) => eprintln!("{}: {}", flow, s)
+                    Err(s) => warn!("{flow}: {s}")
                 };
             }
         }
