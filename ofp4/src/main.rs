@@ -25,6 +25,8 @@ use anyhow::{anyhow, Context, Result};
 
 use clap::Parser;
 
+use daemon::Daemonize;
+
 use differential_datalog::api::HDDlog;
 use differential_datalog::ddval::{DDValConvert, DDValue};
 use differential_datalog::program::{RelId, Update};
@@ -51,7 +53,9 @@ use ovs::{
     self,
     latch::Latch,
     ofpbuf::Ofpbuf,
-    ofp_flow::{FlowMod, FlowModCommand}
+    ofp_bundle::*,
+    ofp_flow::{FlowMod, FlowModCommand},
+    ofp_msgs::OfpType
 };
 
 use p4ext::*;
@@ -560,10 +564,15 @@ struct Args {
     /// P4Runtime connection bind address
     #[clap(long, default_value = "127.0.0.1")]
     p4_addr: String,
+
+    #[clap(flatten)]
+    daemonize: Daemonize,
 }
 
 fn main() -> Result<()> {
-    let Args { module, ovs_remote, p4_port, p4_addr } = Args::parse();
+    let Args { module, ovs_remote, p4_port, p4_addr, daemonize } = Args::parse();
+    let (daemonizing, _cleanup) = unsafe { daemonize.start() };
+    let mut daemonizing = Some(daemonizing);
 
     let env = Arc::new(Environment::new(1));
     let (mut hddlog, _init_state) = ofp4dl_ddlog::run(1, false).ddlog_map_error()?;
@@ -594,11 +603,21 @@ fn main() -> Result<()> {
     let mut bundle_id = 0;
     loop {
         rconn.run();
-        loop {
-            let p = rconn.recv();
-            match p {
-                None => break,
-                Some(message) => println!("received message {}", ovs::ofp_print::Printer(message.as_slice()))
+        while let Some(msg) = rconn.recv() {
+            match OfpType::decode(msg.as_slice()) {
+                Ok(OfpType(ovs::sys::ofptype_OFPTYPE_BUNDLE_CONTROL)) => {
+                    if let Ok(bcm) = BundleCtrlMsg::decode(msg.as_slice()) {
+                        if bcm.type_ == OFPBCT_COMMIT_REPLY {
+                            // Our request to commit a bundle succeeded or failed.  Either way,
+                            // we've finished starting up, so it's time to detach from the
+                            // foreground session.
+                            if let Some(daemonizing) = daemonizing.take() {
+                                daemonizing.finish();
+                            }
+                        }
+                    }
+                },
+                _ => println!("received message {}", ovs::ofp_print::Printer(msg.as_slice()))
             }
         }
 
