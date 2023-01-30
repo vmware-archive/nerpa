@@ -284,7 +284,8 @@ class ActionTranslator : public Inspector {
             auto srce = src->to<IR::OF_Expression>();
             auto dste = dst->to<IR::OF_Expression>();
             if (srce && dste) {
-                if (srce->is<IR::OF_Constant>())
+                if (srce->is<IR::OF_Constant>() ||
+                    srce->is<IR::OF_InterpolatedVarExpression>())
                     currentTranslation = new IR::OF_LoadAction(srce, dste);
                 else {
                     int srcw = srce->width();

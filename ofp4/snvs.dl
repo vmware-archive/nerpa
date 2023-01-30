@@ -105,7 +105,7 @@ Flow("table=4, priority=1 actions=${actions}") :- SnvsIngress_ReservedMcastDstDr
 Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${has_vlan as bit<16> << 12}/0x1000 actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, None{}, priority, action),
    var actions = match(action) {
     SnvsIngress_InputVlanActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
-    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "move(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
+    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "load(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
     SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
 }.
 
@@ -113,7 +113,7 @@ Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${has_vlan as bit
 Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${(has_vlan as bit<16> << 12) | vid as bit<16>}/0x1fff actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, Some{vid}, priority, action),
    var actions = match(action) {
     SnvsIngress_InputVlanActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
-    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "move(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
+    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "load(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
     SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
 }.
 
@@ -225,7 +225,7 @@ Flow("table=21, priority=1 actions=resubmit(,23)").
 // SnvsIngress.LearnedDst
 Flow("table=22, dl_dst=${mac}, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsIngress_LearnedDst(vlan, mac, action),
    var actions = match(action) {
-    SnvsIngress_LearnedDstActionSnvsIngress_KnownDst{port_1} -> "move(${port_1}->${r_SnvsIngress_output(false)}), resubmit(,23)"
+    SnvsIngress_LearnedDstActionSnvsIngress_KnownDst{port_1} -> "load(${port_1}->${r_SnvsIngress_output(false)}), resubmit(,23)"
 }.
 
 // SnvsIngress.LearnedDst
