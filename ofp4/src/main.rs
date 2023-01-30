@@ -88,7 +88,7 @@ use ofp4dl_ddlog::typedefs::ofp4lib::{flow_t, multicast_group_t};
 use std::collections::{BTreeSet, HashMap};
 use std::default::Default;
 use std::convert::TryInto;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::stderr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -572,11 +572,16 @@ struct Args {
     /// File to write logs to
     #[clap(long)]
     log_file: Option<PathBuf>,
+
+    /// File to write DDlog replay log to
+    #[clap(long)]
+    ddlog_record: Option<PathBuf>
 }
 
 fn main() -> Result<()> {
     log_panics::init();
-    let Args { module, ovs_remote, p4_port, p4_addr, daemonize, log_file } = Args::parse();
+    let Args { module, ovs_remote, p4_port, p4_addr,
+               daemonize, log_file, ddlog_record } = Args::parse();
     if let Some(log_file) = log_file {
         let writer = OpenOptions::new().create(true).append(true).open(log_file)?;
         tracing_subscriber::fmt()
@@ -595,8 +600,10 @@ fn main() -> Result<()> {
 
     let env = Arc::new(Environment::new(1));
     let (mut hddlog, _init_state) = ofp4dl_ddlog::run(1, false).ddlog_map_error()?;
-    let mut record = Some(std::fs::File::create("replay.txt")?);
-    hddlog.record_commands(&mut record);
+    if let Some(ref ddlog_record) = ddlog_record {
+        let mut record = Some(File::create(ddlog_record).with_context(|| format!("{}: open failed", ddlog_record.display()))?);
+        hddlog.record_commands(&mut record);
+    }
 
     let flow_relname = format!("{}::Flow", module);
     let flow_relid = hddlog.inventory.get_table_id(&flow_relname).unwrap();
