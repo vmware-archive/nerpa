@@ -74,14 +74,16 @@ control SnvsIngress(inout Headers hdr,
     // Drop packets received on mirror destination port.
     table MirrorDstDrop {
         key = { meta_in.in_port: exact @name("port"); }
-        actions = { @tableonly Drop; }
+        actions = { @tableonly Drop; @defaultonly NoAction; }
+	const default_action = NoAction;
     }
 
     // Drop packets to reserved Ethernet multicast address.
     @nerpa_singleton
     table ReservedMcastDstDrop {
         key = { hdr.eth.dst: exact @name("dst"); }
-        actions = { @tableonly Drop; }
+        actions = { @tableonly Drop; @defaultonly NoAction; }
+	const default_action = NoAction;
     }
 
     // Input VLAN processing.

@@ -6,3 +6,4 @@ snvs_ddlog/
 # Make.vars is for local configuration and should not be checked in.
 Make.vars
 /ofp4dl_ddlog.stamp
+tmp*/

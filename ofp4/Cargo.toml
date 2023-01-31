@@ -30,3 +30,10 @@ differential_datalog = { path = "ofp4dl_ddlog/differential_datalog" }
 ofp4dl = { path = "ofp4dl_ddlog" }
 ddlog_rt = { path = "ofp4dl_ddlog/types/ddlog_rt" }
 types = { path = "ofp4dl_ddlog/types" }
+
+[dev-dependencies]
+rand = "0.8.5"
+regex = "1.6.0"
+signal-hook = "0.3.14"
+tokio = "1.21.1"
+tracing-test = "0.1"
