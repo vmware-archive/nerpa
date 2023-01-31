@@ -547,19 +547,18 @@ class DeclarationGenerator : public Inspector {
         auto daprop = table->properties->getProperty(
             IR::TableProperties::defaultActionPropertyName);
         CHECK_NULL(daprop);
-        if (!daprop->isConstant) {
-            cstring daTypeName = typeName + "DefaultAction";
-            auto type = new IR::DDlogTypeAlt(*defaultActions);
-            auto td = new IR::DDlogTypedef(table->srcInfo, daTypeName, type);
-            declarations->push_back(td);
+        cstring daTypeName = typeName + "DefaultAction";
+        auto type = new IR::DDlogTypeAlt(*defaultActions);
+        auto td = new IR::DDlogTypedef(table->srcInfo, daTypeName, type);
+        declarations->push_back(td);
 
-            auto params = new IR::IndexedVector<IR::Parameter>();
-            params->push_back(new IR::Parameter(
-                "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
-            auto rel = new IR::DDlogRelationSugared(
-                table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
-            declarations->push_back(rel);
-        }
+        auto params = new IR::IndexedVector<IR::Parameter>();
+        params->push_back(new IR::Parameter(
+                              "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
+        auto rel = new IR::DDlogRelationSugared(
+            table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
+        declarations->push_back(rel);
+
         tableName = "";
     }
 };
@@ -586,6 +585,15 @@ static CFG::Node* findActionSuccessor(
         }
     }
     return nullptr;
+}
+
+static bool
+defaultActionIsConstant(const IR::P4Table* p4table)
+{
+    auto daprop = p4table->properties->getProperty(
+        IR::TableProperties::defaultActionPropertyName);
+    CHECK_NULL(daprop);
+    return daprop->isConstant;
 }
 
 /// Generates DDlog Flow rules
@@ -812,39 +820,52 @@ class FlowGenerator : public Inspector {
         // Handle default action
         auto defaultAction = p4table->getDefaultAction();
         CHECK_NULL(defaultAction);  // always inserted by front-end
-        auto daprop = p4table->properties->getProperty(
-            IR::TableProperties::defaultActionPropertyName);
-        CHECK_NULL(daprop);
         auto default_match = new IR::OF_SeqMatch();
         default_match->push_back(tablematch);
         default_match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
-        if (daprop->isConstant) {
-            // Constant default action: generate a fixed rule.
-            generateActionCall(
-                defaultAction->checkedTo<IR::MethodCallExpression>(), default_match, table, true);
+
+        auto flowRule = new IR::OF_MatchAndAction(
+            default_match,
+            new IR::OF_InterpolatedVariableAction("actions"));
+        auto flowTerm = makeFlowAtom(flowRule);
+        auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
+        auto relationTerm = new IR::DDlogAtom(
+            p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
+            new IR::DDlogTupleExpression(*defaultArgs));
+        ruleRhs->push_back(relationTerm);
+        const IR::DDlogExpression* computeAction;
+        if (defaultCases->size() == 0) {
+            BUG("%1%: table with empty default actions list", p4table);
+        } else if (defaultCases->size() == 1) {
+            // no DDlog "match" needed
+            computeAction = defaultCases->at(0)->result;
         } else {
-            auto flowRule = new IR::OF_MatchAndAction(
-                default_match,
-                new IR::OF_InterpolatedVariableAction("actions"));
-            auto flowTerm = makeFlowAtom(flowRule);
-            auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
-            auto relationTerm = new IR::DDlogAtom(
-                p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
-                new IR::DDlogTupleExpression(*defaultArgs));
-            ruleRhs->push_back(relationTerm);
-            const IR::DDlogExpression* computeAction;
-            if (defaultCases->size() == 0) {
-                BUG("%1%: table with empty default actions list", p4table);
-            } else if (defaultCases->size() == 1) {
-                // no DDlog "match" needed
-                computeAction = defaultCases->at(0)->result;
-            } else {
-                computeAction = new IR::DDlogMatchExpression(
-                    new IR::DDlogVarName("action"), *defaultCases);
+            computeAction = new IR::DDlogMatchExpression(
+                new IR::DDlogVarName("action"), *defaultCases);
+        }
+        auto set = new IR::DDlogSetExpression("actions", computeAction);
+        ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
+        auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
+        declarations->push_back(rule);
+
+        if (defaultActionIsConstant(p4table)) {
+            auto members = IR::Vector<IR::DDlogExpression>();
+
+            auto mce = defaultAction->checkedTo<IR::MethodCallExpression>();
+            auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
+            auto ac = mi->to<P4::ActionCall>();
+
+            auto method = makeId(tableName + "DefaultAction" + ac->action->externalName());
+            std::vector<cstring> args;
+            for (auto arg : *mce->arguments) {
+                auto ofArg = actionTranslator->translate(arg, true, 0);
+                args.push_back(ofArg->toString());
             }
-            auto set = new IR::DDlogSetExpression("actions", computeAction);
-            ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
-            auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
+            auto cExp = new IR::DDlogConstructorExpression(method, args);
+            members.push_back(cExp->checkedTo<IR::DDlogExpression>());
+
+            auto atom = new IR::DDlogAtom(makeId(tableName + "DefaultAction"), new IR::DDlogTupleExpression(members));
+            auto rule = new IR::DDlogRule(atom, {}, ""/*XXX*/);
             declarations->push_back(rule);
         }
     }
