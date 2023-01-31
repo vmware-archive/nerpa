@@ -92,6 +92,12 @@ class DDlogStringLiteral : DDlogExpression {
 #nodbprint
 }
 
+class DDlogLiteral : DDlogExpression {
+    cstring contents;
+    toString{ return contents; }
+#nodbprint
+}
+
 class DDlogSetExpression : DDlogExpression {
     cstring variable;
     DDlogExpression rhs;

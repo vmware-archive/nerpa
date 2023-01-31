@@ -509,10 +509,9 @@ class DeclarationGenerator : public Inspector {
         cstring typeName = tableName + "Action";
 
         auto key = table->getKey();
-        auto entries = table->getEntries();
         bool hasPriority = tableHasPriority(table);
 
-        if (key && !entries) {
+        if (key) {
             // Union type representing all possible actions
             auto type = new IR::DDlogTypeAlt(*tableActions);
             auto td = new IR::DDlogTypedef(table->srcInfo, typeName, type);
@@ -716,11 +715,9 @@ class FlowGenerator : public Inspector {
         LOG2("Converting " << table);
         size_t id = table->id;
         auto p4table = table->table;
-        auto keys = p4table->getKey();
         auto entries = p4table->getEntries();
         auto actions = p4table->getActionList();
         cstring tableName = genTableName(p4table);
-        bool hasPriority = tableHasPriority(p4table);
         const IR::OF_Match* tablematch = new IR::OF_TableMatch(id);
 
         auto tableCases = new IR::Vector<IR::DDlogMatchCase>();
@@ -771,36 +768,44 @@ class FlowGenerator : public Inspector {
             }
         }
 
-        if (!entries) {
-            auto key = table->table->getKey();
-            if (!key) {
-                key = new IR::Key(IR::Vector<IR::KeyElement>());
-            }
-            safe_vector<const IR::DDlogExpression*> tableArgs;
-            safe_vector<const IR::OF_Match*> match;
-            match.push_back(new IR::OF_TableMatch(table->id));
-            convertKey(table, tableCases, tableArgs, match,
-                       key->keyElements.begin(), key->keyElements.end(),
-                       key->keyElements.size());
-        } else {
-            // Table has constant entries: generate a fixed rule
+        auto key = table->table->getKey();
+        if (!key) {
+            key = new IR::Key(IR::Vector<IR::KeyElement>());
+        }
+        safe_vector<const IR::DDlogExpression*> tableArgs;
+        safe_vector<const IR::OF_Match*> match;
+        match.push_back(new IR::OF_TableMatch(table->id));
+        convertKey(table, tableCases, tableArgs, match,
+                   key->keyElements.begin(), key->keyElements.end(),
+                   key->keyElements.size());
+
+        // For each constant entry, add a constant value to the relation.
+        if (entries) {
             for (auto entry : entries->entries) {
-                auto match = new IR::OF_SeqMatch();
-                match->push_back(new IR::OF_TableMatch(id));
-                BUG_CHECK(keys->keyElements.size() == entry->getKeys()->size(),
-                          "%1%: mismatched keys and entry %2%", keys, entry);
-                auto it = entry->getKeys()->components.begin();
-                for (auto k : keys->keyElements) {
-                    auto v = *it++;
-                    auto key = actionTranslator->translate(k->expression, true, exitBlockId);
+                auto members = IR::Vector<IR::DDlogExpression>();
+
+                for (auto v : entry->getKeys()->components) {
                     auto value = actionTranslator->translate(v, true, exitBlockId);
-                    match->push_back(
-                        new IR::OF_EqualsMatch(
-                            key->checkedTo<IR::OF_Expression>(),
-                            value->checkedTo<IR::OF_Expression>()));
+                    auto str = new IR::DDlogLiteral(OpenFlowPrint::toString(value->to<IR::Node>()));
+                    members.push_back(str->checkedTo<IR::DDlogExpression>());
                 }
-                auto actionCall = entry->getAction()->checkedTo<IR::MethodCallExpression>();
-                generateActionCall(actionCall, match, table, false);
+
+                auto mce = entry->getAction()->checkedTo<IR::MethodCallExpression>();
+                auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
+                auto ac = mi->to<P4::ActionCall>();
+
+                auto method = makeId(tableName + "Action" + ac->action->externalName());
+                std::vector<cstring> args;
+                for (auto arg : *mce->arguments) {
+                    auto ofArg = actionTranslator->translate(arg, true, 0);
+                    args.push_back(ofArg->toString());
+                }
+                auto cExp = new IR::DDlogConstructorExpression(method, args);
+                members.push_back(cExp->checkedTo<IR::DDlogExpression>());
+
+                auto atom = new IR::DDlogAtom(tableName, new IR::DDlogTupleExpression(members));
+                auto rule = new IR::DDlogRule(atom, {}, ""/*XXX*/);
+                declarations->push_back(rule);
             }
         }
 

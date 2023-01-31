@@ -15,15 +15,21 @@ input relation MulticastGroup[multicast_group_t]
 Flow("table=0 actions=resubmit(,1)").
 
 typedef PortID = bit<16>
+typedef WireIngress_MapPortsAction = WireIngress_MapPortsActionWireIngress_SetOutPort{port: PortID}
+input relation WireIngress_MapPorts(in_port: bit<16>, action: WireIngress_MapPortsAction)
 typedef WireIngress_MapPortsActionDefaultAction = WireIngress_MapPortsDefaultActionWireIngress_SetOutPort{port: PortID} | WireIngress_MapPortsDefaultAction_NoAction{}
 input relation WireIngress_MapPortsDefaultAction(action: WireIngress_MapPortsActionDefaultAction)
 Flow("table=1 actions=resubmit(,2)").
 
 // WireIngress.MapPorts
-Flow("table=2, in_port=1 actions=load(${port}->${r_out_port(false)}), resubmit(,3)").
+Flow("table=2, in_port=${in_port} actions=${actions}") :- WireIngress_MapPorts(in_port, action),
+   var actions = match(action) {
+    WireIngress_MapPortsActionWireIngress_SetOutPort{port} -> "load(${port}->${r_out_port(false)}), resubmit(,3)"
+}.
 
-// WireIngress.MapPorts
-Flow("table=2, in_port=2 actions=load(${port}->${r_out_port(false)}), resubmit(,3)").
+WireIngress_MapPorts(1, WireIngress_MapPortsActionWireIngress_SetOutPort{2}).
+
+WireIngress_MapPorts(2, WireIngress_MapPortsActionWireIngress_SetOutPort{1}).
 
 // WireIngress.MapPorts
 Flow("table=2, priority=1 actions=${actions}") :- WireIngress_MapPortsDefaultAction(action),
