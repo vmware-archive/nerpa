@@ -630,6 +630,37 @@ class FlowGenerator : public Inspector {
         declarations->push_back(makeFlowRule(flowRule, cfgtable->table->externalName()));
     }
 
+    IR::Node*
+    makeConstantEntry(const IR::ListExpression* keys, const IR::Expression* action,
+                      const cstring& tableName, bool isDefault) {
+        auto members = IR::Vector<IR::DDlogExpression>();
+
+        if (keys) {
+            for (auto v : keys->components) {
+                auto value = actionTranslator->translate(v, true, exitBlockId);
+                auto str = new IR::DDlogLiteral(OpenFlowPrint::toString(value->to<IR::Node>()));
+                members.push_back(str->checkedTo<IR::DDlogExpression>());
+            }
+        }
+
+        auto mce = action->checkedTo<IR::MethodCallExpression>();
+        auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
+        auto ac = mi->to<P4::ActionCall>();
+
+        auto method = makeId(tableName + (isDefault ? "Default" : "") + "Action" + ac->action->externalName());
+        std::vector<cstring> args;
+        for (auto arg : *mce->arguments) {
+            auto ofArg = actionTranslator->translate(arg, true, 0);
+            args.push_back(ofArg->toString());
+        }
+        auto cExp = new IR::DDlogConstructorExpression(method, args);
+        members.push_back(cExp->checkedTo<IR::DDlogExpression>());
+
+        auto atom = new IR::DDlogAtom(makeId(tableName + (isDefault ? "DefaultAction" : "")), new IR::DDlogTupleExpression(members));
+        auto rule = new IR::DDlogRule(atom, {}, ""/*XXX*/);
+        return rule;
+    }
+
     // This recursive function adds to 'this->declarations' a set of
     // "DDlogRule"s for the P4 'table'.  When called, 'tableArgs' contains set
     // of arguments that the caller has already figured out for the P4 'table'
@@ -790,30 +821,7 @@ class FlowGenerator : public Inspector {
         // For each constant entry, add a constant value to the relation.
         if (entries) {
             for (auto entry : entries->entries) {
-                auto members = IR::Vector<IR::DDlogExpression>();
-
-                for (auto v : entry->getKeys()->components) {
-                    auto value = actionTranslator->translate(v, true, exitBlockId);
-                    auto str = new IR::DDlogLiteral(OpenFlowPrint::toString(value->to<IR::Node>()));
-                    members.push_back(str->checkedTo<IR::DDlogExpression>());
-                }
-
-                auto mce = entry->getAction()->checkedTo<IR::MethodCallExpression>();
-                auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
-                auto ac = mi->to<P4::ActionCall>();
-
-                auto method = makeId(tableName + "Action" + ac->action->externalName());
-                std::vector<cstring> args;
-                for (auto arg : *mce->arguments) {
-                    auto ofArg = actionTranslator->translate(arg, true, 0);
-                    args.push_back(ofArg->toString());
-                }
-                auto cExp = new IR::DDlogConstructorExpression(method, args);
-                members.push_back(cExp->checkedTo<IR::DDlogExpression>());
-
-                auto atom = new IR::DDlogAtom(tableName, new IR::DDlogTupleExpression(members));
-                auto rule = new IR::DDlogRule(atom, {}, ""/*XXX*/);
-                declarations->push_back(rule);
+                declarations->push_back(makeConstantEntry(entry->getKeys(), entry->getAction(), tableName, false));
             }
         }
 
@@ -849,24 +857,7 @@ class FlowGenerator : public Inspector {
         declarations->push_back(rule);
 
         if (defaultActionIsConstant(p4table)) {
-            auto members = IR::Vector<IR::DDlogExpression>();
-
-            auto mce = defaultAction->checkedTo<IR::MethodCallExpression>();
-            auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
-            auto ac = mi->to<P4::ActionCall>();
-
-            auto method = makeId(tableName + "DefaultAction" + ac->action->externalName());
-            std::vector<cstring> args;
-            for (auto arg : *mce->arguments) {
-                auto ofArg = actionTranslator->translate(arg, true, 0);
-                args.push_back(ofArg->toString());
-            }
-            auto cExp = new IR::DDlogConstructorExpression(method, args);
-            members.push_back(cExp->checkedTo<IR::DDlogExpression>());
-
-            auto atom = new IR::DDlogAtom(makeId(tableName + "DefaultAction"), new IR::DDlogTupleExpression(members));
-            auto rule = new IR::DDlogRule(atom, {}, ""/*XXX*/);
-            declarations->push_back(rule);
+            declarations->push_back(makeConstantEntry(nullptr, defaultAction, tableName, true));
         }
     }
 
