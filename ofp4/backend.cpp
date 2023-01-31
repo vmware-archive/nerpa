@@ -493,12 +493,12 @@ class DeclarationGenerator : public Inspector {
             fields->push_back(field);
         }
         if (!defaultOnly) {
-            cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
+            cstring alternative = makeId(tableName + "Action" + ac->action->name);
             auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
             tableActions->push_back(st);
         }
         if (!tableOnly) {
-            cstring alternative = makeId(tableName + "DefaultAction" + ac->action->externalName());
+            cstring alternative = makeId(tableName + "DefaultAction" + ac->action->name);
             auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
             defaultActions->push_back(st);
         }
@@ -647,7 +647,7 @@ class FlowGenerator : public Inspector {
         auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
         auto ac = mi->to<P4::ActionCall>();
 
-        auto method = makeId(tableName + (isDefault ? "Default" : "") + "Action" + ac->action->externalName());
+        auto method = makeId(tableName + (isDefault ? "Default" : "") + "Action" + ac->action->name);
         std::vector<cstring> args;
         for (auto arg : *mce->arguments) {
             auto ofArg = actionTranslator->translate(arg, true, 0);
@@ -793,14 +793,14 @@ class FlowGenerator : public Inspector {
             auto matched = new IR::DDlogStringLiteral(OpenFlowPrint::toString(opt));
 
             if (!defaultOnly) {
-                cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
+                cstring alternative = makeId(tableName + "Action" + ac->action->name);
                 auto cExp = new IR::DDlogConstructorExpression(alternative, keyargs);
                 auto mc = new IR::DDlogMatchCase(cExp, matched);
                 tableCases->push_back(mc);
             }
             if (!tableOnly) {
                 cstring alternative = makeId(
-                    tableName + "DefaultAction" + ac->action->externalName());
+                    tableName + "DefaultAction" + ac->action->name);
                 auto cExp = new IR::DDlogConstructorExpression(alternative, keyargs);
                 auto mc = new IR::DDlogMatchCase(cExp, matched);
                 defaultCases->push_back(mc);
