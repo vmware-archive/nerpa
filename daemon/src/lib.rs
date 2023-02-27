@@ -37,7 +37,7 @@ SOFTWARE.
 
 //! Utilities for a daemon to detach and monitor itself.
 //!
-//! In Unix-like environments, it's traditional for daemon processes to be able to **detach**
+//! In Unix-like environments, it's traditional for a daemon process to be able to **detach**
 //! itself from the current session and run, isolated, in the background.  It's also useful to have
 //! a mechanism for a daemon to **monitor** itself and automatically restart if it dies due to a
 //! signal that indicates an error (such as SIGABRT or SIGSEGV).  These days, both of these
