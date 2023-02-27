@@ -997,12 +997,7 @@ impl MatchField {
     pub fn to_record(&self, fm: Option<&FieldMatch>) -> Result<Record> {
         match fm {
             Some(fm) => match (&self.match_type, &fm.match_type) {
-                (MatchType::Exact, FieldMatchType::Exact(value)) => Ok(
-                    if self.is_nerpa_bool() {
-                        Record::Bool(value.0 != 0)
-                    } else {
-                        value.0.into_record()
-                    }),
+                (MatchType::Exact, FieldMatchType::Exact(value)) => Ok(value.0.into_record()),
                 (MatchType::LPM, FieldMatchType::LPM { value, plen })
                     => Ok(Record::Tuple(vec![value.0.into_record(), Record::Int((*plen).into())])),
                 (MatchType::Ternary, FieldMatchType::Ternary { value, mask })
@@ -1074,11 +1069,7 @@ impl TableEntry {
                             Some(arg) => arg,
                             None => return Err(Error(RpcStatusCode::INVALID_ARGUMENT)).context(format!("table entry lacks argument for parameter {:?}", p))?
                         };
-                        let record = if p.is_nerpa_bool() {
-                            Record::Bool(arg.value.0 != 0)
-                        } else {
-                            Record::Int(arg.value.0.into())
-                        };
+                        let record = Record::Int(arg.value.0.into());
                         param_values.push((Name::Owned(p.preamble.name.clone()), record));
                     }
                     values.push((Name::from("action"),
@@ -1088,11 +1079,7 @@ impl TableEntry {
             None => ()
         }
 
-        if values.len() == 1 && table.is_nerpa_singleton() {
-            Ok(values.pop().unwrap().1)
-        } else {
-            Ok(Record::NamedStruct(Name::Owned(table_ddlog_name.into()), values))
-        }
+        Ok(Record::NamedStruct(Name::Owned(table_ddlog_name.into()), values))
     }
 }
 
