@@ -25,7 +25,7 @@ use anyhow::{anyhow, Context, Result};
 
 use clap::Parser;
 
-use daemon::Daemonize;
+use daemon::{Daemonize, Daemonizing};
 
 use differential_datalog::api::HDDlog;
 use differential_datalog::ddval::{DDValConvert, DDValue};
@@ -53,7 +53,8 @@ use ovs::{
     ofpbuf::Ofpbuf,
     ofp_bundle::*,
     ofp_flow::{FlowMod, FlowModCommand},
-    ofp_msgs::OfpType
+    ofp_msgs::OfpType,
+    rconn::Rconn
 };
 
 use p4ext::*;
@@ -664,53 +665,10 @@ struct Args {
     ddlog_record: Option<PathBuf>
 }
 
-fn main() -> Result<()> {
-    log_panics::init();
-    let Args { ovs_remote, p4_port, p4_addr, device_id,
-               daemonize, log_file, ddlog_record } = Args::parse();
-    if let Some(log_file) = log_file {
-        let writer = OpenOptions::new().create(true).append(true).open(log_file)?;
-        tracing_subscriber::fmt()
-            .with_writer(writer)
-            .with_ansi(false)
-            .init();
-    } else {
-        tracing_subscriber::fmt()
-            .with_writer(stderr)
-            .with_ansi(unsafe { libc::isatty(libc::STDERR_FILENO) } == 1)
-            .init();
-    };
-    grpcio::redirect_log();
-    let (daemonizing, _cleanup) = unsafe { daemonize.start() };
-    let mut daemonizing = Some(daemonizing);
-
-    let env = Arc::new(Environment::new(1));
-    let (mut hddlog, _init_state) = ofp4dl_ddlog::run(1, false).ddlog_map_error()?;
-    if let Some(ref ddlog_record) = ddlog_record {
-        let mut record = Some(File::create(ddlog_record).with_context(|| format!("{}: open failed", ddlog_record.display()))?);
-        hddlog.record_commands(&mut record);
-    }
-
-    let state = Arc::new(Mutex::new(State::new(hddlog, device_id)));
-    let service = create_p4_runtime(P4RuntimeService::new(state.clone()));
-    let ch_builder = ChannelBuilder::new(env.clone());
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind(p4_addr, p4_port)
-        .channel_args(ch_builder.build_args())
-        .build()
-        .unwrap();
-    server.start();
-
-    if p4_port == 0 {
-        for (addr, port) in server.bind_addrs() {
-            event!(Level::INFO, "Listening on {addr}:{port}");
-        }
-    }
-
-    let mut rconn = ovs::rconn::Rconn::new(0, 0, ovs::rconn::DSCP_DEFAULT, OFP_VERSION.into());
-
-    rconn.connect(&ovs_remote, None);
+// Runs the server main loop, servicing P4Runtime requests from `state` and applying them to OVS
+// via `rconn`.  After initialization completes, finishes daemonization using `daemonizing`, if it
+// is not `None`.
+fn run_server(state: Arc<Mutex<State>>, mut rconn: Rconn, mut daemonizing: Option<Daemonizing>) -> Result<()> {
     let mut last_connection_seqno = 0;
     let mut last_config_seqno = 0;
     let mut bundle_id = 0;
@@ -793,6 +751,56 @@ fn main() -> Result<()> {
         rconn.recv_wait();
         ovs::poll_loop::block();
     }
+}
+
+fn main() -> Result<()> {
+    log_panics::init();
+    let Args { ovs_remote, p4_port, p4_addr, device_id,
+               daemonize, log_file, ddlog_record } = Args::parse();
+    if let Some(log_file) = log_file {
+        let writer = OpenOptions::new().create(true).append(true).open(log_file)?;
+        tracing_subscriber::fmt()
+            .with_writer(writer)
+            .with_ansi(false)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_writer(stderr)
+            .with_ansi(unsafe { libc::isatty(libc::STDERR_FILENO) } == 1)
+            .init();
+    };
+    grpcio::redirect_log();
+    let (daemonizing, _cleanup) = unsafe { daemonize.start() };
+    let daemonizing = Some(daemonizing);
+
+    let env = Arc::new(Environment::new(1));
+    let (mut hddlog, _init_state) = ofp4dl_ddlog::run(1, false).ddlog_map_error()?;
+    if let Some(ref ddlog_record) = ddlog_record {
+        let mut record = Some(File::create(ddlog_record).with_context(|| format!("{}: open failed", ddlog_record.display()))?);
+        hddlog.record_commands(&mut record);
+    }
+
+    let state = Arc::new(Mutex::new(State::new(hddlog, device_id)));
+    let service = create_p4_runtime(P4RuntimeService::new(state.clone()));
+    let ch_builder = ChannelBuilder::new(env.clone());
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind(p4_addr, p4_port)
+        .channel_args(ch_builder.build_args())
+        .build()
+        .unwrap();
+    server.start();
+
+    if p4_port == 0 {
+        for (addr, port) in server.bind_addrs() {
+            event!(Level::INFO, "Listening on {addr}:{port}");
+        }
+    }
+
+    let mut rconn = Rconn::new(0, 0, ovs::rconn::DSCP_DEFAULT, OFP_VERSION.into());
+    rconn.connect(&ovs_remote, None);
+
+    run_server(state, rconn, daemonizing)
 }
 
 /// Converts the `delta` of changes to DDlog output relations (particularly `Flow`) into OpenFlow
