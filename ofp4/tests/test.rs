@@ -473,7 +473,7 @@ async fn snvs() -> Result<()> {
     client.write(&wr)?;
 
     // XXX This should not be necessary, but ofp4 does not yet wait for OpenFlow flow table changes
-    // to commit before returning success.
+    // to commit before returning success.  See https://github.com/vmware/nerpa/issues/86.
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Check that a packet received on port 1, in VLAN 1, will get broadcast to the other ports in
