@@ -186,6 +186,8 @@ impl Run for Command {
     }
 }
 
+/// Passes `args` to `ovs-appctl ofproto/trace` and returns a tuple of (complete output from
+/// `ofproto/trace`, just datapath actions).
 fn trace_flow<'a, P, I, S>(tmp_dir: P, args: I) -> Result<(String, String)>
 where P: AsRef<Path>,
       I: IntoIterator<Item = S>,
@@ -198,7 +200,36 @@ where P: AsRef<Path>,
     info!("Running {command_string}...");
     let output = String::from_utf8(Cleanup::output(&mut command)?.stdout)?;
 
-    // Extract just the datapath actions from the last line and return them.
+    // ofproto/trace yields lots of output.  It might look like this:
+    //
+    //     Flow: in_port=2,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:00:00,dl_type=0x0000
+    //
+    //     bridge("br0")
+    //     -------------
+    //      0. priority 32768
+    //         resubmit(,1)
+    //      1. priority 32768
+    //         resubmit(,2)
+    //      2. in_port=2, priority 32768
+    //         set_field:0x1/0xffff->reg0
+    //         resubmit(,3)
+    //      3. priority 32768
+    //         resubmit(,4)
+    //      4. reg0=0/0xffff0000, priority 32768
+    //         resubmit(,5)
+    //      5. priority 32768
+    //         resubmit(,6)
+    //      6. priority 32768
+    //         output:NXM_NX_REG0[0..15]
+    //          -> output port is 1
+    //
+    //     Final flow: reg0=0x1,in_port=2,vlan_tci=0x0000,dl_src=00:00:00:00:00:00,dl_dst=00:00:00:00:00:00,dl_type=0x0000
+    //     Megaflow: recirc_id=0,eth,in_port=2,dl_type=0x0000
+    //     Datapath actions: 1
+    //
+    // It would be hard to check the entire output for correctness, since it is so extensive and
+    // not designed to be machine-parsable, but the final "Datapath actions:" line says what it
+    // going to happen to the packet in the end.  It's easy enough to check that summary.
     debug!("{output}");
     let last_line = String::from(output.lines().nth_back(0).unwrap_or(""));
     info!("...{last_line}");
