@@ -148,6 +148,7 @@ Flow("table=2 actions=${actions}") :- var actions = "load(0->${r_vlan(false)}), 
 Flow("table=2, priority=1 actions=${actions}") :- Tbl_snvs158DefaultAction(action),
    var actions = "load(0->${r_vlan(false)}), load(0->${r_flood(false)}), resubmit(,3)".
 
+// constant default action for table Tbl_snvs158
 Tbl_snvs158DefaultAction(Tbl_snvs158DefaultActionsnvs158{}).
 
 // SnvsIngress.MirrorDstDrop
@@ -160,6 +161,7 @@ Flow("table=3, in_port=${port} actions=${actions}") :- SnvsIngress_MirrorDstDrop
 Flow("table=3, priority=1 actions=${actions}") :- SnvsIngress_MirrorDstDropDefaultAction(action),
    var actions = "resubmit(,4)".
 
+// constant default action for table SnvsIngress_MirrorDstDrop
 SnvsIngress_MirrorDstDropDefaultAction(SnvsIngress_MirrorDstDropDefaultActionNoAction_2{}).
 
 // SnvsIngress.ReservedMcastDstDrop
@@ -172,6 +174,7 @@ Flow("table=4, dl_dst=${dst} actions=${actions}") :- SnvsIngress_ReservedMcastDs
 Flow("table=4, priority=1 actions=${actions}") :- SnvsIngress_ReservedMcastDstDropDefaultAction(action),
    var actions = "resubmit(,5)".
 
+// constant default action for table SnvsIngress_ReservedMcastDstDrop
 SnvsIngress_ReservedMcastDstDropDefaultAction(SnvsIngress_ReservedMcastDstDropDefaultActionNoAction_3{}).
 
 // SnvsIngress.InputVlan
@@ -194,6 +197,7 @@ Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${(has_vlan as bi
 Flow("table=5, priority=1 actions=${actions}") :- SnvsIngress_InputVlanDefaultAction(action),
    var actions = "load(0->${r_out_port(false)}), resubmit(,26)".
 
+// constant default action for table SnvsIngress_InputVlan
 SnvsIngress_InputVlanDefaultAction(SnvsIngress_InputVlanDefaultActionDrop_2{}).
 
 // tbl_snvs177
@@ -203,6 +207,7 @@ Flow("table=6 actions=${actions}") :- var actions = "load(0->${r_flood(false)}),
 Flow("table=6, priority=1 actions=${actions}") :- Tbl_snvs177DefaultAction(action),
    var actions = "load(0->${r_flood(false)}), resubmit(,7)".
 
+// constant default action for table Tbl_snvs177
 Tbl_snvs177DefaultAction(Tbl_snvs177DefaultActionsnvs177{}).
 
 // SnvsIngress.FloodVlan
@@ -215,6 +220,7 @@ Flow("table=7, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions
 Flow("table=7, priority=1 actions=${actions}") :- SnvsIngress_FloodVlanDefaultAction(action),
    var actions = "resubmit(,8)".
 
+// constant default action for table SnvsIngress_FloodVlan
 SnvsIngress_FloodVlanDefaultAction(SnvsIngress_FloodVlanDefaultActionNoAction_4{}).
 
 // IfStatement
@@ -230,6 +236,7 @@ Flow("table=9 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tmp
 Flow("table=9, priority=1 actions=${actions}") :- Tbl_snvs182DefaultAction(action),
    var actions = "load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
+// constant default action for table Tbl_snvs182
 Tbl_snvs182DefaultAction(Tbl_snvs182DefaultActionsnvs182{}).
 
 // IfStatement
@@ -245,6 +252,7 @@ Flow("table=11 actions=${actions}") :- var actions = "load(1->${r_SnvsIngress_tm
 Flow("table=11, priority=1 actions=${actions}") :- Tbl_snvs182_0DefaultAction(action),
    var actions = "load(1->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
+// constant default action for table Tbl_snvs182_0
 Tbl_snvs182_0DefaultAction(Tbl_snvs182_0DefaultActionsnvs182_0{}).
 
 // tbl_snvs182_1
@@ -254,6 +262,7 @@ Flow("table=12 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tm
 Flow("table=12, priority=1 actions=${actions}") :- Tbl_snvs182_1DefaultAction(action),
    var actions = "load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
+// constant default action for table Tbl_snvs182_1
 Tbl_snvs182_1DefaultAction(Tbl_snvs182_1DefaultActionsnvs182_1{}).
 
 // IfStatement
@@ -272,6 +281,7 @@ Flow("table=14, dl_src=${mac}, in_port=${port}, ${r_vlan(true)}=${vlan as bit<32
 Flow("table=14, priority=1 actions=${actions}") :- SnvsIngress_LearnedSrcDefaultAction(action),
    var actions = "resubmit(,15)".
 
+// constant default action for table SnvsIngress_LearnedSrc
 SnvsIngress_LearnedSrcDefaultAction(SnvsIngress_LearnedSrcDefaultActionNoAction_5{}).
 
 // tbl_snvs194
@@ -281,6 +291,7 @@ Flow("table=15 actions=${actions}") :- var actions = "load(510->${r_SnvsIngress_
 Flow("table=15, priority=1 actions=${actions}") :- Tbl_snvs194DefaultAction(action),
    var actions = "load(510->${r_SnvsIngress_output(false)}), resubmit(,16)".
 
+// constant default action for table Tbl_snvs194
 Tbl_snvs194DefaultAction(Tbl_snvs194DefaultActionsnvs194{}).
 
 // IfStatement
@@ -296,6 +307,7 @@ Flow("table=17 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tm
 Flow("table=17, priority=1 actions=${actions}") :- Tbl_snvs195DefaultAction(action),
    var actions = "load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
+// constant default action for table Tbl_snvs195
 Tbl_snvs195DefaultAction(Tbl_snvs195DefaultActionsnvs195{}).
 
 // IfStatement
@@ -311,6 +323,7 @@ Flow("table=19 actions=${actions}") :- var actions = "load(1->${r_SnvsIngress_tm
 Flow("table=19, priority=1 actions=${actions}") :- Tbl_snvs195_0DefaultAction(action),
    var actions = "load(1->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
+// constant default action for table Tbl_snvs195_0
 Tbl_snvs195_0DefaultAction(Tbl_snvs195_0DefaultActionsnvs195_0{}).
 
 // tbl_snvs195_1
@@ -320,6 +333,7 @@ Flow("table=20 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tm
 Flow("table=20, priority=1 actions=${actions}") :- Tbl_snvs195_1DefaultAction(action),
    var actions = "load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
+// constant default action for table Tbl_snvs195_1
 Tbl_snvs195_1DefaultAction(Tbl_snvs195_1DefaultActionsnvs195_1{}).
 
 // IfStatement
@@ -338,6 +352,7 @@ Flow("table=22, dl_dst=${mac}, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 a
 Flow("table=22, priority=1 actions=${actions}") :- SnvsIngress_LearnedDstDefaultAction(action),
    var actions = "resubmit(,23)".
 
+// constant default action for table SnvsIngress_LearnedDst
 SnvsIngress_LearnedDstDefaultAction(SnvsIngress_LearnedDstDefaultActionNoAction_6{}).
 
 // IfStatement
@@ -353,6 +368,7 @@ Flow("table=24 actions=${actions}") :- var actions = "move(${r_vlan(false)}->reg
 Flow("table=24, priority=1 actions=${actions}") :- Tbl_snvs208DefaultAction(action),
    var actions = "move(${r_vlan(false)}->reg0[16..27]), load(0->reg0[28..31]), resubmit(,26)".
 
+// constant default action for table Tbl_snvs208
 Tbl_snvs208DefaultAction(Tbl_snvs208DefaultActionsnvs208{}).
 
 // tbl_snvs210
@@ -362,6 +378,7 @@ Flow("table=25 actions=${actions}") :- var actions = "move(${r_SnvsIngress_outpu
 Flow("table=25, priority=1 actions=${actions}") :- Tbl_snvs210DefaultAction(action),
    var actions = "move(${r_SnvsIngress_output(false)}->${r_out_port(false)}), resubmit(,26)".
 
+// constant default action for table Tbl_snvs210
 Tbl_snvs210DefaultAction(Tbl_snvs210DefaultActionsnvs210{}).
 
 Flow("table=28 actions=resubmit(,29)").
@@ -382,6 +399,7 @@ Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff, ${r_vl
 Flow("table=29, priority=1 actions=${actions}") :- SnvsEgress_OutputVlanDefaultAction(action),
    var actions = "resubmit(,30)".
 
+// constant default action for table SnvsEgress_OutputVlan
 SnvsEgress_OutputVlanDefaultAction(SnvsEgress_OutputVlanDefaultActionNoAction_7{}).
 
 // tbl_act
@@ -391,6 +409,7 @@ Flow("table=30 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tag
 Flow("table=30, priority=1 actions=${actions}") :- Tbl_actDefaultAction(action),
    var actions = "load(1->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
 
+// constant default action for table Tbl_act
 Tbl_actDefaultAction(Tbl_actDefaultActionact{}).
 
 // tbl_act_0
@@ -400,6 +419,7 @@ Flow("table=31 actions=${actions}") :- var actions = "load(0->${r_SnvsEgress_tag
 Flow("table=31, priority=1 actions=${actions}") :- Tbl_act_0DefaultAction(action),
    var actions = "load(0->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
 
+// constant default action for table Tbl_act_0
 Tbl_act_0DefaultAction(Tbl_act_0DefaultActionact_0{}).
 
 // IfStatement
@@ -415,6 +435,7 @@ Flow("table=33 actions=${actions}") :- var actions = "move(${r_vlan(false)}->${r
 Flow("table=33, priority=1 actions=${actions}") :- Tbl_snvs258DefaultAction(action),
    var actions = "move(${r_vlan(false)}->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)".
 
+// constant default action for table Tbl_snvs258
 Tbl_snvs258DefaultAction(Tbl_snvs258DefaultActionsnvs258{}).
 
 // tbl_snvs258_0
@@ -424,6 +445,7 @@ Flow("table=34 actions=${actions}") :- var actions = "load(0->${r_SnvsEgress_tmp
 Flow("table=34, priority=1 actions=${actions}") :- Tbl_snvs258_0DefaultAction(action),
    var actions = "load(0->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)".
 
+// constant default action for table Tbl_snvs258_0
 Tbl_snvs258_0DefaultAction(Tbl_snvs258_0DefaultActionsnvs258_0{}).
 
 // IfStatement
@@ -439,6 +461,7 @@ Flow("table=36 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tmp
 Flow("table=36, priority=1 actions=${actions}") :- Tbl_snvs259DefaultAction(action),
    var actions = "load(1->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)".
 
+// constant default action for table Tbl_snvs259
 Tbl_snvs259DefaultAction(Tbl_snvs259DefaultActionsnvs259{}).
 
 // IfStatement
@@ -460,6 +483,7 @@ Flow("table=39 actions=${actions}") :- var actions = "load(0->${r_tmp_0(false)})
 Flow("table=39, priority=1 actions=${actions}") :- Tbl_snvs233DefaultAction(action),
    var actions = "load(0->${r_tmp_0(false)}), resubmit(,41)".
 
+// constant default action for table Tbl_snvs233
 Tbl_snvs233DefaultAction(Tbl_snvs233DefaultActionsnvs233{}).
 
 // tbl_snvs233_0
@@ -469,6 +493,7 @@ Flow("table=40 actions=${actions}") :- var actions = "load(1->${r_tmp_0(false)})
 Flow("table=40, priority=1 actions=${actions}") :- Tbl_snvs233_0DefaultAction(action),
    var actions = "load(1->${r_tmp_0(false)}), resubmit(,41)".
 
+// constant default action for table Tbl_snvs233_0
 Tbl_snvs233_0DefaultAction(Tbl_snvs233_0DefaultActionsnvs233_0{}).
 
 // tbl_snvs233_1
@@ -478,6 +503,7 @@ Flow("table=41 actions=${actions}") :- var actions = "load(1->${r_key_0(false)})
 Flow("table=41, priority=1 actions=${actions}") :- Tbl_snvs233_1DefaultAction(action),
    var actions = "load(1->${r_key_0(false)}), resubmit(,43)".
 
+// constant default action for table Tbl_snvs233_1
 Tbl_snvs233_1DefaultAction(Tbl_snvs233_1DefaultActionsnvs233_1{}).
 
 // tbl_snvs233_2
@@ -487,6 +513,7 @@ Flow("table=42 actions=${actions}") :- var actions = "load(0->${r_key_0(false)})
 Flow("table=42, priority=1 actions=${actions}") :- Tbl_snvs233_2DefaultAction(action),
    var actions = "load(0->${r_key_0(false)}), resubmit(,43)".
 
+// constant default action for table Tbl_snvs233_2
 Tbl_snvs233_2DefaultAction(Tbl_snvs233_2DefaultActionsnvs233_2{}).
 
 // SnvsEgress.PriorityTagging
@@ -499,6 +526,7 @@ Flow("table=43, ${r_out_port(true)}=${port}/0xffff, ${r_key_0(true)}=${(if (nonz
 Flow("table=43, priority=1 actions=${actions}") :- SnvsEgress_PriorityTaggingDefaultAction(action),
    var actions = "resubmit(,44)".
 
+// constant default action for table SnvsEgress_PriorityTagging
 SnvsEgress_PriorityTaggingDefaultAction(SnvsEgress_PriorityTaggingDefaultActionNoAction_8{}).
 
 // tbl_act_1
@@ -508,6 +536,7 @@ Flow("table=44 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tmp
 Flow("table=44, priority=1 actions=${actions}") :- Tbl_act_1DefaultAction(action),
    var actions = "load(1->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
 
+// constant default action for table Tbl_act_1
 Tbl_act_1DefaultAction(Tbl_act_1DefaultActionact_1{}).
 
 // tbl_act_2
@@ -517,6 +546,7 @@ Flow("table=45 actions=${actions}") :- var actions = "load(0->${r_SnvsEgress_tmp
 Flow("table=45, priority=1 actions=${actions}") :- Tbl_act_2DefaultAction(action),
    var actions = "load(0->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
 
+// constant default action for table Tbl_act_2
 Tbl_act_2DefaultAction(Tbl_act_2DefaultActionact_2{}).
 
 // tbl_snvs259_0
@@ -526,6 +556,7 @@ Flow("table=46 actions=${actions}") :- var actions = "move(${r_SnvsEgress_tmp_7(
 Flow("table=46, priority=1 actions=${actions}") :- Tbl_snvs259_0DefaultAction(action),
    var actions = "move(${r_SnvsEgress_tmp_7(false)}->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)".
 
+// constant default action for table Tbl_snvs259_0
 Tbl_snvs259_0DefaultAction(Tbl_snvs259_0DefaultActionsnvs259_0{}).
 
 // IfStatement
@@ -541,6 +572,7 @@ Flow("table=48 actions=${actions}") :- var actions = "load(1->vlan_tci[12]), mov
 Flow("table=48, priority=1 actions=${actions}") :- Tbl_snvs261DefaultAction(action),
    var actions = "load(1->vlan_tci[12]), move(${r_SnvsEgress_tmp_5(false)}->vlan_tci[0..11]), resubmit(,54)".
 
+// constant default action for table Tbl_snvs261
 Tbl_snvs261DefaultAction(Tbl_snvs261DefaultActionsnvs261{}).
 
 // IfStatement
@@ -562,6 +594,7 @@ Flow("table=51 actions=${actions}") :- var actions = "load(0->${r_tmp_1(false)})
 Flow("table=51, priority=1 actions=${actions}") :- Tbl_snvs263DefaultAction(action),
    var actions = "load(0->${r_tmp_1(false)}), resubmit(,53)".
 
+// constant default action for table Tbl_snvs263
 Tbl_snvs263DefaultAction(Tbl_snvs263DefaultActionsnvs263{}).
 
 // tbl_snvs263_0
@@ -571,6 +604,7 @@ Flow("table=52 actions=${actions}") :- var actions = "load(1->${r_tmp_1(false)})
 Flow("table=52, priority=1 actions=${actions}") :- Tbl_snvs263_0DefaultAction(action),
    var actions = "load(1->${r_tmp_1(false)}), resubmit(,53)".
 
+// constant default action for table Tbl_snvs263_0
 Tbl_snvs263_0DefaultAction(Tbl_snvs263_0DefaultActionsnvs263_0{}).
 
 // tbl_snvs264
@@ -580,6 +614,7 @@ Flow("table=53 actions=${actions}") :- var actions = "load(0->vlan_tci[12]), res
 Flow("table=53, priority=1 actions=${actions}") :- Tbl_snvs264DefaultAction(action),
    var actions = "load(0->vlan_tci[12]), resubmit(,54)".
 
+// constant default action for table Tbl_snvs264
 Tbl_snvs264DefaultAction(Tbl_snvs264DefaultActionsnvs264{}).
 
 // drop if output port is 0

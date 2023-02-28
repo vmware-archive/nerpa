@@ -632,7 +632,7 @@ class FlowGenerator : public Inspector {
 
     IR::Node*
     makeConstantEntry(const IR::ListExpression* keys, const IR::Expression* action,
-                      const cstring& tableName, bool isDefault) {
+                      const cstring& tableName, bool isDefault, cstring comment) {
         auto members = IR::Vector<IR::DDlogExpression>();
 
         if (keys) {
@@ -657,7 +657,7 @@ class FlowGenerator : public Inspector {
         members.push_back(cExp->checkedTo<IR::DDlogExpression>());
 
         auto atom = new IR::DDlogAtom(makeId(tableName + (isDefault ? "DefaultAction" : "")), new IR::DDlogTupleExpression(members));
-        auto rule = new IR::DDlogRule(atom, {}, ""/*XXX*/);
+        auto rule = new IR::DDlogRule(atom, {}, comment);
         return rule;
     }
 
@@ -821,7 +821,8 @@ class FlowGenerator : public Inspector {
         // For each constant entry, add a constant value to the relation.
         if (entries) {
             for (auto entry : entries->entries) {
-                declarations->push_back(makeConstantEntry(entry->getKeys(), entry->getAction(), tableName, false));
+                declarations->push_back(makeConstantEntry(entry->getKeys(), entry->getAction(), tableName, false,
+                                            "constant entry for table " + tableName));
             }
         }
 
@@ -857,7 +858,8 @@ class FlowGenerator : public Inspector {
         declarations->push_back(rule);
 
         if (defaultActionIsConstant(p4table)) {
-            declarations->push_back(makeConstantEntry(nullptr, defaultAction, tableName, true));
+            declarations->push_back(makeConstantEntry(nullptr, defaultAction, tableName, true,
+                                        "constant default action for table " + tableName));
         }
     }
 

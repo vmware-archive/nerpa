@@ -27,8 +27,10 @@ Flow("table=2, in_port=${in_port} actions=${actions}") :- WireIngress_MapPorts(i
     WireIngress_MapPortsActionSetOutPort{port} -> "load(${port}->${r_out_port(false)}), resubmit(,3)"
 }.
 
+// constant entry for table WireIngress_MapPorts
 WireIngress_MapPorts(1, WireIngress_MapPortsActionSetOutPort{2}).
 
+// constant entry for table WireIngress_MapPorts
 WireIngress_MapPorts(2, WireIngress_MapPortsActionSetOutPort{1}).
 
 // WireIngress.MapPorts
