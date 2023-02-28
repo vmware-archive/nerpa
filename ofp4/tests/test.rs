@@ -120,6 +120,8 @@ trait Run {
 }
 
 impl Run for Command {
+    /// Returns a string with the program name followed by arguments, separated by spaces.  This is
+    /// suitable for diagnostic messages; it's not properly escaped or encoded for other use.
     fn command_string(&self) -> String {
         let mut command: String = self.get_program().to_string_lossy().into_owned();
         for arg in self.get_args() {
@@ -128,11 +130,17 @@ impl Run for Command {
         }
         command
     }
+
+    /// Logs this command, starts it, and returns its `Child`, arranging for it to be killed if
+    /// `Cleanup` is dropped.
     fn start(&mut self, cleanup: &mut Cleanup) -> Result<Child> {
         info!("running command: {}", self.command_string());
         Ok(cleanup.spawn(self)?)
     }
 
+    /// Log this command and runs it to completion (but no more than about 10 seconds), ensuring
+    /// that it gets killed if we do.  Logs its output and, if it fails, its exit status, and
+    /// returns its output.
     fn run(&mut self) -> Result<RunOutput> {
         self.stdout(Stdio::piped());
         self.stderr(Stdio::piped());
@@ -161,6 +169,8 @@ impl Run for Command {
         Ok(output)
     }
 
+    /// Log this command and runs it to completion (but no more than about 10 seconds), ensuring
+    /// that it gets killed if we do, and logs its exit status.
     fn run_nocapture(&mut self) -> Result<()> {
         let program = self.get_program().to_string_lossy().into_owned();
         let mut cleanup = Cleanup::new()?;
