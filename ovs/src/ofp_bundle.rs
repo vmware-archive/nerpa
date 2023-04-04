@@ -49,6 +49,7 @@ pub const OFPBF_ATOMIC: u16 = sys::ofp14_bundle_flags_OFPBF_ATOMIC as u16;
 pub const OFPBF_ORDERED: u16 = sys::ofp14_bundle_flags_OFPBF_ORDERED as u16;
 
 /// An OpenFlow "bundle control message", which operates on a bundle.
+#[derive(Copy, Clone, Debug)]
 pub struct BundleCtrlMsg {
     /// An arbitrary client-assigned identifier for the bundle, which must be unique among the
     /// bundles that are currently open within the scope of a particular OpenFlow connection.

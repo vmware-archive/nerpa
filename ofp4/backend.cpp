@@ -284,7 +284,8 @@ class ActionTranslator : public Inspector {
             auto srce = src->to<IR::OF_Expression>();
             auto dste = dst->to<IR::OF_Expression>();
             if (srce && dste) {
-                if (srce->is<IR::OF_Constant>())
+                if (srce->is<IR::OF_Constant>() ||
+                    srce->is<IR::OF_InterpolatedVarExpression>())
                     currentTranslation = new IR::OF_LoadAction(srce, dste);
                 else {
                     int srcw = srce->width();
@@ -492,12 +493,12 @@ class DeclarationGenerator : public Inspector {
             fields->push_back(field);
         }
         if (!defaultOnly) {
-            cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
+            cstring alternative = makeId(tableName + "Action" + ac->action->name);
             auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
             tableActions->push_back(st);
         }
         if (!tableOnly) {
-            cstring alternative = makeId(tableName + "DefaultAction" + ac->action->externalName());
+            cstring alternative = makeId(tableName + "DefaultAction" + ac->action->name);
             auto st = new IR::DDlogTypeStruct(ale->srcInfo, IR::ID(alternative), *fields);
             defaultActions->push_back(st);
         }
@@ -508,10 +509,9 @@ class DeclarationGenerator : public Inspector {
         cstring typeName = tableName + "Action";
 
         auto key = table->getKey();
-        auto entries = table->getEntries();
         bool hasPriority = tableHasPriority(table);
 
-        if (key && !entries) {
+        if (key) {
             // Union type representing all possible actions
             auto type = new IR::DDlogTypeAlt(*tableActions);
             auto td = new IR::DDlogTypedef(table->srcInfo, typeName, type);
@@ -547,19 +547,18 @@ class DeclarationGenerator : public Inspector {
         auto daprop = table->properties->getProperty(
             IR::TableProperties::defaultActionPropertyName);
         CHECK_NULL(daprop);
-        if (!daprop->isConstant) {
-            cstring daTypeName = typeName + "DefaultAction";
-            auto type = new IR::DDlogTypeAlt(*defaultActions);
-            auto td = new IR::DDlogTypedef(table->srcInfo, daTypeName, type);
-            declarations->push_back(td);
+        cstring daTypeName = typeName + "DefaultAction";
+        auto type = new IR::DDlogTypeAlt(*defaultActions);
+        auto td = new IR::DDlogTypedef(table->srcInfo, daTypeName, type);
+        declarations->push_back(td);
 
-            auto params = new IR::IndexedVector<IR::Parameter>();
-            params->push_back(new IR::Parameter(
-                "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
-            auto rel = new IR::DDlogRelationSugared(
-                table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
-            declarations->push_back(rel);
-        }
+        auto params = new IR::IndexedVector<IR::Parameter>();
+        params->push_back(new IR::Parameter(
+                              "action", IR::Direction::None, new IR::Type_Name(daTypeName)));
+        auto rel = new IR::DDlogRelationSugared(
+            table->srcInfo, IR::ID(tableName + "DefaultAction"), IR::Direction::In, *params);
+        declarations->push_back(rel);
+
         tableName = "";
     }
 };
@@ -586,6 +585,15 @@ static CFG::Node* findActionSuccessor(
         }
     }
     return nullptr;
+}
+
+static bool
+defaultActionIsConstant(const IR::P4Table* p4table)
+{
+    auto daprop = p4table->properties->getProperty(
+        IR::TableProperties::defaultActionPropertyName);
+    CHECK_NULL(daprop);
+    return daprop->isConstant;
 }
 
 /// Generates DDlog Flow rules
@@ -620,6 +628,37 @@ class FlowGenerator : public Inspector {
         ofaction = new IR::OF_SeqAction(ofaction, successor);
         auto flowRule = new IR::OF_MatchAndAction(match, ofaction);
         declarations->push_back(makeFlowRule(flowRule, cfgtable->table->externalName()));
+    }
+
+    IR::Node*
+    makeConstantEntry(const IR::ListExpression* keys, const IR::Expression* action,
+                      const cstring& tableName, bool isDefault, cstring comment) {
+        auto members = IR::Vector<IR::DDlogExpression>();
+
+        if (keys) {
+            for (auto v : keys->components) {
+                auto value = actionTranslator->translate(v, true, exitBlockId);
+                auto str = new IR::DDlogLiteral(OpenFlowPrint::toString(value->to<IR::Node>()));
+                members.push_back(str->checkedTo<IR::DDlogExpression>());
+            }
+        }
+
+        auto mce = action->checkedTo<IR::MethodCallExpression>();
+        auto mi = P4::MethodInstance::resolve(mce, model->refMap, model->typeMap);
+        auto ac = mi->to<P4::ActionCall>();
+
+        auto method = makeId(tableName + (isDefault ? "Default" : "") + "Action" + ac->action->name);
+        std::vector<cstring> args;
+        for (auto arg : *mce->arguments) {
+            auto ofArg = actionTranslator->translate(arg, true, 0);
+            args.push_back(ofArg->toString());
+        }
+        auto cExp = new IR::DDlogConstructorExpression(method, args);
+        members.push_back(cExp->checkedTo<IR::DDlogExpression>());
+
+        auto atom = new IR::DDlogAtom(makeId(tableName + (isDefault ? "DefaultAction" : "")), new IR::DDlogTupleExpression(members));
+        auto rule = new IR::DDlogRule(atom, {}, comment);
+        return rule;
     }
 
     // This recursive function adds to 'this->declarations' a set of
@@ -715,7 +754,6 @@ class FlowGenerator : public Inspector {
         LOG2("Converting " << table);
         size_t id = table->id;
         auto p4table = table->table;
-        auto keys = p4table->getKey();
         auto entries = p4table->getEntries();
         auto actions = p4table->getActionList();
         cstring tableName = genTableName(p4table);
@@ -755,90 +793,73 @@ class FlowGenerator : public Inspector {
             auto matched = new IR::DDlogStringLiteral(OpenFlowPrint::toString(opt));
 
             if (!defaultOnly) {
-                cstring alternative = makeId(tableName + "Action" + ac->action->externalName());
+                cstring alternative = makeId(tableName + "Action" + ac->action->name);
                 auto cExp = new IR::DDlogConstructorExpression(alternative, keyargs);
                 auto mc = new IR::DDlogMatchCase(cExp, matched);
                 tableCases->push_back(mc);
             }
             if (!tableOnly) {
                 cstring alternative = makeId(
-                    tableName + "DefaultAction" + ac->action->externalName());
+                    tableName + "DefaultAction" + ac->action->name);
                 auto cExp = new IR::DDlogConstructorExpression(alternative, keyargs);
                 auto mc = new IR::DDlogMatchCase(cExp, matched);
                 defaultCases->push_back(mc);
             }
         }
 
-        if (!entries) {
-            auto key = table->table->getKey();
-            if (!key) {
-                key = new IR::Key(IR::Vector<IR::KeyElement>());
-            }
-            safe_vector<const IR::DDlogExpression*> tableArgs;
-            safe_vector<const IR::OF_Match*> match;
-            match.push_back(new IR::OF_TableMatch(table->id));
-            convertKey(table, tableCases, tableArgs, match,
-                       key->keyElements.begin(), key->keyElements.end(),
-                       key->keyElements.size());
-        } else {
-            // Table has constant entries: generate a fixed rule
+        auto key = table->table->getKey();
+        if (!key) {
+            key = new IR::Key(IR::Vector<IR::KeyElement>());
+        }
+        safe_vector<const IR::DDlogExpression*> tableArgs;
+        safe_vector<const IR::OF_Match*> match;
+        match.push_back(new IR::OF_TableMatch(table->id));
+        convertKey(table, tableCases, tableArgs, match,
+                   key->keyElements.begin(), key->keyElements.end(),
+                   key->keyElements.size());
+
+        // For each constant entry, add a constant value to the relation.
+        if (entries) {
             for (auto entry : entries->entries) {
-                auto match = new IR::OF_SeqMatch();
-                match->push_back(new IR::OF_TableMatch(id));
-                BUG_CHECK(keys->keyElements.size() == entry->getKeys()->size(),
-                          "%1%: mismatched keys and entry %2%", keys, entry);
-                auto it = entry->getKeys()->components.begin();
-                for (auto k : keys->keyElements) {
-                    auto v = *it++;
-                    auto key = actionTranslator->translate(k->expression, true, exitBlockId);
-                    auto value = actionTranslator->translate(v, true, exitBlockId);
-                    match->push_back(
-                        new IR::OF_EqualsMatch(
-                            key->checkedTo<IR::OF_Expression>(),
-                            value->checkedTo<IR::OF_Expression>()));
-                }
-                auto actionCall = entry->getAction()->checkedTo<IR::MethodCallExpression>();
-                generateActionCall(actionCall, match, table, false);
+                declarations->push_back(makeConstantEntry(entry->getKeys(), entry->getAction(), tableName, false,
+                                            "constant entry for table " + tableName));
             }
         }
 
         // Handle default action
         auto defaultAction = p4table->getDefaultAction();
         CHECK_NULL(defaultAction);  // always inserted by front-end
-        auto daprop = p4table->properties->getProperty(
-            IR::TableProperties::defaultActionPropertyName);
-        CHECK_NULL(daprop);
         auto default_match = new IR::OF_SeqMatch();
         default_match->push_back(tablematch);
         default_match->push_back(new IR::OF_PriorityMatch(new IR::OF_Constant(1)));
-        if (daprop->isConstant) {
-            // Constant default action: generate a fixed rule.
-            generateActionCall(
-                defaultAction->checkedTo<IR::MethodCallExpression>(), default_match, table, true);
+
+        auto flowRule = new IR::OF_MatchAndAction(
+            default_match,
+            new IR::OF_InterpolatedVariableAction("actions"));
+        auto flowTerm = makeFlowAtom(flowRule);
+        auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
+        auto relationTerm = new IR::DDlogAtom(
+            p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
+            new IR::DDlogTupleExpression(*defaultArgs));
+        ruleRhs->push_back(relationTerm);
+        const IR::DDlogExpression* computeAction;
+        if (defaultCases->size() == 0) {
+            BUG("%1%: table with empty default actions list", p4table);
+        } else if (defaultCases->size() == 1) {
+            // no DDlog "match" needed
+            computeAction = defaultCases->at(0)->result;
         } else {
-            auto flowRule = new IR::OF_MatchAndAction(
-                default_match,
-                new IR::OF_InterpolatedVariableAction("actions"));
-            auto flowTerm = makeFlowAtom(flowRule);
-            auto ruleRhs = new IR::Vector<IR::DDlogTerm>();
-            auto relationTerm = new IR::DDlogAtom(
-                p4table->srcInfo, IR::ID(tableName + "DefaultAction"),
-                new IR::DDlogTupleExpression(*defaultArgs));
-            ruleRhs->push_back(relationTerm);
-            const IR::DDlogExpression* computeAction;
-            if (defaultCases->size() == 0) {
-                BUG("%1%: table with empty default actions list", p4table);
-            } else if (defaultCases->size() == 1) {
-                // no DDlog "match" needed
-                computeAction = defaultCases->at(0)->result;
-            } else {
-                computeAction = new IR::DDlogMatchExpression(
-                    new IR::DDlogVarName("action"), *defaultCases);
-            }
-            auto set = new IR::DDlogSetExpression("actions", computeAction);
-            ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
-            auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
-            declarations->push_back(rule);
+            computeAction = new IR::DDlogMatchExpression(
+                new IR::DDlogVarName("action"), *defaultCases);
+        }
+        auto set = new IR::DDlogSetExpression("actions", computeAction);
+        ruleRhs->push_back(new IR::DDlogExpressionTerm(set));
+        auto rule = new IR::DDlogRule(flowTerm, *ruleRhs, p4table->externalName());
+        declarations->push_back(rule);
+
+        if (defaultActionIsConstant(p4table)) {
+            declarations->push_back(makeConstantEntry(nullptr, defaultAction, tableName, true,
+                                        "constant default action for table " + tableName));
         }
     }
 

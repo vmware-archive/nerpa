@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/// Entry point for p4c-of compiler: compiler generating code for open-flow
+/// Entry point for p4c-of compiler: compiler generating code for OpenFlow
 
 #include <fstream>
 #include <iostream>

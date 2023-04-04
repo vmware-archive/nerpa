@@ -53,87 +53,175 @@ Flow("table=0 actions=resubmit(,1)").
 typedef PortID = bit<16>
 typedef EthernetAddress = bit<48>
 typedef VlanID = bit<12>
-typedef SnvsIngress_MirrorDstDropAction = SnvsIngress_MirrorDstDropActionSnvsIngress_Drop{}
+typedef SnvsIngress_MirrorDstDropAction = SnvsIngress_MirrorDstDropActionDrop{}
 input relation SnvsIngress_MirrorDstDrop(port: bit<16>, action: SnvsIngress_MirrorDstDropAction)
-typedef SnvsIngress_MirrorDstDropActionDefaultAction = SnvsIngress_MirrorDstDropDefaultAction_NoAction{}
+typedef SnvsIngress_MirrorDstDropActionDefaultAction = SnvsIngress_MirrorDstDropDefaultActionNoAction_2{}
 input relation SnvsIngress_MirrorDstDropDefaultAction(action: SnvsIngress_MirrorDstDropActionDefaultAction)
-typedef SnvsIngress_ReservedMcastDstDropAction = SnvsIngress_ReservedMcastDstDropActionSnvsIngress_Drop{}
+typedef SnvsIngress_ReservedMcastDstDropAction = SnvsIngress_ReservedMcastDstDropActionDrop_1{}
 input relation SnvsIngress_ReservedMcastDstDrop(dst: bit<48>, action: SnvsIngress_ReservedMcastDstDropAction)
-typedef SnvsIngress_ReservedMcastDstDropActionDefaultAction = SnvsIngress_ReservedMcastDstDropDefaultAction_NoAction{}
+typedef SnvsIngress_ReservedMcastDstDropActionDefaultAction = SnvsIngress_ReservedMcastDstDropDefaultActionNoAction_3{}
 input relation SnvsIngress_ReservedMcastDstDropDefaultAction(action: SnvsIngress_ReservedMcastDstDropActionDefaultAction)
-typedef SnvsIngress_InputVlanAction = SnvsIngress_InputVlanActionSnvsIngress_Drop{} | SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid: VlanID} | SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{}
+typedef SnvsIngress_InputVlanAction = SnvsIngress_InputVlanActionDrop_2{} | SnvsIngress_InputVlanActionSetVlan{vid: VlanID} | SnvsIngress_InputVlanActionUseTaggedVlan{}
 input relation SnvsIngress_InputVlan(port: bit<16>, has_vlan: bit<1>, vid: Option<bit<12>>, priority: bit<32>, action: SnvsIngress_InputVlanAction)
-typedef SnvsIngress_FloodVlanAction = SnvsIngress_FloodVlanActionSnvsIngress_set_flood{}
+typedef SnvsIngress_InputVlanActionDefaultAction = SnvsIngress_InputVlanDefaultActionDrop_2{}
+input relation SnvsIngress_InputVlanDefaultAction(action: SnvsIngress_InputVlanActionDefaultAction)
+typedef SnvsIngress_FloodVlanAction = SnvsIngress_FloodVlanActionset_flood{}
 input relation SnvsIngress_FloodVlan(vlan: bit<12>, action: SnvsIngress_FloodVlanAction)
-typedef SnvsIngress_LearnedSrcAction = SnvsIngress_LearnedSrcAction_NoAction{}
+typedef SnvsIngress_FloodVlanActionDefaultAction = SnvsIngress_FloodVlanDefaultActionNoAction_4{}
+input relation SnvsIngress_FloodVlanDefaultAction(action: SnvsIngress_FloodVlanActionDefaultAction)
+typedef SnvsIngress_LearnedSrcAction = SnvsIngress_LearnedSrcActionNoAction_5{}
 input relation SnvsIngress_LearnedSrc(vlan: bit<12>, mac: bit<48>, port: bit<16>, action: SnvsIngress_LearnedSrcAction)
-typedef SnvsIngress_LearnedDstAction = SnvsIngress_LearnedDstActionSnvsIngress_KnownDst{port: PortID}
+typedef SnvsIngress_LearnedSrcActionDefaultAction = SnvsIngress_LearnedSrcDefaultActionNoAction_5{}
+input relation SnvsIngress_LearnedSrcDefaultAction(action: SnvsIngress_LearnedSrcActionDefaultAction)
+typedef SnvsIngress_LearnedDstAction = SnvsIngress_LearnedDstActionKnownDst{port: PortID}
 input relation SnvsIngress_LearnedDst(vlan: bit<12>, mac: bit<48>, action: SnvsIngress_LearnedDstAction)
-typedef SnvsEgress_OutputVlanAction = SnvsEgress_OutputVlanAction_NoAction{}
+typedef SnvsIngress_LearnedDstActionDefaultAction = SnvsIngress_LearnedDstDefaultActionNoAction_6{}
+input relation SnvsIngress_LearnedDstDefaultAction(action: SnvsIngress_LearnedDstActionDefaultAction)
+typedef Tbl_snvs158ActionDefaultAction = Tbl_snvs158DefaultActionsnvs158{}
+input relation Tbl_snvs158DefaultAction(action: Tbl_snvs158ActionDefaultAction)
+typedef Tbl_snvs177ActionDefaultAction = Tbl_snvs177DefaultActionsnvs177{}
+input relation Tbl_snvs177DefaultAction(action: Tbl_snvs177ActionDefaultAction)
+typedef Tbl_snvs182ActionDefaultAction = Tbl_snvs182DefaultActionsnvs182{}
+input relation Tbl_snvs182DefaultAction(action: Tbl_snvs182ActionDefaultAction)
+typedef Tbl_snvs182_0ActionDefaultAction = Tbl_snvs182_0DefaultActionsnvs182_0{}
+input relation Tbl_snvs182_0DefaultAction(action: Tbl_snvs182_0ActionDefaultAction)
+typedef Tbl_snvs182_1ActionDefaultAction = Tbl_snvs182_1DefaultActionsnvs182_1{}
+input relation Tbl_snvs182_1DefaultAction(action: Tbl_snvs182_1ActionDefaultAction)
+typedef Tbl_snvs194ActionDefaultAction = Tbl_snvs194DefaultActionsnvs194{}
+input relation Tbl_snvs194DefaultAction(action: Tbl_snvs194ActionDefaultAction)
+typedef Tbl_snvs195ActionDefaultAction = Tbl_snvs195DefaultActionsnvs195{}
+input relation Tbl_snvs195DefaultAction(action: Tbl_snvs195ActionDefaultAction)
+typedef Tbl_snvs195_0ActionDefaultAction = Tbl_snvs195_0DefaultActionsnvs195_0{}
+input relation Tbl_snvs195_0DefaultAction(action: Tbl_snvs195_0ActionDefaultAction)
+typedef Tbl_snvs195_1ActionDefaultAction = Tbl_snvs195_1DefaultActionsnvs195_1{}
+input relation Tbl_snvs195_1DefaultAction(action: Tbl_snvs195_1ActionDefaultAction)
+typedef Tbl_snvs208ActionDefaultAction = Tbl_snvs208DefaultActionsnvs208{}
+input relation Tbl_snvs208DefaultAction(action: Tbl_snvs208ActionDefaultAction)
+typedef Tbl_snvs210ActionDefaultAction = Tbl_snvs210DefaultActionsnvs210{}
+input relation Tbl_snvs210DefaultAction(action: Tbl_snvs210ActionDefaultAction)
+typedef SnvsEgress_OutputVlanAction = SnvsEgress_OutputVlanActionNoAction_7{}
 input relation SnvsEgress_OutputVlan(port: bit<16>, vlan: Option<bit<12>>, priority: bit<32>, action: SnvsEgress_OutputVlanAction)
-typedef SnvsEgress_PriorityTaggingAction = SnvsEgress_PriorityTaggingAction_NoAction{}
+typedef SnvsEgress_OutputVlanActionDefaultAction = SnvsEgress_OutputVlanDefaultActionNoAction_7{}
+input relation SnvsEgress_OutputVlanDefaultAction(action: SnvsEgress_OutputVlanActionDefaultAction)
+typedef SnvsEgress_PriorityTaggingAction = SnvsEgress_PriorityTaggingActionNoAction_8{}
 input relation SnvsEgress_PriorityTagging(port: bit<16>, nonzero_pcp: bool, action: SnvsEgress_PriorityTaggingAction)
+typedef SnvsEgress_PriorityTaggingActionDefaultAction = SnvsEgress_PriorityTaggingDefaultActionNoAction_8{}
+input relation SnvsEgress_PriorityTaggingDefaultAction(action: SnvsEgress_PriorityTaggingActionDefaultAction)
+typedef Tbl_actActionDefaultAction = Tbl_actDefaultActionact{}
+input relation Tbl_actDefaultAction(action: Tbl_actActionDefaultAction)
+typedef Tbl_act_0ActionDefaultAction = Tbl_act_0DefaultActionact_0{}
+input relation Tbl_act_0DefaultAction(action: Tbl_act_0ActionDefaultAction)
+typedef Tbl_snvs258ActionDefaultAction = Tbl_snvs258DefaultActionsnvs258{}
+input relation Tbl_snvs258DefaultAction(action: Tbl_snvs258ActionDefaultAction)
+typedef Tbl_snvs258_0ActionDefaultAction = Tbl_snvs258_0DefaultActionsnvs258_0{}
+input relation Tbl_snvs258_0DefaultAction(action: Tbl_snvs258_0ActionDefaultAction)
+typedef Tbl_snvs259ActionDefaultAction = Tbl_snvs259DefaultActionsnvs259{}
+input relation Tbl_snvs259DefaultAction(action: Tbl_snvs259ActionDefaultAction)
+typedef Tbl_snvs233ActionDefaultAction = Tbl_snvs233DefaultActionsnvs233{}
+input relation Tbl_snvs233DefaultAction(action: Tbl_snvs233ActionDefaultAction)
+typedef Tbl_snvs233_0ActionDefaultAction = Tbl_snvs233_0DefaultActionsnvs233_0{}
+input relation Tbl_snvs233_0DefaultAction(action: Tbl_snvs233_0ActionDefaultAction)
+typedef Tbl_snvs233_1ActionDefaultAction = Tbl_snvs233_1DefaultActionsnvs233_1{}
+input relation Tbl_snvs233_1DefaultAction(action: Tbl_snvs233_1ActionDefaultAction)
+typedef Tbl_snvs233_2ActionDefaultAction = Tbl_snvs233_2DefaultActionsnvs233_2{}
+input relation Tbl_snvs233_2DefaultAction(action: Tbl_snvs233_2ActionDefaultAction)
+typedef Tbl_act_1ActionDefaultAction = Tbl_act_1DefaultActionact_1{}
+input relation Tbl_act_1DefaultAction(action: Tbl_act_1ActionDefaultAction)
+typedef Tbl_act_2ActionDefaultAction = Tbl_act_2DefaultActionact_2{}
+input relation Tbl_act_2DefaultAction(action: Tbl_act_2ActionDefaultAction)
+typedef Tbl_snvs259_0ActionDefaultAction = Tbl_snvs259_0DefaultActionsnvs259_0{}
+input relation Tbl_snvs259_0DefaultAction(action: Tbl_snvs259_0ActionDefaultAction)
+typedef Tbl_snvs261ActionDefaultAction = Tbl_snvs261DefaultActionsnvs261{}
+input relation Tbl_snvs261DefaultAction(action: Tbl_snvs261ActionDefaultAction)
+typedef Tbl_snvs263ActionDefaultAction = Tbl_snvs263DefaultActionsnvs263{}
+input relation Tbl_snvs263DefaultAction(action: Tbl_snvs263ActionDefaultAction)
+typedef Tbl_snvs263_0ActionDefaultAction = Tbl_snvs263_0DefaultActionsnvs263_0{}
+input relation Tbl_snvs263_0DefaultAction(action: Tbl_snvs263_0ActionDefaultAction)
+typedef Tbl_snvs264ActionDefaultAction = Tbl_snvs264DefaultActionsnvs264{}
+input relation Tbl_snvs264DefaultAction(action: Tbl_snvs264ActionDefaultAction)
 Flow("table=1 actions=resubmit(,2)").
 
-// tbl_snvs156
+// tbl_snvs158
 Flow("table=2 actions=${actions}") :- var actions = "load(0->${r_vlan(false)}), load(0->${r_flood(false)}), resubmit(,3)".
 
-// tbl_snvs156
-Flow("table=2, priority=1 actions=load(0->${r_vlan(false)}), load(0->${r_flood(false)}), resubmit(,3)").
+// tbl_snvs158
+Flow("table=2, priority=1 actions=${actions}") :- Tbl_snvs158DefaultAction(action),
+   var actions = "load(0->${r_vlan(false)}), load(0->${r_flood(false)}), resubmit(,3)".
+
+// constant default action for table Tbl_snvs158
+Tbl_snvs158DefaultAction(Tbl_snvs158DefaultActionsnvs158{}).
 
 // SnvsIngress.MirrorDstDrop
 Flow("table=3, in_port=${port} actions=${actions}") :- SnvsIngress_MirrorDstDrop(port, action),
    var actions = match(action) {
-    SnvsIngress_MirrorDstDropActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)"
+    SnvsIngress_MirrorDstDropActionDrop{} -> "load(0->${r_out_port(false)}), resubmit(,26)"
 }.
 
 // SnvsIngress.MirrorDstDrop
 Flow("table=3, priority=1 actions=${actions}") :- SnvsIngress_MirrorDstDropDefaultAction(action),
    var actions = "resubmit(,4)".
 
+// constant default action for table SnvsIngress_MirrorDstDrop
+SnvsIngress_MirrorDstDropDefaultAction(SnvsIngress_MirrorDstDropDefaultActionNoAction_2{}).
+
 // SnvsIngress.ReservedMcastDstDrop
 Flow("table=4, dl_dst=${dst} actions=${actions}") :- SnvsIngress_ReservedMcastDstDrop(dst, action),
    var actions = match(action) {
-    SnvsIngress_ReservedMcastDstDropActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)"
+    SnvsIngress_ReservedMcastDstDropActionDrop_1{} -> "load(0->${r_out_port(false)}), resubmit(,26)"
 }.
 
 // SnvsIngress.ReservedMcastDstDrop
 Flow("table=4, priority=1 actions=${actions}") :- SnvsIngress_ReservedMcastDstDropDefaultAction(action),
    var actions = "resubmit(,5)".
 
+// constant default action for table SnvsIngress_ReservedMcastDstDrop
+SnvsIngress_ReservedMcastDstDropDefaultAction(SnvsIngress_ReservedMcastDstDropDefaultActionNoAction_3{}).
+
 // SnvsIngress.InputVlan
 Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${has_vlan as bit<16> << 12}/0x1000 actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, None{}, priority, action),
    var actions = match(action) {
-    SnvsIngress_InputVlanActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
-    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "move(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
-    SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
+    SnvsIngress_InputVlanActionDrop_2{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
+    SnvsIngress_InputVlanActionSetVlan{vid_0} -> "load(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
+    SnvsIngress_InputVlanActionUseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
 }.
 
 // SnvsIngress.InputVlan
 Flow("table=5, priority=${priority}, in_port=${port}, vlan_tci=${(has_vlan as bit<16> << 12) | vid as bit<16>}/0x1fff actions=${actions}") :- SnvsIngress_InputVlan(port, has_vlan, Some{vid}, priority, action),
    var actions = match(action) {
-    SnvsIngress_InputVlanActionSnvsIngress_Drop{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
-    SnvsIngress_InputVlanActionSnvsIngress_SetVlan{vid_0} -> "move(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
-    SnvsIngress_InputVlanActionSnvsIngress_UseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
+    SnvsIngress_InputVlanActionDrop_2{} -> "load(0->${r_out_port(false)}), resubmit(,26)",
+    SnvsIngress_InputVlanActionSetVlan{vid_0} -> "load(${vid_0}->vlan_tci[0..11]), load(1->vlan_tci[12]), resubmit(,6)",
+    SnvsIngress_InputVlanActionUseTaggedVlan{} -> "move(vlan_tci[0..11]->${r_vlan(false)}), resubmit(,6)"
 }.
 
 // SnvsIngress.InputVlan
-Flow("table=5, priority=1 actions=load(0->${r_out_port(false)}), resubmit(,26)").
+Flow("table=5, priority=1 actions=${actions}") :- SnvsIngress_InputVlanDefaultAction(action),
+   var actions = "load(0->${r_out_port(false)}), resubmit(,26)".
 
-// tbl_snvs175
+// constant default action for table SnvsIngress_InputVlan
+SnvsIngress_InputVlanDefaultAction(SnvsIngress_InputVlanDefaultActionDrop_2{}).
+
+// tbl_snvs177
 Flow("table=6 actions=${actions}") :- var actions = "load(0->${r_flood(false)}), resubmit(,7)".
 
-// tbl_snvs175
-Flow("table=6, priority=1 actions=load(0->${r_flood(false)}), resubmit(,7)").
+// tbl_snvs177
+Flow("table=6, priority=1 actions=${actions}") :- Tbl_snvs177DefaultAction(action),
+   var actions = "load(0->${r_flood(false)}), resubmit(,7)".
+
+// constant default action for table Tbl_snvs177
+Tbl_snvs177DefaultAction(Tbl_snvs177DefaultActionsnvs177{}).
 
 // SnvsIngress.FloodVlan
 Flow("table=7, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsIngress_FloodVlan(vlan, action),
    var actions = match(action) {
-    SnvsIngress_FloodVlanActionSnvsIngress_set_flood{} -> "load(1->${r_flood(false)}), resubmit(,8)"
+    SnvsIngress_FloodVlanActionset_flood{} -> "load(1->${r_flood(false)}), resubmit(,8)"
 }.
 
 // SnvsIngress.FloodVlan
-Flow("table=7, priority=1 actions=resubmit(,8)").
+Flow("table=7, priority=1 actions=${actions}") :- SnvsIngress_FloodVlanDefaultAction(action),
+   var actions = "resubmit(,8)".
+
+// constant default action for table SnvsIngress_FloodVlan
+SnvsIngress_FloodVlanDefaultAction(SnvsIngress_FloodVlanDefaultActionNoAction_4{}).
 
 // IfStatement
 Flow("table=8, priority=100, ${r_flood(true)}=${1 << 24}/0x1000000 actions=resubmit(,9)").
@@ -141,11 +229,15 @@ Flow("table=8, priority=100, ${r_flood(true)}=${1 << 24}/0x1000000 actions=resub
 // IfStatement
 Flow("table=8, priority=1 actions=resubmit(,10)").
 
-// tbl_snvs180
+// tbl_snvs182
 Flow("table=9 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
-// tbl_snvs180
-Flow("table=9, priority=1 actions=load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)").
+// tbl_snvs182
+Flow("table=9, priority=1 actions=${actions}") :- Tbl_snvs182DefaultAction(action),
+   var actions = "load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
+
+// constant default action for table Tbl_snvs182
+Tbl_snvs182DefaultAction(Tbl_snvs182DefaultActionsnvs182{}).
 
 // IfStatement
 Flow("table=10, priority=100, dl_src=${to_eth(0 << 40)}/01:00:00:00:00:00 actions=resubmit(,11)").
@@ -153,17 +245,25 @@ Flow("table=10, priority=100, dl_src=${to_eth(0 << 40)}/01:00:00:00:00:00 action
 // IfStatement
 Flow("table=10, priority=1 actions=resubmit(,12)").
 
-// tbl_snvs180_0
+// tbl_snvs182_0
 Flow("table=11 actions=${actions}") :- var actions = "load(1->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
-// tbl_snvs180_0
-Flow("table=11, priority=1 actions=load(1->${r_SnvsIngress_tmp(false)}), resubmit(,13)").
+// tbl_snvs182_0
+Flow("table=11, priority=1 actions=${actions}") :- Tbl_snvs182_0DefaultAction(action),
+   var actions = "load(1->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
-// tbl_snvs180_1
+// constant default action for table Tbl_snvs182_0
+Tbl_snvs182_0DefaultAction(Tbl_snvs182_0DefaultActionsnvs182_0{}).
+
+// tbl_snvs182_1
 Flow("table=12 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
 
-// tbl_snvs180_1
-Flow("table=12, priority=1 actions=load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)").
+// tbl_snvs182_1
+Flow("table=12, priority=1 actions=${actions}") :- Tbl_snvs182_1DefaultAction(action),
+   var actions = "load(0->${r_SnvsIngress_tmp(false)}), resubmit(,13)".
+
+// constant default action for table Tbl_snvs182_1
+Tbl_snvs182_1DefaultAction(Tbl_snvs182_1DefaultActionsnvs182_1{}).
 
 // IfStatement
 Flow("table=13, priority=100, ${r_SnvsIngress_tmp(true)}=${1 << 16}/0x10000 actions=resubmit(,14)").
@@ -174,17 +274,25 @@ Flow("table=13, priority=1 actions=resubmit(,15)").
 // SnvsIngress.LearnedSrc
 Flow("table=14, dl_src=${mac}, in_port=${port}, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsIngress_LearnedSrc(vlan, mac, port, action),
    var actions = match(action) {
-    SnvsIngress_LearnedSrcAction_NoAction{} -> "resubmit(,15)"
+    SnvsIngress_LearnedSrcActionNoAction_5{} -> "resubmit(,15)"
 }.
 
 // SnvsIngress.LearnedSrc
-Flow("table=14, priority=1 actions=resubmit(,15)").
+Flow("table=14, priority=1 actions=${actions}") :- SnvsIngress_LearnedSrcDefaultAction(action),
+   var actions = "resubmit(,15)".
 
-// tbl_snvs192
+// constant default action for table SnvsIngress_LearnedSrc
+SnvsIngress_LearnedSrcDefaultAction(SnvsIngress_LearnedSrcDefaultActionNoAction_5{}).
+
+// tbl_snvs194
 Flow("table=15 actions=${actions}") :- var actions = "load(510->${r_SnvsIngress_output(false)}), resubmit(,16)".
 
-// tbl_snvs192
-Flow("table=15, priority=1 actions=load(510->${r_SnvsIngress_output(false)}), resubmit(,16)").
+// tbl_snvs194
+Flow("table=15, priority=1 actions=${actions}") :- Tbl_snvs194DefaultAction(action),
+   var actions = "load(510->${r_SnvsIngress_output(false)}), resubmit(,16)".
+
+// constant default action for table Tbl_snvs194
+Tbl_snvs194DefaultAction(Tbl_snvs194DefaultActionsnvs194{}).
 
 // IfStatement
 Flow("table=16, priority=100, ${r_flood(true)}=${1 << 24}/0x1000000 actions=resubmit(,17)").
@@ -192,11 +300,15 @@ Flow("table=16, priority=100, ${r_flood(true)}=${1 << 24}/0x1000000 actions=resu
 // IfStatement
 Flow("table=16, priority=1 actions=resubmit(,18)").
 
-// tbl_snvs193
+// tbl_snvs195
 Flow("table=17 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
-// tbl_snvs193
-Flow("table=17, priority=1 actions=load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)").
+// tbl_snvs195
+Flow("table=17, priority=1 actions=${actions}") :- Tbl_snvs195DefaultAction(action),
+   var actions = "load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
+
+// constant default action for table Tbl_snvs195
+Tbl_snvs195DefaultAction(Tbl_snvs195DefaultActionsnvs195{}).
 
 // IfStatement
 Flow("table=18, priority=100, dl_dst=${to_eth(0 << 40)}/01:00:00:00:00:00 actions=resubmit(,19)").
@@ -204,17 +316,25 @@ Flow("table=18, priority=100, dl_dst=${to_eth(0 << 40)}/01:00:00:00:00:00 action
 // IfStatement
 Flow("table=18, priority=1 actions=resubmit(,20)").
 
-// tbl_snvs193_0
+// tbl_snvs195_0
 Flow("table=19 actions=${actions}") :- var actions = "load(1->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
-// tbl_snvs193_0
-Flow("table=19, priority=1 actions=load(1->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)").
+// tbl_snvs195_0
+Flow("table=19, priority=1 actions=${actions}") :- Tbl_snvs195_0DefaultAction(action),
+   var actions = "load(1->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
-// tbl_snvs193_1
+// constant default action for table Tbl_snvs195_0
+Tbl_snvs195_0DefaultAction(Tbl_snvs195_0DefaultActionsnvs195_0{}).
+
+// tbl_snvs195_1
 Flow("table=20 actions=${actions}") :- var actions = "load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
 
-// tbl_snvs193_1
-Flow("table=20, priority=1 actions=load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)").
+// tbl_snvs195_1
+Flow("table=20, priority=1 actions=${actions}") :- Tbl_snvs195_1DefaultAction(action),
+   var actions = "load(0->${r_SnvsIngress_tmp_3(false)}), resubmit(,21)".
+
+// constant default action for table Tbl_snvs195_1
+Tbl_snvs195_1DefaultAction(Tbl_snvs195_1DefaultActionsnvs195_1{}).
 
 // IfStatement
 Flow("table=21, priority=100, ${r_SnvsIngress_tmp_3(true)}=${1 << 24}/0x1000000 actions=resubmit(,22)").
@@ -225,11 +345,15 @@ Flow("table=21, priority=1 actions=resubmit(,23)").
 // SnvsIngress.LearnedDst
 Flow("table=22, dl_dst=${mac}, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsIngress_LearnedDst(vlan, mac, action),
    var actions = match(action) {
-    SnvsIngress_LearnedDstActionSnvsIngress_KnownDst{port_1} -> "move(${port_1}->${r_SnvsIngress_output(false)}), resubmit(,23)"
+    SnvsIngress_LearnedDstActionKnownDst{port_1} -> "load(${port_1}->${r_SnvsIngress_output(false)}), resubmit(,23)"
 }.
 
 // SnvsIngress.LearnedDst
-Flow("table=22, priority=1 actions=resubmit(,23)").
+Flow("table=22, priority=1 actions=${actions}") :- SnvsIngress_LearnedDstDefaultAction(action),
+   var actions = "resubmit(,23)".
+
+// constant default action for table SnvsIngress_LearnedDst
+SnvsIngress_LearnedDstDefaultAction(SnvsIngress_LearnedDstDefaultActionNoAction_6{}).
 
 // IfStatement
 Flow("table=23, priority=100, ${r_SnvsIngress_output(true)}=510/0xffff actions=resubmit(,24)").
@@ -237,46 +361,66 @@ Flow("table=23, priority=100, ${r_SnvsIngress_output(true)}=510/0xffff actions=r
 // IfStatement
 Flow("table=23, priority=1 actions=resubmit(,25)").
 
-// tbl_snvs206
+// tbl_snvs208
 Flow("table=24 actions=${actions}") :- var actions = "move(${r_vlan(false)}->reg0[16..27]), load(0->reg0[28..31]), resubmit(,26)".
 
-// tbl_snvs206
-Flow("table=24, priority=1 actions=move(${r_vlan(false)}->reg0[16..27]), load(0->reg0[28..31]), resubmit(,26)").
-
 // tbl_snvs208
+Flow("table=24, priority=1 actions=${actions}") :- Tbl_snvs208DefaultAction(action),
+   var actions = "move(${r_vlan(false)}->reg0[16..27]), load(0->reg0[28..31]), resubmit(,26)".
+
+// constant default action for table Tbl_snvs208
+Tbl_snvs208DefaultAction(Tbl_snvs208DefaultActionsnvs208{}).
+
+// tbl_snvs210
 Flow("table=25 actions=${actions}") :- var actions = "move(${r_SnvsIngress_output(false)}->${r_out_port(false)}), resubmit(,26)".
 
-// tbl_snvs208
-Flow("table=25, priority=1 actions=move(${r_SnvsIngress_output(false)}->${r_out_port(false)}), resubmit(,26)").
+// tbl_snvs210
+Flow("table=25, priority=1 actions=${actions}") :- Tbl_snvs210DefaultAction(action),
+   var actions = "move(${r_SnvsIngress_output(false)}->${r_out_port(false)}), resubmit(,26)".
+
+// constant default action for table Tbl_snvs210
+Tbl_snvs210DefaultAction(Tbl_snvs210DefaultActionsnvs210{}).
 
 Flow("table=28 actions=resubmit(,29)").
 
 // SnvsEgress.OutputVlan
 Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff actions=${actions}") :- SnvsEgress_OutputVlan(port, None{}, priority, action),
    var actions = match(action) {
-    SnvsEgress_OutputVlanAction_NoAction{} -> "resubmit(,30)"
+    SnvsEgress_OutputVlanActionNoAction_7{} -> "resubmit(,30)"
 }.
 
 // SnvsEgress.OutputVlan
 Flow("table=29, priority=${priority}, ${r_out_port(true)}=${port}/0xffff, ${r_vlan(true)}=${vlan as bit<32> << 8}/0xfff00 actions=${actions}") :- SnvsEgress_OutputVlan(port, Some{vlan}, priority, action),
    var actions = match(action) {
-    SnvsEgress_OutputVlanAction_NoAction{} -> "resubmit(,30)"
+    SnvsEgress_OutputVlanActionNoAction_7{} -> "resubmit(,30)"
 }.
 
 // SnvsEgress.OutputVlan
-Flow("table=29, priority=1 actions=resubmit(,31)").
+Flow("table=29, priority=1 actions=${actions}") :- SnvsEgress_OutputVlanDefaultAction(action),
+   var actions = "resubmit(,30)".
+
+// constant default action for table SnvsEgress_OutputVlan
+SnvsEgress_OutputVlanDefaultAction(SnvsEgress_OutputVlanDefaultActionNoAction_7{}).
 
 // tbl_act
 Flow("table=30 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
 
 // tbl_act
-Flow("table=30, priority=1 actions=load(1->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)").
+Flow("table=30, priority=1 actions=${actions}") :- Tbl_actDefaultAction(action),
+   var actions = "load(1->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
+
+// constant default action for table Tbl_act
+Tbl_actDefaultAction(Tbl_actDefaultActionact{}).
 
 // tbl_act_0
 Flow("table=31 actions=${actions}") :- var actions = "load(0->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
 
 // tbl_act_0
-Flow("table=31, priority=1 actions=load(0->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)").
+Flow("table=31, priority=1 actions=${actions}") :- Tbl_act_0DefaultAction(action),
+   var actions = "load(0->${r_SnvsEgress_tag_vlan(false)}), resubmit(,32)".
+
+// constant default action for table Tbl_act_0
+Tbl_act_0DefaultAction(Tbl_act_0DefaultActionact_0{}).
 
 // IfStatement
 Flow("table=32, priority=100, ${r_SnvsEgress_tag_vlan(true)}=${1 << 16}/0x10000 actions=resubmit(,33)").
@@ -284,17 +428,25 @@ Flow("table=32, priority=100, ${r_SnvsEgress_tag_vlan(true)}=${1 << 16}/0x10000 
 // IfStatement
 Flow("table=32, priority=1 actions=resubmit(,34)").
 
-// tbl_snvs256
+// tbl_snvs258
 Flow("table=33 actions=${actions}") :- var actions = "move(${r_vlan(false)}->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)".
 
-// tbl_snvs256
-Flow("table=33, priority=1 actions=move(${r_vlan(false)}->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)").
+// tbl_snvs258
+Flow("table=33, priority=1 actions=${actions}") :- Tbl_snvs258DefaultAction(action),
+   var actions = "move(${r_vlan(false)}->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)".
 
-// tbl_snvs256_0
+// constant default action for table Tbl_snvs258
+Tbl_snvs258DefaultAction(Tbl_snvs258DefaultActionsnvs258{}).
+
+// tbl_snvs258_0
 Flow("table=34 actions=${actions}") :- var actions = "load(0->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)".
 
-// tbl_snvs256_0
-Flow("table=34, priority=1 actions=load(0->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)").
+// tbl_snvs258_0
+Flow("table=34, priority=1 actions=${actions}") :- Tbl_snvs258_0DefaultAction(action),
+   var actions = "load(0->${r_SnvsEgress_tmp_5(false)}), resubmit(,35)".
+
+// constant default action for table Tbl_snvs258_0
+Tbl_snvs258_0DefaultAction(Tbl_snvs258_0DefaultActionsnvs258_0{}).
 
 // IfStatement
 Flow("table=35, priority=100, ${r_SnvsEgress_tag_vlan(true)}=${1 << 16}/0x10000 actions=resubmit(,36)").
@@ -302,11 +454,15 @@ Flow("table=35, priority=100, ${r_SnvsEgress_tag_vlan(true)}=${1 << 16}/0x10000 
 // IfStatement
 Flow("table=35, priority=1 actions=resubmit(,37)").
 
-// tbl_snvs257
+// tbl_snvs259
 Flow("table=36 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)".
 
-// tbl_snvs257
-Flow("table=36, priority=1 actions=load(1->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)").
+// tbl_snvs259
+Flow("table=36, priority=1 actions=${actions}") :- Tbl_snvs259DefaultAction(action),
+   var actions = "load(1->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)".
+
+// constant default action for table Tbl_snvs259
+Tbl_snvs259DefaultAction(Tbl_snvs259DefaultActionsnvs259{}).
 
 // IfStatement
 Flow("table=37, priority=100, ${r_tmp_0(true)}=1/0x1, vlan_tci=${1 << 12}/0x1000 actions=resubmit(,38)").
@@ -320,56 +476,88 @@ Flow("table=38, priority=100, vlan_tci=${0 << 13}/0xe000 actions=resubmit(,39)")
 // IfStatement
 Flow("table=38, priority=1 actions=resubmit(,40)").
 
-// tbl_snvs231
+// tbl_snvs233
 Flow("table=39 actions=${actions}") :- var actions = "load(0->${r_tmp_0(false)}), resubmit(,41)".
 
-// tbl_snvs231
-Flow("table=39, priority=1 actions=load(0->${r_tmp_0(false)}), resubmit(,41)").
+// tbl_snvs233
+Flow("table=39, priority=1 actions=${actions}") :- Tbl_snvs233DefaultAction(action),
+   var actions = "load(0->${r_tmp_0(false)}), resubmit(,41)".
 
-// tbl_snvs231_0
+// constant default action for table Tbl_snvs233
+Tbl_snvs233DefaultAction(Tbl_snvs233DefaultActionsnvs233{}).
+
+// tbl_snvs233_0
 Flow("table=40 actions=${actions}") :- var actions = "load(1->${r_tmp_0(false)}), resubmit(,41)".
 
-// tbl_snvs231_0
-Flow("table=40, priority=1 actions=load(1->${r_tmp_0(false)}), resubmit(,41)").
+// tbl_snvs233_0
+Flow("table=40, priority=1 actions=${actions}") :- Tbl_snvs233_0DefaultAction(action),
+   var actions = "load(1->${r_tmp_0(false)}), resubmit(,41)".
 
-// tbl_snvs231_1
+// constant default action for table Tbl_snvs233_0
+Tbl_snvs233_0DefaultAction(Tbl_snvs233_0DefaultActionsnvs233_0{}).
+
+// tbl_snvs233_1
 Flow("table=41 actions=${actions}") :- var actions = "load(1->${r_key_0(false)}), resubmit(,43)".
 
-// tbl_snvs231_1
-Flow("table=41, priority=1 actions=load(1->${r_key_0(false)}), resubmit(,43)").
+// tbl_snvs233_1
+Flow("table=41, priority=1 actions=${actions}") :- Tbl_snvs233_1DefaultAction(action),
+   var actions = "load(1->${r_key_0(false)}), resubmit(,43)".
 
-// tbl_snvs231_2
+// constant default action for table Tbl_snvs233_1
+Tbl_snvs233_1DefaultAction(Tbl_snvs233_1DefaultActionsnvs233_1{}).
+
+// tbl_snvs233_2
 Flow("table=42 actions=${actions}") :- var actions = "load(0->${r_key_0(false)}), resubmit(,43)".
 
-// tbl_snvs231_2
-Flow("table=42, priority=1 actions=load(0->${r_key_0(false)}), resubmit(,43)").
+// tbl_snvs233_2
+Flow("table=42, priority=1 actions=${actions}") :- Tbl_snvs233_2DefaultAction(action),
+   var actions = "load(0->${r_key_0(false)}), resubmit(,43)".
+
+// constant default action for table Tbl_snvs233_2
+Tbl_snvs233_2DefaultAction(Tbl_snvs233_2DefaultActionsnvs233_2{}).
 
 // SnvsEgress.PriorityTagging
 Flow("table=43, ${r_out_port(true)}=${port}/0xffff, ${r_key_0(true)}=${(if (nonzero_pcp) 1 else 0) << 24}/0x1000000 actions=${actions}") :- SnvsEgress_PriorityTagging(port, nonzero_pcp, action),
    var actions = match(action) {
-    SnvsEgress_PriorityTaggingAction_NoAction{} -> "resubmit(,44)"
+    SnvsEgress_PriorityTaggingActionNoAction_8{} -> "resubmit(,44)"
 }.
 
 // SnvsEgress.PriorityTagging
-Flow("table=43, priority=1 actions=resubmit(,45)").
+Flow("table=43, priority=1 actions=${actions}") :- SnvsEgress_PriorityTaggingDefaultAction(action),
+   var actions = "resubmit(,44)".
+
+// constant default action for table SnvsEgress_PriorityTagging
+SnvsEgress_PriorityTaggingDefaultAction(SnvsEgress_PriorityTaggingDefaultActionNoAction_8{}).
 
 // tbl_act_1
 Flow("table=44 actions=${actions}") :- var actions = "load(1->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
 
 // tbl_act_1
-Flow("table=44, priority=1 actions=load(1->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)").
+Flow("table=44, priority=1 actions=${actions}") :- Tbl_act_1DefaultAction(action),
+   var actions = "load(1->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
+
+// constant default action for table Tbl_act_1
+Tbl_act_1DefaultAction(Tbl_act_1DefaultActionact_1{}).
 
 // tbl_act_2
 Flow("table=45 actions=${actions}") :- var actions = "load(0->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
 
 // tbl_act_2
-Flow("table=45, priority=1 actions=load(0->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)").
+Flow("table=45, priority=1 actions=${actions}") :- Tbl_act_2DefaultAction(action),
+   var actions = "load(0->${r_SnvsEgress_tmp_7(false)}), resubmit(,46)".
 
-// tbl_snvs257_0
+// constant default action for table Tbl_act_2
+Tbl_act_2DefaultAction(Tbl_act_2DefaultActionact_2{}).
+
+// tbl_snvs259_0
 Flow("table=46 actions=${actions}") :- var actions = "move(${r_SnvsEgress_tmp_7(false)}->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)".
 
-// tbl_snvs257_0
-Flow("table=46, priority=1 actions=move(${r_SnvsEgress_tmp_7(false)}->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)").
+// tbl_snvs259_0
+Flow("table=46, priority=1 actions=${actions}") :- Tbl_snvs259_0DefaultAction(action),
+   var actions = "move(${r_SnvsEgress_tmp_7(false)}->${r_SnvsEgress_tmp_6(false)}), resubmit(,47)".
+
+// constant default action for table Tbl_snvs259_0
+Tbl_snvs259_0DefaultAction(Tbl_snvs259_0DefaultActionsnvs259_0{}).
 
 // IfStatement
 Flow("table=47, priority=100, ${r_SnvsEgress_tmp_6(true)}=${1 << 24}/0x1000000, vlan_tci=${0 << 12}/0x1000 actions=resubmit(,48)").
@@ -377,11 +565,15 @@ Flow("table=47, priority=100, ${r_SnvsEgress_tmp_6(true)}=${1 << 24}/0x1000000, 
 // IfStatement
 Flow("table=47, priority=1 actions=resubmit(,49)").
 
-// tbl_snvs259
+// tbl_snvs261
 Flow("table=48 actions=${actions}") :- var actions = "load(1->vlan_tci[12]), move(${r_SnvsEgress_tmp_5(false)}->vlan_tci[0..11]), resubmit(,54)".
 
-// tbl_snvs259
-Flow("table=48, priority=1 actions=load(1->vlan_tci[12]), move(${r_SnvsEgress_tmp_5(false)}->vlan_tci[0..11]), resubmit(,54)").
+// tbl_snvs261
+Flow("table=48, priority=1 actions=${actions}") :- Tbl_snvs261DefaultAction(action),
+   var actions = "load(1->vlan_tci[12]), move(${r_SnvsEgress_tmp_5(false)}->vlan_tci[0..11]), resubmit(,54)".
+
+// constant default action for table Tbl_snvs261
+Tbl_snvs261DefaultAction(Tbl_snvs261DefaultActionsnvs261{}).
 
 // IfStatement
 Flow("table=49, priority=100, ${r_tmp_1(true)}=${1 << 8}/0x100, vlan_tci=${1 << 12}/0x1000 actions=resubmit(,50)").
@@ -395,23 +587,35 @@ Flow("table=50, priority=100, ${r_SnvsEgress_tmp_6(true)}=${1 << 24}/0x1000000 a
 // IfStatement
 Flow("table=50, priority=1 actions=resubmit(,52)").
 
-// tbl_snvs261
+// tbl_snvs263
 Flow("table=51 actions=${actions}") :- var actions = "load(0->${r_tmp_1(false)}), resubmit(,53)".
 
-// tbl_snvs261
-Flow("table=51, priority=1 actions=load(0->${r_tmp_1(false)}), resubmit(,53)").
+// tbl_snvs263
+Flow("table=51, priority=1 actions=${actions}") :- Tbl_snvs263DefaultAction(action),
+   var actions = "load(0->${r_tmp_1(false)}), resubmit(,53)".
 
-// tbl_snvs261_0
+// constant default action for table Tbl_snvs263
+Tbl_snvs263DefaultAction(Tbl_snvs263DefaultActionsnvs263{}).
+
+// tbl_snvs263_0
 Flow("table=52 actions=${actions}") :- var actions = "load(1->${r_tmp_1(false)}), resubmit(,53)".
 
-// tbl_snvs261_0
-Flow("table=52, priority=1 actions=load(1->${r_tmp_1(false)}), resubmit(,53)").
+// tbl_snvs263_0
+Flow("table=52, priority=1 actions=${actions}") :- Tbl_snvs263_0DefaultAction(action),
+   var actions = "load(1->${r_tmp_1(false)}), resubmit(,53)".
 
-// tbl_snvs262
+// constant default action for table Tbl_snvs263_0
+Tbl_snvs263_0DefaultAction(Tbl_snvs263_0DefaultActionsnvs263_0{}).
+
+// tbl_snvs264
 Flow("table=53 actions=${actions}") :- var actions = "load(0->vlan_tci[12]), resubmit(,54)".
 
-// tbl_snvs262
-Flow("table=53, priority=1 actions=load(0->vlan_tci[12]), resubmit(,54)").
+// tbl_snvs264
+Flow("table=53, priority=1 actions=${actions}") :- Tbl_snvs264DefaultAction(action),
+   var actions = "load(0->vlan_tci[12]), resubmit(,54)".
+
+// constant default action for table Tbl_snvs264
+Tbl_snvs264DefaultAction(Tbl_snvs264DefaultActionsnvs264{}).
 
 // drop if output port is 0
 Flow("table=54, priority=100, ${r_out_port(true)}=0/0xffff actions=drop").

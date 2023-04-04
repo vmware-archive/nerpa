@@ -1,3 +1,9 @@
 /target
 ofp4dl_ddlog/
 snvs_ddlog/
+*.p4info.*
+
+# Make.vars is for local configuration and should not be checked in.
+Make.vars
+/ofp4dl_ddlog.stamp
+tmp*/

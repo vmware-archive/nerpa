@@ -60,6 +60,7 @@ control WireEgress(inout Headers hdr,
     }
 }
 
+@pkginfo(name="wire")
 OfSwitch (
     WireIngress(),
     WireEgress()

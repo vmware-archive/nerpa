@@ -1,13 +1,13 @@
-# Compiling P4 to Open-Flow
+# Compiling P4 to OpenFlow
 
-This directory contains a compiler that converts P4 code to Open-Flow.
+This directory contains a compiler that converts P4 code to OpenFlow.
 The target for this compiler is of_model.p4, which can be found in the
 `p4include` directory.
 
 The compiler in fact consumes a P4 program and generates a
 Differential Datalog (DDlog) program
 (https://github.com/vmware/differential-datalog).  The DDlog program
-implements a controller called ofp4, which controls an Open-Flow
+implements a controller called ofp4, which controls an OpenFlow
 programmable device.
 
 Currently, the translation from P4 to DDlog has been handwritten for
@@ -77,22 +77,41 @@ After installing `p4c-of` as described above:
    <name>`.  This file can import any number of `p4c-of`-generated
    DDlog files, so you don't have to remove the ones that are already
    imported.
+   
+3. Compile the DDlog to Rust: `ddlog -i ofp4dl.dl`.
 
-3. Build `ofp4`, e.g. with `cargo build`.
+4. Build `ofp4`, e.g. with `cargo build`.
 
-4. Run `ofp4`, telling it to use the P4 program you compiled,
-   e.g. with `cargo run <name> <ovs>`, where `<ovs>` tells `ofp4` how
-   to connect to a running OVS bridge and would most commonly start
-   with `unix:` to connect to a local OVS process.
+5. Run `ofp4`, e.g. with `cargo run <ovs>`, where `<ovs>` tells `ofp4`
+   how to connect to a running OVS bridge and would most commonly
+   start with `unix:` to connect to a local OVS process.
 
    By default, ofp4 listens on 127.0.0.1:50051 for P4Runtime
    connections (use `--p4-port` and `--p4-addr` command-line options
    to override these defaults).
 
-   As an alternative to step 4, instead of running `ofp4` directly,
-   pass `--ofp4` to `scripts/run-nerpa.sh` to make it start up OVS and
-   ofp4 instead of bmv2.  This won't pass the tests, since MAC
-   learning won't work yet.
+   The running `ofp4` is initially not configured to run any
+   particular P4 program, even if only a single program was compiled
+   in.  Use a P4Runtime `SetForwardingPipelineConfigRequest` to
+   configure it with one of the compiled-in programs.  `ofp4` matches
+   the name from the P4Info's `pkg_info` against the compiled-in
+   programs.  This means that your P4 programs should specify a
+   distinctive name as an annotation on their top-level `OfSwitch`,
+   e.g. see `@pkginfo(name="myname") OfSwitch (...)`.
+
+As an alternative to running `ofp4` directly in the final step, you
+may instead pass `--ofp4` to `scripts/run-nerpa.sh` to make it start
+up OVS and `ofp4` instead of bmv2.  This won't pass the tests, since
+MAC learning won't work yet.
+
+## Makefile
+
+This directory has a Makefile that can be used to automate rebuilding
+`p4c-of` when you change the `.cpp` and `.h` files in this directory,
+plus the `p4c-of` and `ddlog` steps above.  Read the comments in the
+Makefile for details.  Once you've got it set up properly, rebuilding
+and running `ofp4` after edits to the C++ or P4 files in this
+directory can be as simple as `make && cargo build`.
 
 ## Related Work
 

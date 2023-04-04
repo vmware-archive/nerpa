@@ -997,12 +997,7 @@ impl MatchField {
     pub fn to_record(&self, fm: Option<&FieldMatch>) -> Result<Record> {
         match fm {
             Some(fm) => match (&self.match_type, &fm.match_type) {
-                (MatchType::Exact, FieldMatchType::Exact(value)) => Ok(
-                    if self.is_nerpa_bool() {
-                        Record::Bool(value.0 != 0)
-                    } else {
-                        value.0.into_record()
-                    }),
+                (MatchType::Exact, FieldMatchType::Exact(value)) => Ok(value.0.into_record()),
                 (MatchType::LPM, FieldMatchType::LPM { value, plen })
                     => Ok(Record::Tuple(vec![value.0.into_record(), Record::Int((*plen).into())])),
                 (MatchType::Ternary, FieldMatchType::Ternary { value, mask })
@@ -1043,7 +1038,10 @@ impl MatchField {
 impl TableEntry {
     /// Converts this `TableEntry` into a DDlog Record.  The caller must specify the [`Table`] that
     /// the entry is inside.
-    pub fn to_record(&self, table: &Table) -> Result<Record> {
+    ///
+    /// `table_ddlog_name` must be the name of the relation in DDlog.  It can be
+    /// `table.base_name()` or something else.
+    pub fn to_record(&self, table: &Table, table_ddlog_name: &str) -> Result<Record> {
         let mut values: Vec<(Name, Record)> = Vec::new();
         for mf in &table.match_fields {
             let fm = self.key.matches.iter().find(|fm| fm.field_id == mf.preamble.id);
@@ -1064,18 +1062,14 @@ impl TableEntry {
                     // This action doesn't have any parameters, and it's the only action.  Don't
                     // include it in the output.
                 } else {
-                    let action_name = format!("{}Action{}", table.base_name(), ar.action.preamble.alias);
+                    let action_name = format!("{}Action{}", table_ddlog_name, ar.action.preamble.alias);
                     let mut param_values: Vec<(Name, Record)> = Vec::new();
                     for p in &ar.action.params {
                         let arg = match params.iter().find(|arg| arg.param_id == p.preamble.id) {
                             Some(arg) => arg,
                             None => return Err(Error(RpcStatusCode::INVALID_ARGUMENT)).context(format!("table entry lacks argument for parameter {:?}", p))?
                         };
-                        let record = if p.is_nerpa_bool() {
-                            Record::Bool(arg.value.0 != 0)
-                        } else {
-                            Record::Int(arg.value.0.into())
-                        };
+                        let record = Record::Int(arg.value.0.into());
                         param_values.push((Name::Owned(p.preamble.name.clone()), record));
                     }
                     values.push((Name::from("action"),
@@ -1085,11 +1079,7 @@ impl TableEntry {
             None => ()
         }
 
-        if values.len() == 1 && table.is_nerpa_singleton() {
-            Ok(values.pop().unwrap().1)
-        } else {
-            Ok(Record::NamedStruct(Name::Owned(table.base_name().into()), values))
-        }
+        Ok(Record::NamedStruct(Name::Owned(table_ddlog_name.into()), values))
     }
 }
 
@@ -1283,6 +1273,7 @@ pub struct Table {
     pub match_fields: Vec<MatchField>,
     /// Set of possible actions for the table.
     pub actions: Vec<ActionRef>,
+    /// If the table has a constant default action, this holds it, and otherwise `None`.
     pub const_default_action: Option<Action>,
     //action_profile: Option<ActionProfile>,
     //direct_counter: Option<DirectCounter>,

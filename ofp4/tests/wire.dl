@@ -1,0 +1,60 @@
+import ofp4lib
+function r_out_port(ismatch: bool): string {
+    if (ismatch) "reg0" else "reg0[0..15]"
+}
+function r_out_group(ismatch: bool): string {
+    if (ismatch) "reg0" else "reg0[16..31]"
+}
+function r_clone(ismatch: bool): string {
+    if (ismatch) "reg1" else "reg1[0]"
+}
+output relation Flow[flow_t]
+index Flow(s: string) on Flow(s)
+input relation MulticastGroup[multicast_group_t]
+// initialize output port and output group
+Flow("table=0 actions=resubmit(,1)").
+
+typedef PortID = bit<16>
+typedef WireIngress_MapPortsAction = WireIngress_MapPortsActionSetOutPort{port: PortID}
+input relation WireIngress_MapPorts(in_port: bit<16>, action: WireIngress_MapPortsAction)
+typedef WireIngress_MapPortsActionDefaultAction = WireIngress_MapPortsDefaultActionSetOutPort{port: PortID} | WireIngress_MapPortsDefaultActionNoAction_1{}
+input relation WireIngress_MapPortsDefaultAction(action: WireIngress_MapPortsActionDefaultAction)
+Flow("table=1 actions=resubmit(,2)").
+
+// WireIngress.MapPorts
+Flow("table=2, in_port=${in_port} actions=${actions}") :- WireIngress_MapPorts(in_port, action),
+   var actions = match(action) {
+    WireIngress_MapPortsActionSetOutPort{port} -> "load(${port}->${r_out_port(false)}), resubmit(,3)"
+}.
+
+// constant entry for table WireIngress_MapPorts
+WireIngress_MapPorts(1, WireIngress_MapPortsActionSetOutPort{2}).
+
+// constant entry for table WireIngress_MapPorts
+WireIngress_MapPorts(2, WireIngress_MapPortsActionSetOutPort{1}).
+
+// WireIngress.MapPorts
+Flow("table=2, priority=1 actions=${actions}") :- WireIngress_MapPortsDefaultAction(action),
+   var actions = match(action) {
+    WireIngress_MapPortsDefaultActionSetOutPort{port} -> "load(${port}->${r_out_port(false)}), resubmit(,3)",
+    WireIngress_MapPortsDefaultActionNoAction_1{} -> "resubmit(,3)"
+}.
+
+Flow("table=5 actions=resubmit(,6)").
+
+// drop if output port is 0
+Flow("table=6, priority=100, ${r_out_port(true)}=0/0xffff actions=drop").
+
+// send to chosen port
+Flow("table=6 actions=output(${r_out_port(false)})").
+
+// jump to multicast table
+Flow("table=3 actions=resubmit(,4)").
+
+// if multicast group is 0 just forward
+Flow("table=4, ${r_out_group(true)}=${0 << 16}/0xffff0000 actions=resubmit(,5)").
+
+// multicast
+Flow("table=4, ${r_out_group(true)}=${mcast_id as bit<32> << 16}/0xffff0000 actions=${outputs}") :- MulticastGroup(mcast_id, port),
+   var outputs = "clone(load(${port}->${r_out_port(false)}), resubmit(,5))".group_by(mcast_id).to_vec().join(", ").
+
